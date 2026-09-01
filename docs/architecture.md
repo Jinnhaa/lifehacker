@@ -1247,113 +1247,19 @@ UI 구현은 이 순서의 Core 기능을 대체하지 않는다.
 
 ---
 
-## 38. Foundation Documents
+## 44. Foundation v0.3 Canonical Decisions
 
-이 문서와 함께 다음 문서를 Architecture contract의 일부로 취급한다.
-
-- `docs/domain-model.md` — 전체 Domain과 데이터 경계
-- `docs/agent-contract.md` — Agent 확장 및 Tool/Permission 계약
-- `docs/input-contracts.md` — 사용자/외부 입력 pipeline
-- `docs/personalization.md` — Clone, Pattern, Principle
-- `docs/workflows.md` — durable workflow와 approval/resume
-- `docs/requirements-matrix.md` — 요구사항 coverage 검증
-
-구현 전에 현재 작업과 관련된 문서를 확인한다.
-
----
-
-## 39. MCP Architecture Position
-
-MCP는 Amber HQ 내부 Domain Architecture를 대체하지 않는다.
-
-```text
-Core Domain
-    │
-Tool Registry
-    ├─ Internal Tool
-    ├─ Native Integration
-    ├─ MCP Tool
-    └─ Agent-as-Tool
-```
-
-MCP의 역할은 외부 Tool/Context Capability를 표준화하는 것이다.
-
-Task State Machine, Rules Engine, Routine Progress, Planning State를 MCP tool chain으로 구현하지 않는다.
-
-새 자체 MCP 구현은 공식 최신 stable SDK를 사용하고 구현 시 protocol revision을 확인한다. Foundation baseline은 MCP `2026-07-28`의 stateless 설계 방향을 따른다.
-
-Application state는 Supabase에 저장하며 MCP transport session에 숨기지 않는다.
-
----
-
-## 40. Agent Runtime Position
-
-V1 Core Loop는 code-driven workflow다.
-
-향후 Agent 실행이 많아질 때 `AgentRuntime` abstraction을 둔다.
-
-```text
-AgentRuntime
-    └─ OpenAIAgentsRuntime (candidate)
-```
-
-OpenAI Agents SDK를 사용하더라도 Core Domain, Memory, WorkflowRun의 Source of Truth는 애플리케이션이 소유한다.
-
-기본 multi-agent pattern은 Chief가 specialist를 호출하는 manager pattern이다.
-
----
-
-## 41. Durable Automation
-
-Background automation은 다음 특성을 갖는다.
-
-- persistent state
-- idempotency key
-- retry policy
-- deduplication
-- checkpoint/resume
-- audit event
-
-V1은 Supabase Cron/Queues와 persistent worker를 우선 활용한다.
-
-복잡한 long-running workflow가 실제로 많아져 자체 구현 비용이 커질 때 durable workflow platform을 별도로 검토한다.
-
----
-
-## 42. Tool Security Boundary
-
-Tool 실행 permission은 Prompt가 아니라 deterministic policy로 강제한다.
-
-Tool마다 다음을 추적할 수 있어야 한다.
-
-- read-only
-- destructive
-- idempotent
-- open-world
-- trust level
-- private-data access
-- external communication
-- code execution
-- approval policy
-
-외부 MCP annotation은 risk signal이지 security guarantee가 아니다.
-
-Private data + untrusted content + external communication/code execution 조합은 고위험 실행경로로 취급한다.
-
----
-
-## 43. Observability / Evaluation
-
-Agent/AI 실행은 최소한 다음을 추적한다.
-
-- AgentRun
-- model request
-- tool call
-- approval
-- specialist delegation
-- token/cost
-- latency/error
-- user correction
-- outcome
-
-사용자의 `AI 추천 → 수정 → 왜 → 결과` 기록은 향후 개인화 평가와 regression eval의 핵심 dataset으로 사용한다.
+- Goal과 Objective는 별도 entity.
+- Project/Course는 공통 WorkContext를 사용.
+- Course는 CourseProfile/CourseAssessment로 확장.
+- Task는 최대 하나의 WorkContext와 optional Objective만 직접 연결.
+- Canonical 반복활동 용어는 RecurringActivity.
+- Weekly target은 RecurringActivity가 소유.
+- DailyPlan은 immutable revision.
+- Current Action은 FocusSession/latest approved plan에서 derived.
+- Pause는 Task state가 아니라 FocusSession state.
+- Clone chain은 Decision → DecisionFeedback → LearningCase → Pattern → Principle.
+- MemoryCandidate 대신 Pattern candidate lifecycle.
+- Workflow approval은 checkpoint version + precondition + idempotent resume.
+- Agent isolation은 Scope/AgentScopeGrant/ToolGrant.
+- AgentRun / AIExecution / ToolCall / Artifact를 분리.

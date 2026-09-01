@@ -1,6 +1,6 @@
 # Amber HQ Personalization & Clone Model
 
-**Status:** Foundation v0.2  
+**Status:** Foundation v0.3  
 **Purpose:** 사용자의 실제 판단과 행동에서 개인화 규칙을 학습하되 잘못된 일반화를 막는다.
 
 ---
@@ -317,3 +317,17 @@ ContextResolver가 현재 작업과 관련된:
 - 오래된 Pattern을 영구 진실처럼 사용
 - outcome이 나쁜 패턴을 단순 복제
 - 사용자 현재 지시보다 과거 Pattern 우선
+
+
+---
+
+## 18. Canonical LearningCase
+
+Clone 학습의 한 사례는 `LearningCase`로 묶는다.
+
+`Context Snapshot → Recommendation → Decision/DecisionFeedback → Actual Action Events → Outcome`
+
+PatternEvidence는 LearningCase를 지지/반박 evidence로 사용한다.
+
+`DecisionReason`은 사용하지 않고 `DecisionFeedback.user_reason`으로 통일한다.
+`MemoryCandidate` 대신 `Pattern.status=candidate`를 사용한다.

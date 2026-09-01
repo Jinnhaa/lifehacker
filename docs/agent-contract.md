@@ -1,6 +1,6 @@
 # Amber HQ Agent Extension Contract
 
-**Status:** Foundation v0.2  
+**Status:** Foundation v0.3  
 **Purpose:** Agent가 늘어나도 기존 Core와 기존 Agent가 깨지지 않는 확장 계약을 정의한다.
 
 ---
@@ -446,3 +446,24 @@ Amber HQ 내부 Agent 간 통신을 위해 A2A 같은 cross-platform agent proto
 현재 Agent는 같은 애플리케이션/조직 내에 있고 Chief가 orchestration을 통제한다.
 
 향후 **외부 조직이 운영하는 opaque Agent**와 상호작용해야 할 때만 별도 검토한다.
+
+
+---
+
+## 22. Scope Enforcement Contract
+
+Agent isolation은 prompt가 아니라 data/repository/tool layer에서 강제한다.
+
+- AgentInstance는 home_scope_id를 가진다.
+- 추가 접근은 AgentScopeGrant로만 허용.
+- ToolGrant도 optional scope를 가진다.
+- deny가 allow보다 우선.
+- ContextResolver와 repository query는 같은 policy identity 사용.
+- 새 Agent는 Scope/Grant configuration 추가만으로 동작해야 한다.
+
+## 23. Execution Trace Separation
+
+- AgentRun: multi-step specialist run
+- AIExecution: model call
+- ToolCall: capability invocation
+- Artifact: produced reusable result

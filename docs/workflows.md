@@ -1,6 +1,6 @@
 # Amber HQ Workflows
 
-**Status:** Foundation v0.2  
+**Status:** Foundation v0.3  
 **Purpose:** Core workflow의 deterministic 단계, AI 단계, approval checkpoint를 정의한다.
 
 ---
@@ -295,3 +295,33 @@ Agent self-improvement loop를 사용할 경우 반드시:
 를 둔다.
 
 V1에서는 반복 critique loop를 기본값으로 사용하지 않는다.
+
+
+---
+
+## 18. Plan Revision Contract
+
+Initial Morning Plan은 user approval이 필요하다.
+
+Replan:
+- low-risk minor shift → policy-approved new revision
+- priority/goal/deadline/external-impact change → proposed revision + user approval
+
+기존 approved plan을 덮어쓰지 않는다.
+
+## 19. Durable Resume Contract
+
+Approval 대기 시 WorkflowRun checkpoint를 저장하고 process는 종료 가능하다.
+
+응답 후:
+1. approval status
+2. checkpoint version
+3. action precondition
+4. resume idempotency key
+를 확인하고 resume한다.
+
+## 20. External Sync Lifecycle
+
+`Inbox → ParsedEntity → DomainCommand → ExternalReference → DomainEvent`
+
+create/update/delete/stale/conflict를 동일 contract로 처리한다.

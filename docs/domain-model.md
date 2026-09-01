@@ -1,6 +1,6 @@
 # Amber HQ Domain Model
 
-**Status:** Foundation v0.2  
+**Status:** Foundation v0.3  
 **Purpose:** Amber HQ의 요구사항을 구현할 때 필요한 핵심 Domain과 관계를 정의한다.  
 **Principle:** 기능을 먼저 만들고 DB를 뒤늦게 덧붙이지 않는다. 변경 비용이 큰 Domain 경계와 데이터 소유권을 먼저 고정한다.
 
@@ -23,7 +23,7 @@ Routine            Principle
         ▼              │
 Work Domain ────── Decision / Evidence
 Project             Decision
-Course              DecisionReason
+Course              DecisionFeedback
 Task                PatternEvidence
 TaskStep            Outcome
         │
@@ -99,170 +99,157 @@ AI가 추론한 패턴과 절대 섞지 않는다.
 
 ---
 
-## 3. Goal Domain
+## 3. Goal / Objective / Recurring Activity Domain
+
+### Canonical hierarchy
+
+```text
+Goal
+  └─ Objective (optional)
+
+WorkContext
+  ├─ Project
+  └─ Course
+
+Task
+  └─ TaskStep
+
+RecurringActivity
+  └─ ActivityOccurrence
+```
+
+- Goal = 장기 방향/상태.
+- Objective = 기간·완료조건이 있는 결과. Goal 없이 standalone 가능.
+- Project와 Course는 내부적으로 공통 `WorkContext`를 사용한다.
+- Project = `WorkContext.kind = project`.
+- Course = `WorkContext.kind = course` + `CourseProfile` / `CourseAssessment`.
+- Task는 최대 하나의 WorkContext에 속한다.
+- Task는 optional하게 하나의 Objective에 연결한다.
+- Task에 goal/project/course FK를 중복 저장하지 않는다.
+- Goal 연결은 Objective/WorkContext 관계에서 유도한다.
+- RecurringActivity는 optional하게 Goal과 연결한다.
+- Weekly target은 Goal이 아니라 RecurringActivity가 소유한다.
 
 ### Goal
 
-장기간 유지하고 싶은 방향 또는 상태.
-
-예:
-
-- 학점
-- 일본어
-
-대표 필드:
-
-- `title`
-- `description`
-- `importance`
-- `status`
+- `id`, `user_id`
+- `title`, `description?`, `importance`
+- `status`: active / archived
+- `origin`
+- `created_at`, `archived_at?`
 
 ### Objective
 
-기간과 완료 조건이 있는 단기/중기 결과 목표.
-
-예:
-
-- 이번 학기 GPA 4.2+
-- JLPT N2 취득
-- 4호선톤 제출
-- 지원사업 신청 완료
-
-대표 필드:
-
-- `goal_id?`
-- `title`
-- `target_date`
-- `success_criteria`
+- `id`, `user_id`
+- `goal_id?`, `work_context_id?`
+- `title`, `target_date?`, `success_criteria`
 - `importance`
-- `status`
+- `status`: active / achieved / cancelled / archived
+- `origin`, `created_at`
 
 ### RecurringActivity
 
-사용자가 주도적으로 횟수와 시간을 조절할 수 있는 반복 활동.
-
-예:
-
-- 일본어 공부
-- 운동
-- 빨래
-- 청소기
-- 화장실 청소
-- 주간 회고
-
-반복활동으로 만들기 위한 기준:
-
-> 사용자가 횟수와 시간을 스스로 조절할 수 있고 반복적으로 수행할 가치가 있는가?
-
-대표 필드:
-
-- `title`
-- `category`
-- `linked_goal_id?`
-- `frequency_period` (`week` 등)
-- `frequency_count`
+- `id`, `user_id`, `goal_id?`
+- `title`, `category`
+- `period`: week
+- `target_count`
 - `expected_minutes`
 - `minimum_minutes?`
-- `scheduling_mode`
-- `preferred_days?`
-- `preferred_time_window?`
+- `scheduling_mode`: flexible / spread / specific_days
+- `preferred_days?`, `preferred_time_window?`
 - `importance`
+- `effective_from`, `effective_until?`
 - `active`
+
+Recurrence 기준:
+- timezone = UserProfile.timezone
+- week start = UserSettings.week_starts_on, default Monday
+- `period_key`는 위 기준으로 계산한다.
 
 ### ActivityOccurrence
 
-RecurringActivity의 실제 한 번의 실행.
-
-예:
-
-```text
-일본어 Routine: 주 3회 × 30분
-Occurrence:
-- 월 28분 완료
-- 수 35분 완료
-- 토 예정
-```
-
-대표 필드:
-
+- `id`
 - `recurring_activity_id`
-- `planned_date`
-- `started_at`
-- `ended_at`
-- `actual_minutes`
-- `status`
+- `period_key`
+- `sequence_no`
+- `planned_date?`, `planned_start_at?`
+- `started_at?`, `ended_at?`
+- `actual_minutes?`
+- `status`: planned / in_progress / partial / completed / skipped / cancelled
 - `counts_toward_target`
-- `source_task_id?`
+- `plan_item_id?`
+
+Unique: `(recurring_activity_id, period_key, sequence_no)`
+
+기본 완료 정책:
+- minimum_minutes가 없으면 명시적 완료 신호를 1회로 인정.
+- minimum_minutes가 있고 그 미만이면 partial.
 
 ---
 
-## 4. Work Domain
+## 4. Work Context / Course / Task Domain
 
-### Project
+### WorkContext
 
-종료점이 있는 프로젝트/활동의 context boundary.
+- `id`, `user_id`
+- `kind`: project / course
+- `title`, `description?`
+- `status`: active / completed / archived
+- `start_date?`, `end_date?`
+- `scope_id`
+- `created_at`, `archived_at?`
 
-예:
+### CourseProfile
 
-- LogFolio
-- OURMAP
-- 4호선톤
-- 어흥콘
+- `work_context_id`
+- `target_grade?`
+- `self_reported_understanding?`
+- `term?`, `instructor?`
 
-### Course
+### CourseAssessment
 
-학교 과목 전용 context.
+- `id`
+- `course_context_id`
+- `assessment_type`: quiz / midterm / final / assignment / team_project / attendance / other
+- `title`
+- `weight_percent?`
+- `due_at?`
+- `score?`, `max_score?`
+- `submission_status?`: not_required / pending / submitted / late / missing
+- `provenance`, `observed_at`
+- `created_at`, `updated_at`
 
-Project와 공통 인터페이스를 가질 수 있지만 다음 정보가 추가된다.
-
-- 목표 성적
-- 평가 구조
-- 시험 일정
-- 현재 점수
-- 이해도
-- 실제 공부시간
+점수가 바로 나오지 않는 과제/팀플은 score가 null이어도 된다.
 
 ### Task
 
-실제 완료해야 하는 한 번의 일.
+- `id`, `user_id`
+- `work_context_id?`, `objective_id?`
+- `title`, `description?`
+- `official_deadline?`, `internal_deadline?`
+- `estimated_minutes?`, `estimated_user_minutes?`, `actual_minutes`
+- `importance`, `status`, `next_action?`, `completion_criteria?`
 
-대표 필드:
+Task state:
+`INBOX / PLANNED / IN_PROGRESS / BLOCKED / WAITING_FOR_USER / DONE`
 
-- `project_id?`
-- `course_id?`
-- `objective_id?`
-- `goal_id?`
-- `title`
-- `description`
-- `official_deadline`
-- `internal_deadline`
-- `estimated_minutes`
-- `estimated_user_minutes`
-- `actual_minutes`
-- `importance`
-- `status`
-- `next_action`
-- `completion_criteria`
-
-`estimated_minutes`와 `estimated_user_minutes`를 구분한다.
-
-예:
-
-```text
-전체 작업: 4시간
-AI 선행작업 후 사용자 직접 작업: 1시간 20분
-```
+Pause는 Task state가 아니라 FocusSession state로 표현한다.
 
 ### TaskStep
 
-Focus Mode에서 실행하는 최소 행동 단위.
-
-- `position`
-- `title`
+- `id`, `task_id`, `position`, `title`
 - `owner`: user / ai
-- `estimated_minutes`
-- `completion_criteria`
-- `status`
+- `estimated_minutes?`
+- `completion_criteria?`
+- `status`: pending / in_progress / completed / skipped
+
+### EstimateRevision
+
+- `id`, `task_id`
+- `estimate_type`: total / user
+- `minutes`
+- `origin`: user / ai / system
+- `reason?`, `created_at`
 
 ---
 
@@ -316,53 +303,75 @@ Task도 Goal도 아닌 현재 계획의 제약조건.
 
 ### DailyPlan
 
-사용자가 승인한 하루 계획.
+DailyPlan은 **immutable revision**으로 관리한다.
+
+- `id`, `user_id`
+- `plan_date`, `timezone`
+- `revision_no`
+- `status`: proposed / approved / rejected / superseded / closed
+- `supersedes_plan_id?`
+- `approval_source?`: user / policy
+- `approval_reason?`
+- `input_snapshot`
+- `created_by`: system / ai / user
+- `created_at`, `approved_at?`, `closed_at?`
+
+Unique: `(user_id, plan_date, revision_no)`
+
+Replan은 기존 row를 덮어쓰지 않고 새 revision을 만든다.
 
 ### PlanItem
 
-DailyPlan 안의 실제 실행 항목.
+- `id`, `daily_plan_id`, `position`
+- `item_type`: task / routine / rest / buffer
+- `task_id?`, `activity_occurrence_id?`
+- `planned_start_at?`, `planned_end_at?`, `planned_minutes`
+- `status`: planned / active / completed / skipped / cancelled
 
-Task뿐 아니라 RecurringActivity occurrence, rest, buffer도 표현 가능해야 한다.
+### Current Action
 
-`item_type` 예:
+별도 mutable pointer를 canonical로 저장하지 않는다.
 
-- task
-- routine
-- rest
-- buffer
+1. active FocusSession이 있으면 해당 Task/Step
+2. 없으면 최신 approved DailyPlan의 첫 실행가능 미완료 PlanItem
+3. 없으면 Planner가 다음 행동 필요 상태 반환
 
 ### Availability
 
-Google Calendar fixed event와 Constraint를 계산한 실제 가용시간.
-
-DB에 영구 저장할 필요가 없는 derived state일 수 있다.
+Calendar fixed event와 Constraint를 계산한 derived state.
 
 ---
 
 ## 7. Execution / Event Domain
 
-### TaskEvent
-
-상태 변경과 사용자 행동의 append-oriented record.
-
-예:
-
-- task_started
-- task_blocked
-- task_resumed
-- task_switched
-- task_completed
-- estimate_updated
-
 ### FocusSession
 
-Task를 실제로 수행한 session.
+- `id`, `user_id`, `task_id`
+- `plan_item_id?`, `current_step_id?`
+- `status`: active / paused / completed / cancelled
+- `started_at`, `paused_at?`, `ended_at?`
+- `end_reason?`: completed / switched / blocked / user_stop / replanned / other
+- `actual_minutes`
 
-### Outcome
+규칙:
+- 사용자당 active FocusSession 최대 1개.
+- Task switch 시 기존 FocusSession은 paused.
+- Task 자체는 필요하면 IN_PROGRESS 유지.
+- V1 재개는 새 FocusSession 생성 + 이전 session history 보존.
 
-Decision, intervention, plan의 실제 결과.
+### DomainEvent
 
-개인화는 recommendation만 저장하는 것이 아니라 결과까지 저장해야 한다.
+공통 envelope:
+- `id`
+- `event_type`
+- `aggregate_type`, `aggregate_id`
+- `actor_type`: user / system / agent / integration
+- `actor_id?`
+- `occurred_at`, `recorded_at`
+- `correlation_id`, `causation_id?`
+- `workflow_run_id?`
+- `idempotency_key?`
+- `payload_version`, `payload`
 
 ---
 
@@ -764,3 +773,58 @@ MCP를 사용할 경우 server 단위 connection/config.
 5. Migration
 
 순으로 처리한다.
+
+
+---
+
+## 18. Audit Resolution Contracts
+
+### Input mutation
+`InboxItem → ParsedEntity → DomainCommand → DomainEvent`
+
+- ParsedEntity는 processing_status와 domain_command_id를 가진다.
+- DomainCommand는 idempotency_key와 result entity reference를 가진다.
+- ExternalReference는 external_version/content_hash/sync_status를 가진다.
+- 외부 삭제는 hard delete 대신 tombstone/reconciliation 처리.
+
+### Clone
+Canonical chain:
+`Decision → DecisionFeedback → LearningCase → Pattern/PatternEvidence → Principle`
+
+- `DecisionReason` 별도 entity 없음.
+- `MemoryCandidate` 별도 entity 없음.
+- 반복 행동 후보는 `Pattern.status = candidate`.
+- PatternEvidence는 supports/contradicts, weight, observed_at을 가진다.
+- Pattern은 evaluator_version을 가진다.
+
+### Agent Scope
+Generic `Scope`, `AgentScopeGrant`, `ToolGrant`로 격리한다.
+- Scope kind: global / work_context / goal / objective / custom
+- AgentInstance는 home_scope_id를 가진다.
+- deny가 allow보다 우선.
+- ContextResolver와 Tool 실행은 같은 scope policy 사용.
+
+### AI trace
+- AgentRun = multi-step specialist run
+- AIExecution = individual model call
+- ToolCall = capability invocation
+- Artifact = reusable result
+- 비용 집계는 AIExecution 기준
+
+### Durable approval
+WorkflowRun은 checkpoint_state/checkpoint_version/idempotency_key/correlation_id를 가진다.
+
+ApprovalRequest는:
+- action_type/action_ref/action_hash
+- checkpoint_version
+- pending/approved/rejected/expired/cancelled
+- expires_at/responded_at
+- resume_idempotency_key
+
+Resume 전 checkpoint/precondition/idempotency를 재검증한다.
+
+### Notification
+scheduled/suppressed/sent/delivered/acknowledged/failed/cancelled lifecycle과 dedupe_key를 가진다.
+
+### Calendar identity
+FixedExternalEvent와 AmberManagedWorkBlock을 provenance로 구분해 capacity 이중 차감을 막는다.

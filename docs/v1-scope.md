@@ -7,30 +7,6 @@
 
 ---
 
-
-## 0. Foundation Freeze
-
-DB migration 구현 전에 다음 Foundation 문서를 먼저 확정한다.
-
-- domain-model.md
-- agent-contract.md
-- input-contracts.md
-- personalization.md
-- workflows.md
-- requirements-matrix.md
-
-UI/문구/세부 prompt는 이후 변경 가능하지만 다음은 먼저 고정한다.
-
-- Domain boundary
-- Source of Truth
-- input contract
-- state machine
-- permission/approval
-- personalization storage
-- Agent extension contract
-- idempotency/durable workflow principle
-
-
 ## 1. V1의 한 문장 목표
 
 > **아침에 일어난 순간부터 밤에 하루를 닫을 때까지, 사용자가 “지금 무엇을 해야 하는가”를 스스로 계속 계산하지 않아도 되는 최소 동작 시스템을 만든다.**
@@ -96,7 +72,7 @@ Supabase에 최소한 다음 Domain을 지원한다.
 - Focus Session
 - Decision
 - Memory
-- Memory Candidate
+- Pattern Candidate
 - AI Usage
 
 DB 변경은 migration으로 관리한다.
@@ -366,7 +342,7 @@ Trigger:
 
 - 하루 요약
 - 미완료 재배치
-- Memory Candidate
+- Pattern Candidate
 - 내일 특이사항 확인
 - 목표 기상시간
 - 긍정적인 종료 메시지
@@ -422,7 +398,7 @@ V1에서는 최소한 다음 완료 입력을 지원한다.
 
 ---
 
-### 3.17 Memory Candidate
+### 3.17 Pattern Candidate
 
 V1에서는 완성된 자동 개인화보다 **학습 가능한 데이터 수집**이 중요하다.
 
@@ -691,7 +667,7 @@ UI는 기능 검증의 선행조건이 아니다.
 ### Day 7 — Learning / Stabilization
 
 - Decision Why
-- Memory Candidate
+- Pattern Candidate
 - Long-term Goal protection
 - 실사용 버그 수정
 - 필요하면 Notion 또는 Snowboard의 첫 adapter 시작
@@ -843,20 +819,3 @@ Snowboard 자동 감지
 - 사용하면서 시스템이 새로운 부담이 되지 않는가
 
 기능 수보다 위 변화가 중요하다.
-
-
----
-
-## 17. Recurring Activity Foundation
-
-V1 DB foundation부터 `RecurringActivity`와 `ActivityOccurrence`를 고려한다.
-
-첫 주 고급 UI는 필수가 아니지만 최소한 다음 설정을 저장할 수 있어야 한다.
-
-- 주간 횟수
-- 예상 소요시간
-- linked goal
-- minimum duration
-- active
-
-Planner는 weekly progress와 remaining occurrences를 deterministic하게 계산할 수 있어야 한다.

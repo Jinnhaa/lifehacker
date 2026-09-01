@@ -488,3 +488,7 @@ Codex는 작업 완료 후 간단히 보고한다.
 MCP는 외부 capability boundary로 사용하며 내부 Rules/State/Planning을 MCP tool chain으로 구현하지 않는다.
 
 Background automation은 idempotency, retry, dedupe, checkpoint/resume을 고려한다.
+
+- Foundation 결정 충돌 시 `docs/decision-log.md`와 `docs/domain-model.md`의 최신 canonical 정의를 우선 확인한다.
+
+- `docs/audits/`는 과거 감사 결과 보관용이며 canonical 설계 기준이 아니다. 충돌 시 최신 Foundation 문서를 우선한다.

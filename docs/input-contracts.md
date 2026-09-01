@@ -1,6 +1,6 @@
 # Amber HQ Input Contracts
 
-**Status:** Foundation v0.2  
+**Status:** Foundation v0.3  
 **Purpose:** 사용자의 자연어와 외부 시스템 신호가 어떤 과정을 거쳐 안전한 Domain State가 되는지 정의한다.
 
 ---
@@ -252,3 +252,27 @@ Calendar description, email, web page, imported Notion text 등 외부 텍스트
 같은 문자열을 시스템 instruction으로 실행하지 않는다.
 
 ContextPackage 생성 시 source/trust metadata를 함께 유지한다.
+
+
+---
+
+## 14. Domain Command / External Change Contract
+
+모든 실제 mutation은 DomainCommand를 거친다.
+
+DomainCommand:
+- command_type, payload
+- idempotency_key
+- correlation_id, causation_id
+- status
+- result_entity_type/id
+
+ExternalReference:
+- source
+- external_type/id/version
+- content_hash
+- internal_entity_type/id
+- sync_status: active/stale/deleted/conflict
+- first_seen_at/last_seen_at/deleted_at
+
+외부 create/update/delete는 같은 reconciliation pipeline을 사용한다.
