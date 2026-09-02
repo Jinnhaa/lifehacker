@@ -1,0 +1,2 @@
+-- Foundation migration boundary. Development-only sample rows live in
+-- supabase/seed.sql so schema replay never injects personal data remotely.
