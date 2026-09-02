@@ -46,7 +46,7 @@ Agent가 임의로 전체 workflow를 결정하지 않는다.
 wake acknowledged
 → Calendar read
 → Tasks/Deadlines read
-→ Routine progress read
+→ RecurringActivity progress read
 → Constraints read
 → deterministic capacity
 → missing daily context request
@@ -148,7 +148,7 @@ target wake
 
 ---
 
-## 10. Recurring Activity Scheduling
+## 10. RecurringActivity Scheduling
 
 매일 Planner가:
 
@@ -168,13 +168,13 @@ weekly target
 - minimum duration
 - deadline load
 
-Routine risk 예:
+RecurringActivity risk 예:
 
 - LOW: 충분한 여유
 - MEDIUM: 남은 횟수와 남은 적합 일수가 가까움
 - HIGH: 오늘 미수행 시 목표 달성 어려움
 
-Routine은 자동으로 새 주마다 같은 Task row를 복사하는 대신 occurrence를 생성한다.
+RecurringActivity는 자동으로 새 주마다 같은 Task row를 복사하는 대신 occurrence를 생성한다.
 
 ---
 

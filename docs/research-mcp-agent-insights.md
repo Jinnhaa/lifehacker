@@ -11,7 +11,7 @@
 
 MCP는 tool/context 연결을 표준화하는 데 강하다.
 
-Amber HQ의 Task state, planning rules, routine progress, memory policy 같은 내부 Domain까지 MCP로 바꾸면 오히려 복잡해진다.
+Amber HQ의 Task state, planning rules, RecurringActivity progress, memory policy 같은 내부 Domain까지 MCP로 바꾸면 오히려 복잡해진다.
 
 따라서:
 
@@ -103,7 +103,7 @@ Amber HQ 적용:
 - Recovery routing
 - Day Close
 - Wake
-- Routine progress
+- RecurringActivity progress
 - Replanning trigger
 
 ### Agent

@@ -66,7 +66,7 @@ Supabase에 최소한 다음 Domain을 지원한다.
 - Project / Course
 - Task
 - Task Step
-- Task Event
+- DomainEvent
 - Daily Plan
 - Daily Plan Item
 - Focus Session
@@ -423,8 +423,8 @@ Long-term Goal:
 V1에서는 최소한:
 
 - Goal 생성
-- 주간 target
-- 실제 수행
+- 연결된 RecurringActivity의 주간 target
+- ActivityOccurrence 실제 수행
 - 최근 수행량
 - Planning에서 보호 여부 판단
 
@@ -446,7 +446,7 @@ V1에서 지원 가능한 최소 입력:
 
 V1 최소:
 
-- 주간 학습 목표
+- RecurringActivity 주간 학습 목표
 - 실제 학습 기록
 - Planning에서 일정량 보호
 
@@ -481,7 +481,7 @@ V1에서는 정교한 자동 model routing까지 필수는 아니지만 비용�
 - task decomposition
 - blocked support
 - decision compression
-- memory candidate extraction
+- Pattern Candidate extraction
 - 자료 조사/초안 작업
 
 사용하지 않음:
@@ -578,17 +578,17 @@ Snowboard 인증/접근이 불안정한 경우 Core 개발을 멈추지 않는�
 
 멀티 Agent는 첫 주 Core Loop의 완료 조건이 아니다.
 
-초기에는 `AgentConfig` 구조만 확장 가능하게 둔다.
+초기에는 `AgentTemplate + AgentInstance + Scope/Grant` 구조만 확장 가능하게 둔다.
 
 예:
 
 ```text
-role
+template/version
 instructions
-memory_scope
-project_scope
-tools
-permissions
+home_scope
+memory/context policy
+tool_grants
+permissions/approval policy
 ```
 
 Project Agent 실제 생성과 Agent 협업은 Core가 안정된 뒤 구현한다.

@@ -17,21 +17,22 @@ Identity
 Goal Domain        Personalization Domain
 Goal               Preference
 Objective          Pattern
-Routine            Principle
+RecurringActivity  Principle
                    InterventionPattern
         │              ▲
         ▼              │
 Work Domain ────── Decision / Evidence
-Project             Decision
-Course              DecisionFeedback
-Task                PatternEvidence
-TaskStep            Outcome
+WorkContext         Decision
+Project / Course    DecisionFeedback
+CourseProfile       LearningCase
+CourseAssessment    PatternEvidence / Outcome
+Task / TaskStep
         │
         ▼
 Execution Domain
 FocusSession
 ActivityOccurrence
-TaskEvent
+DomainEvent
         │
         ▼
 Planning Domain
@@ -42,8 +43,13 @@ PlanItem
 StrategicDirective
         │
         ▼
-Automation Domain
+Input Domain
 InboxItem
+ParsedEntity
+DomainCommand
+        │
+        ▼
+Automation Domain
 WorkflowRun
 ScheduledJob
 Notification
@@ -54,10 +60,14 @@ Agent / Tool Domain
 AgentTemplate
 AgentInstance
 AgentRun
+AIExecution
+Scope
+AgentScopeGrant
 ToolDefinition
 ToolGrant
 ToolCall
 ContextPackage
+Artifact
         │
         ▼
 Integration Domain
@@ -93,7 +103,7 @@ AI가 추론한 패턴과 절대 섞지 않는다.
 - planning buffer
 - notification policy
 - wake policy
-- routine defaults
+- recurring activity defaults
 - preferred planning density
 - monthly AI budget
 
@@ -126,7 +136,11 @@ RecurringActivity
 - Task는 최대 하나의 WorkContext에 속한다.
 - Task는 optional하게 하나의 Objective에 연결한다.
 - Task에 goal/project/course FK를 중복 저장하지 않는다.
-- Goal 연결은 Objective/WorkContext 관계에서 유도한다.
+- Task의 Goal 연결은 `Task.objective_id → Objective.goal_id`에서만 유도한다.
+- WorkContext 자체는 Goal을 암시하지 않는다.
+- Task가 `objective_id`와 `work_context_id`를 동시에 가지고 Objective에도 `work_context_id`가 있으면 두 WorkContext는 반드시 같아야 한다.
+- Task의 effective WorkContext는 `Task.work_context_id`를 우선하고, 값이 없으면 `Objective.work_context_id`에서 유도한다.
+- Objective의 `work_context_id`가 null이면 Task의 WorkContext를 제한하지 않는다.
 - RecurringActivity는 optional하게 Goal과 연결한다.
 - Weekly target은 Goal이 아니라 RecurringActivity가 소유한다.
 
@@ -294,8 +308,12 @@ Task도 Goal도 아닌 현재 계획의 제약조건.
 - `valid_from`
 - `valid_until`
 - `reason`
+- `origin`, `created_by`, `confirmation_status`
+- `source_reference?`
 
 큰 우선순위를 매번 다시 묻지 않기 위한 canonical record다.
+
+StrategicDirective는 사용자 직접 입력이거나 AI 제안 후 사용자 확인을 거친 값만 활성 정책으로 사용한다.
 
 ---
 
@@ -323,7 +341,7 @@ Replan은 기존 row를 덮어쓰지 않고 새 revision을 만든다.
 ### PlanItem
 
 - `id`, `daily_plan_id`, `position`
-- `item_type`: task / routine / rest / buffer
+- `item_type`: task / recurring_activity / rest / buffer
 - `task_id?`, `activity_occurrence_id?`
 - `planned_start_at?`, `planned_end_at?`, `planned_minutes`
 - `status`: planned / active / completed / skipped / cancelled
@@ -437,6 +455,7 @@ Calendar fixed event와 Constraint를 계산한 derived state.
 
 대표 필드:
 
+- `id`, `user_id`
 - `question`
 - `why_now`
 - `options`
@@ -444,29 +463,67 @@ Calendar fixed event와 Constraint를 계산한 derived state.
 - `ai_reason`
 - `impact`
 - `status`
+- `created_at`, `resolved_at?`
 
 ### DecisionFeedback
 
 사용자가 AI 판단을 수정한 정보.
 
-- `decision_id`
+- `id`, `user_id`, `decision_id`
 - `user_choice`
 - `user_reason`
 - `corrected_ai_assumption?`
+- `created_at`
+
+### LearningCase
+
+Clone 학습의 한 사례를 FK 수준에서 연결하는 canonical record다.
+
+- `id`, `user_id`
+- `decision_id?`
+- `decision_feedback_id?`
+- `context_snapshot`
+- `recommendation_snapshot?`
+- `status`: open / outcome_pending / completed / discarded
+- `created_at`, `completed_at?`
+
+사용자 correction을 학습하는 LearningCase는 `decision_id`와 `decision_feedback_id`가 모두 필수다. AI 추천을 그대로 따른 사례는 Decision만 연결할 수 있고, 반복활동 실행처럼 순수 관찰 기반 사례는 둘 다 null일 수 있다. `decision_feedback_id`만 단독으로 둘 수 없으며, 값이 있으면 해당 DecisionFeedback의 `decision_id`는 LearningCase의 `decision_id`와 같아야 한다.
+
+### LearningCaseActionEvent
+
+실제 사용자 행동은 별도 추측 필드가 아니라 append-only DomainEvent와 연결한다.
+
+- `learning_case_id`
+- `domain_event_id`
+- `action_role`: chosen_action / execution / completion / interruption / other
+
+Unique: `(learning_case_id, domain_event_id, action_role)`
 
 ### Outcome
 
-결정이 실제로 어떤 결과를 냈는지 나중에 연결한다.
+LearningCase의 실제 결과를 저장한다.
 
-개인화 학습 기본 단위:
+- `id`, `learning_case_id`
+- `outcome_type`
+- `value`
+- `observed_at`
+- `source_event_id?`
+- `provenance`
+- `created_at`
+
+`source_event_id`가 있으면 결과를 관찰하게 한 DomainEvent를 가리킨다. 집계 결과처럼 단일 Event가 없으면 `value`와 provenance로 근거를 보존한다.
+
+개인화 학습 기본 관계:
 
 ```text
-상황
-→ AI 추천
-→ 사용자 수정
-→ 왜?
-→ 실제 행동
-→ 결과
+Decision
+→ DecisionFeedback
+→ LearningCase
+→ LearningCaseActionEvent → DomainEvent
+→ Outcome
+→ PatternEvidence
+→ Pattern
+→ Principle
 ```
 
 ---
@@ -491,22 +548,39 @@ Memory와 Clone은 분리한다.
 
 사용자가 직접 설정하거나 명확하게 확인된 선호.
 
+- `id`, `user_id`
+- `key`, `value`, `scope?`
+- `origin`, `created_by`, `confirmation_status`
+- `valid_from?`, `valid_until?`
+- `source_reference?`
+
+관찰만 된 값은 Preference로 저장하지 않고 Pattern에 둔다. AI가 제안한 Preference는 사용자 확인 전 적용하지 않는다.
+
 ### Pattern
 
 반복된 행동에서 관찰된 경향.
 
 대표 필드:
 
+- `id`, `user_id`
 - `pattern_type`
 - `condition`
 - `observed_behavior`
 - `confidence`
 - `evidence_count`
-- `status`
+- `status`: candidate / active / rejected / retired
+- `evaluator_version`
 
 ### PatternEvidence
 
-Pattern이 어떤 실제 Event/Decision/Outcome을 근거로 만들어졌는지 연결.
+Pattern이 어떤 LearningCase를 근거로 만들어졌는지 연결.
+
+- `id`, `pattern_id`, `learning_case_id`
+- `direction`: supports / contradicts
+- `weight`
+- `observed_at`
+
+Unique: `(pattern_id, learning_case_id)`
 
 AI가 지어낸 성향을 막는 핵심 장치다.
 
@@ -517,6 +591,27 @@ AI가 지어낸 성향을 막는 핵심 장치다.
 **Pattern 자동 발견 ≠ Principle 자동 저장**
 
 Principle 승격은 사용자 승인이 필요하다.
+
+- `id`, `user_id`, `source_pattern_id?`
+- `statement`, `scope?`
+- `origin`, `created_by`, `confirmation_status`: confirmed
+- `valid_from?`, `valid_until?`
+- `source_reference?`
+- `created_at`, `retired_at?`
+
+Principle은 사용자 직접 입력 또는 Pattern Candidate의 사용자 승인으로만 생성한다.
+
+### Provenance Contract
+
+Preference, Principle, StrategicDirective에서 사용자 직접 입력과 AI 제안을 구분하기 위한 공통 metadata다.
+
+- `origin`: user_explicit / ai_proposed / pattern_promoted
+- `created_by`: user / system / agent
+- `confirmation_status`: not_required / pending / confirmed / rejected
+- `source_reference?`: 근거 Pattern, Decision, 입력 또는 Event reference
+- `valid_from?`, `valid_until?`: 시간 범위가 있는 경우에만 사용
+
+활성 Principle은 `confirmed`여야 한다. StrategicDirective와 AI 제안 Preference도 적용 전에 `confirmed`여야 한다. 사용자 직접 입력은 `not_required` 또는 즉시 `confirmed`로 기록할 수 있다.
 
 ### InterventionPattern
 
@@ -598,7 +693,7 @@ ContextPackage는 필요한 정보만 포함한다.
 ```text
 template=project_pm
 name=LogFolio PM
-project_id=...
+home_scope_id=...
 ```
 
 ### AgentRun
@@ -613,10 +708,26 @@ project_id=...
 - `workflow_run_id?`
 - `input_context_ref`
 - `status`
+- `max_turns`, `max_tool_calls`, `timeout_seconds`
+- `cost_budget`
 - `started_at`
 - `ended_at`
-- `token_usage`
-- `estimated_cost`
+- `token_usage_rollup`, `estimated_cost_rollup` (AIExecution에서 derived)
+
+### AIExecution
+
+한 번의 model call을 기록하며 비용 집계의 canonical 단위다.
+
+- `id`, `user_id`
+- `agent_run_id?`, `workflow_run_id?`
+- `job_type`, `provider`, `model`
+- `input_context_ref?`
+- `status`: queued / running / completed / failed / cancelled
+- `input_tokens`, `output_tokens`, `estimated_cost`
+- `started_at`, `ended_at?`
+- `error_code?`, `correlation_id`
+
+AgentRun의 token/cost 값은 연결된 AIExecution의 derived rollup이며 별도 canonical 비용으로 취급하지 않는다.
 
 ---
 
@@ -657,14 +768,34 @@ MCP annotation은 참고 신호이며 Amber HQ의 ToolDefinition policy가 최�
 
 모든 의미 있는 tool call을 추적한다.
 
-- agent/run
-- tool
-- input hash / redacted args
-- result status
-- approval reference
-- latency
-- error
-- cost if applicable
+- `id`, `agent_run_id?`, `workflow_run_id?`
+- `initiated_by_ai_execution_id?`
+- `tool_definition_id`, `tool_version`
+- `input_hash`, `redacted_args?`
+- `status`, `approval_request_id?`
+- `started_at`, `ended_at?`, `latency_ms?`, `error?`
+- `correlation_id`
+
+### Artifact
+
+Agent, AIExecution 또는 ToolCall이 만든 재사용 가능한 결과다.
+
+- `id`, `user_id`
+- `artifact_type`, `storage_ref`, `content_hash?`
+- `agent_run_id?`, `ai_execution_id?`, `tool_call_id?`
+- `task_id?`, `work_context_id?`
+- `provenance`, `status`
+- `created_at`
+
+최소 하나의 producer reference를 가져야 한다. Task/WorkContext 연결은 산출물의 업무 맥락이 있을 때만 사용한다.
+
+실행 관계:
+
+- AgentRun은 여러 AIExecution과 ToolCall을 가질 수 있다.
+- AIExecution은 AgentRun 내부 또는 WorkflowRun의 standalone model call일 수 있다.
+- AIExecution이 ToolCall을 시작했다면 `initiated_by_ai_execution_id`로 연결한다.
+- Artifact는 실제 producer인 AgentRun, AIExecution 또는 ToolCall을 reference한다.
+- 비용의 canonical 합계는 AIExecution이며 AgentRun 비용은 연결된 AIExecution의 합산값이다.
 
 ---
 
@@ -707,7 +838,21 @@ Wake, deadline watch, sync 같은 미래 trigger.
 
 ### Notification
 
-발송 여부와 deduplication을 추적한다.
+Wake retry와 Focus/DND suppression을 포함해 발송 lifecycle을 audit한다.
+
+- `id`, `user_id`, `workflow_run_id?`, `scheduled_job_id?`
+- `channel`
+- `priority`
+- `suppression_reason?`
+- `attempt_no`
+- `scheduled_at`
+- `sent_at?`
+- `delivered_at?`
+- `acknowledged_at?`
+- `dedupe_key`
+- `status`: scheduled / suppressed / sent / delivered / acknowledged / failed / cancelled
+
+같은 logical notification의 retry는 동일한 workflow/job correlation 아래 `attempt_no`로 구분한다. Focus/DND로 보내지 않은 알림은 `suppressed`와 `suppression_reason`을 기록한다.
 
 ---
 
@@ -747,7 +892,7 @@ MCP를 사용할 경우 server 단위 connection/config.
 
 | 데이터 | Canonical source |
 |---|---|
-| Task/Project/Goal/Routine | Supabase |
+| Task/Project/Goal/RecurringActivity | Supabase |
 | Decision/Pattern/Principle | Supabase |
 | Workflow/Approval state | Supabase |
 | Fixed-time calendar event | Google Calendar |
@@ -789,11 +934,10 @@ MCP를 사용할 경우 server 단위 connection/config.
 
 ### Clone
 Canonical chain:
-`Decision → DecisionFeedback → LearningCase → Pattern/PatternEvidence → Principle`
+`Decision → DecisionFeedback → LearningCase → LearningCaseActionEvent/Outcome → PatternEvidence → Pattern → Principle`
 
 - `DecisionReason` 별도 entity 없음.
-- `MemoryCandidate` 별도 entity 없음.
-- 반복 행동 후보는 `Pattern.status = candidate`.
+- Pattern Candidate는 별도 entity가 아니라 `Pattern.status = candidate`.
 - PatternEvidence는 supports/contradicts, weight, observed_at을 가진다.
 - Pattern은 evaluator_version을 가진다.
 

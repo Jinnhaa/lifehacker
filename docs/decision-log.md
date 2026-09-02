@@ -15,7 +15,7 @@
 11. 외부 object는 version/tombstone reconciliation.
 12. Clone 학습 단위는 LearningCase.
 13. Decision reason은 DecisionFeedback.user_reason.
-14. MemoryCandidate 대신 Pattern candidate.
+14. Pattern Candidate는 별도 entity가 아니라 `Pattern.status = candidate`.
 15. Agent 권한은 generic Scope/Grant.
 16. AgentRun / AIExecution / ToolCall / Artifact 분리.
 17. 승인 재개는 checkpoint/precondition/idempotency로 보호.
@@ -36,19 +36,19 @@
 ### U3. Dynamic Replan 재승인 경계 — APPROVED
 
 자동 = 단순 시간 이동/buffer/같은 우선순위 내 조정.
-승인 = 큰 우선순위 변경/보호 Goal·Routine 제거/중요 deadline risk 증가/Project 방향 변경/외부 write.
+승인 = 큰 우선순위 변경/보호 Goal·RecurringActivity 제거/중요 deadline risk 증가/Project 방향 변경/외부 write.
 
 ### U4. Project PM Agent 생성 — APPROVED
 
 - Course는 School Agent 담당.
-- Goal/Routine은 Chief 담당.
+- Goal/RecurringActivity는 Chief 담당.
 - Project는 onboarding 완료 후 PM Agent 자동 생성.
 - 작은 Project는 `전담 Agent 사용 안 함` toggle 허용.
 
 ## 설정값으로 남길 것
 
 - week start
-- routine count / expected minutes / minimum minutes
+- RecurringActivity count / expected minutes / minimum minutes
 - planning buffer
 - wake/notification timing
 - monthly AI budget

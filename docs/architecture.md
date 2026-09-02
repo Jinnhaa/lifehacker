@@ -236,19 +236,24 @@ V1 핵심 entity:
 
 ### Goal
 
-두 종류를 구분한다.
+장기간 유지하고 싶은 방향 또는 상태다.
 
-- `long_term`: 지속적으로 보호해야 하는 목표
-- `objective`: 종료점이 있는 목표
+V1 대표 사례는 학점, 일본어다.
 
-V1 장기목표의 대표 사례는 학점, 일본어다.
+### Objective
 
-### Project
+기간과 완료조건이 있는 결과다.
 
-- course
-- project
-- competition
-- personal
+- Goal 없이 standalone으로 만들 수 있다.
+- 필요하면 하나의 Goal 또는 WorkContext와 연결한다.
+
+### WorkContext
+
+Project와 Course가 공유하는 업무 context boundary다.
+
+- Project = `WorkContext.kind = project`
+- Course = `WorkContext.kind = course`
+- Course는 CourseProfile과 CourseAssessment로 확장한다.
 
 Task와 Memory의 context boundary 역할을 한다.
 
@@ -257,8 +262,8 @@ Task와 Memory의 context boundary 역할을 한다.
 핵심 필드:
 
 - title
-- project_id
-- goal_id
+- work_context_id?
+- objective_id?
 - status
 - official_deadline
 - internal_deadline
@@ -268,6 +273,8 @@ Task와 Memory의 context boundary 역할을 한다.
 - next_action
 - ai_work
 - user_work
+
+Task에 `project_id`, `course_id`, `goal_id`를 중복 저장하지 않는다. Task의 Goal은 Objective를 통해서만 유도하며 WorkContext 자체는 Goal을 암시하지 않는다.
 
 ### TaskStep
 
@@ -297,8 +304,15 @@ Focus Mode에서 실행할 최소 행동 단위.
 - options
 - ai_recommendation
 - ai_reason
+
+### DecisionFeedback
+
+사용자가 AI 판단을 수정한 선택과 이유.
+
+- decision_id
 - user_choice
 - user_reason
+- corrected_ai_assumption
 
 ### Memory
 
@@ -308,16 +322,19 @@ Focus Mode에서 실행할 최소 행동 단위.
 - decision
 - project
 - experience
-- principle
 - growth
 
-### MemoryCandidate
+### Principle
+
+사용자가 승인한 일반화된 판단 규칙.
+
+### Pattern Candidate
 
 반복 행동/결정에서 추출되었으나 아직 사용자 승인을 받지 않은 원칙 후보.
 
-### Event
+### DomainEvent
 
-중요한 상태 변화 기록.
+Task를 포함한 모든 중요한 상태 변화를 공통 event envelope로 기록한다.
 
 ---
 
@@ -465,7 +482,7 @@ Discord / Web / Snowboard / Notion-derived signal
                     ▼
                Zod Validation
                     ▼
-                Domain Command
+                DomainCommand
                     ▼
                   Supabase
 ```
@@ -754,7 +771,7 @@ V1에서 지속 보호가 중요한 장기 목표는 소수만 둔다.
 
 추적 가능 항목:
 
-- 주간 학습 target
+- RecurringActivity 주간 학습 target
 - 실제 수행
 - 최근 학습 내용
 - 부족 영역
@@ -834,17 +851,18 @@ Vector retrieval은 V1 필수사항이 아니다. 구조화 query로 충분하�
 
 ## 22. Pattern Learning
 
-개인화는 다음 delta를 중심으로 학습한다.
+개인화는 다음 LearningCase chain을 중심으로 학습한다.
 
 ```text
-AI Recommendation
-→ User Correction
-→ Why
-→ Actual Action
-→ Outcome
+Decision
+→ DecisionFeedback
+→ LearningCase
+→ Actual Action DomainEvent / Outcome
+→ PatternEvidence
+→ Pattern Candidate
 ```
 
-Pattern detector는 반복되는 evidence를 모아 `MemoryCandidate`를 만든다.
+Pattern detector는 LearningCase에 연결된 PatternEvidence를 모아 `Pattern Candidate`를 만든다.
 
 AI가 임의로 장기 Principle로 저장하지 않는다.
 
@@ -852,7 +870,7 @@ AI가 임의로 장기 Principle로 저장하지 않는다.
 Pattern detected
       │
       ▼
-Memory Candidate
+Pattern Candidate
       │
       ▼
 User approval
@@ -876,7 +894,7 @@ Approved Principle
 - `prepare_work`
 - `recover_block`
 - `replan_complex`
-- `extract_memory_candidate`
+- `extract_pattern_candidate`
 - `compress_decision`
 - `build_context_package`
 
@@ -980,13 +998,12 @@ Codex 자체가 Amber HQ의 장기 Memory를 갖는다고 가정하지 않는다
 Agent는 독립 서버가 아니라 configuration 기반 runtime으로 시작한다.
 
 ```text
-AgentConfig
-├─ role
-├─ instructions
-├─ memory_scope
-├─ project_scope
-├─ tools
-└─ permissions
+AgentInstance
+├─ AgentTemplate + template version
+├─ home_scope_id
+├─ memory/context policy
+├─ ToolGrant
+└─ permissions / approval policy
 ```
 
 대표 agent:
@@ -1186,7 +1203,7 @@ PostgreSQL schema와 module boundary를 명확히 해 코드 구조의 확장성
 14. Day Close
 15. Wake workflow
 16. Decision reason capture
-17. Memory / Memory Candidate
+17. Memory / Pattern Candidate
 18. Snowboard adapter
 19. Notion context resolver
 20. Codex Worker
@@ -1258,8 +1275,8 @@ UI 구현은 이 순서의 Core 기능을 대체하지 않는다.
 - DailyPlan은 immutable revision.
 - Current Action은 FocusSession/latest approved plan에서 derived.
 - Pause는 Task state가 아니라 FocusSession state.
-- Clone chain은 Decision → DecisionFeedback → LearningCase → Pattern → Principle.
-- MemoryCandidate 대신 Pattern candidate lifecycle.
+- Clone chain은 Decision → DecisionFeedback → LearningCase → Action Event/Outcome → PatternEvidence → Pattern → Principle.
+- Pattern Candidate는 별도 entity가 아니라 `Pattern.status = candidate` lifecycle을 사용.
 - Workflow approval은 checkpoint version + precondition + idempotent resume.
 - Agent isolation은 Scope/AgentScopeGrant/ToolGrant.
 - AgentRun / AIExecution / ToolCall / Artifact를 분리.

@@ -253,7 +253,7 @@ MCP는 **외부 Capability와 Context를 Agent에게 표준화해서 연결하�
 - Task state transition
 - deadline 계산
 - capacity 계산
-- Routine progress
+- RecurringActivity progress
 - internal Rules Engine
 - Supabase 내부 domain command
 - Morning workflow의 step control
@@ -338,6 +338,8 @@ Chief는 specialist의 내부 장황한 output이 아니라 사용자에게 필�
 - token/cost budget
 - allowed tool grants
 - approval policy
+
+AgentRun에는 적용된 `template_version`, `policy_version`과 위 실행 제한값을 snapshot으로 저장한다. 허용되지 않은 Tool 요청은 실행하지 않고 forbidden tool rejection으로 기록한다.
 
 무한 self-reflection / agent-to-agent loop를 허용하지 않는다.
 

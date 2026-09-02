@@ -19,13 +19,13 @@ Amber Clone은 사용자의 모든 행동을 흉내 내는 Agent가 아니다.
 
 ```text
 What happened
-→ Event / Memory
+→ DomainEvent / Memory
 
 What user chose
 → Decision
 
 Why user chose it
-→ DecisionReason
+→ DecisionFeedback.user_reason
 
 What repeats
 → Pattern
@@ -122,7 +122,7 @@ Principle
 - time estimation bias
 - procrastination trigger
 - task switch pattern
-- routine completion pattern
+- recurring activity completion pattern
 - decision preference
 - effective intervention
 - study allocation pattern
@@ -133,14 +133,18 @@ Principle
 
 Pattern은 반드시 evidence를 가진다.
 
-`PatternEvidence`는 다음 중 하나에 연결된다.
+`PatternEvidence`는 `LearningCase`에 연결된다.
 
-- TaskEvent
-- FocusSession
-- Decision
-- Constraint
-- Outcome
-- ActivityOccurrence
+실제 행동 근거는 다음 chain으로 추적한다.
+
+```text
+DomainEvent
+→ LearningCaseActionEvent / LearningCase Outcome
+→ LearningCase
+→ PatternEvidence
+```
+
+Task, FocusSession, Decision, Constraint, ActivityOccurrence의 변화는 별도 polymorphic PatternEvidence FK가 아니라 DomainEvent를 통해 LearningCase에 연결한다.
 
 AI summary text만 evidence로 사용하지 않는다.
 
@@ -239,7 +243,7 @@ Task마다 저장:
 
 ---
 
-## 13. Routine Learning
+## 13. RecurringActivity Learning
 
 RecurringActivity에 대해:
 
@@ -260,7 +264,7 @@ RecurringActivity에 대해:
 
 라고 제안할 수 있다.
 
-사용자 승인 없이 Routine target을 바꾸지 않는다.
+사용자 승인 없이 RecurringActivity target을 바꾸지 않는다.
 
 ---
 
@@ -297,7 +301,7 @@ ContextResolver가 현재 작업과 관련된:
 - plan execution
 - actual vs estimated time
 - restart latency
-- routine consistency
+- recurring activity consistency
 - deadline-crunch proportion
 - task switching
 - overwork/recovery
@@ -330,4 +334,4 @@ Clone 학습의 한 사례는 `LearningCase`로 묶는다.
 PatternEvidence는 LearningCase를 지지/반박 evidence로 사용한다.
 
 `DecisionReason`은 사용하지 않고 `DecisionFeedback.user_reason`으로 통일한다.
-`MemoryCandidate` 대신 `Pattern.status=candidate`를 사용한다.
+Pattern Candidate는 별도 entity가 아니라 `Pattern.status=candidate`를 사용한다.

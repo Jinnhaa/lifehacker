@@ -35,8 +35,8 @@ Raw Input
 → ParsedEntity[]
 → Validation
 → Confirmation Policy
-→ Domain Command
-→ Event
+→ DomainCommand
+→ DomainEvent
 ```
 
 ---
@@ -141,7 +141,7 @@ LLM은 JSON 구조화를 수행할 수 있지만 Domain DB를 직접 변경하�
 - importance
 - linked goal
 
-### Recurring Activities
+### RecurringActivity
 
 - title
 - category
@@ -256,7 +256,7 @@ ContextPackage 생성 시 source/trust metadata를 함께 유지한다.
 
 ---
 
-## 14. Domain Command / External Change Contract
+## 14. DomainCommand / External Change Contract
 
 모든 실제 mutation은 DomainCommand를 거친다.
 

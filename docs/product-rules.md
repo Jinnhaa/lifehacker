@@ -181,7 +181,7 @@ AI Recommendation
 
 한 번의 수정으로 사용자의 일반 원칙을 단정하지 않는다.
 
-반복되는 행동이 확인되면 `Memory Candidate`를 만들고:
+반복되는 행동이 확인되면 `Pattern Candidate`를 만들고:
 
 > 이런 패턴이 반복됐어. 앞으로의 원칙으로 저장할까?
 
@@ -576,11 +576,11 @@ Chief가 먼저 계획을 만들어 가져온다.
 - 같은 우선순위 안의 시작/종료 시각 이동
 - buffer/rest 흡수
 - 완료가 빨라져 다음 항목 당기기
-- 보호 Goal/Routine을 훼손하지 않는 단순 shift
+- 보호 Goal/RecurringActivity를 훼손하지 않는 단순 shift
 
 사용자 승인 필요:
 - 큰 우선순위 변경
-- 보호하기로 한 Goal/Routine 제거
+- 보호하기로 한 Goal/RecurringActivity 제거
 - 중요한 deadline risk 증가
 - Project 방향/범위 변경
 - 외부 write/submit 등 되돌리기 어려운 행동
