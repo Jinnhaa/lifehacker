@@ -1,5 +1,5 @@
 import type { CorrelationId, TaskId, UserId } from "@amber/shared";
-import type { ParsedTaskDraft, Provenance } from "./contracts.js";
+import type { InputSource, ParsedTaskDraft, Provenance } from "./contracts.js";
 
 export type InboxParseStatus = "pending" | "parsed" | "waiting_for_confirmation" | "applied" | "failed";
 export type ParsedEntityStatus = "parsed" | "validated" | "rejected" | "applied";
@@ -37,9 +37,10 @@ export interface ExistingInputResult {
 
 export interface InboxItemRepository {
   getUserTimeZone(userId: UserId): Promise<string | null>;
-  createOrGetManualInbox(input: {
+  createOrGetTextInbox(input: {
     userId: UserId;
     text: string;
+    source: InputSource;
     receivedAt: Date;
     dedupeKey: string;
     correlationId: CorrelationId;

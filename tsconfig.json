@@ -3,6 +3,7 @@
   "references": [
     { "path": "packages/shared" },
     { "path": "packages/core" },
-    { "path": "packages/input" }
+    { "path": "packages/input" },
+    { "path": "apps/discord-worker" }
   ]
 }

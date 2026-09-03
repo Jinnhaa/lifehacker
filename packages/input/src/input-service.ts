@@ -6,9 +6,12 @@ import {
   manualTextInputSchema,
   parsedTaskDraftSchema,
   parseResultSchema,
+  textInputSchema,
   type ManualTextInputValue,
   type ParsedTaskDraft,
-  type Provenance
+  type Provenance,
+  type TextInput,
+  type TextInputValue
 } from "./contracts.js";
 import { applyExplicitTaskFacts, extractExplicitTaskFacts } from "./deterministic-facts.js";
 import type { ExistingInputResult, InputRepositories } from "./repositories.js";
@@ -32,12 +35,27 @@ export class InputService {
     if (!parsedInput.success) {
       throw new DomainError("INVALID_INPUT", "Manual input validation failed", { issues: parsedInput.error.issues });
     }
-    const input = parsedInput.data;
-    const dedupeKey = `manual:${input.clientRequestId}`;
+    return this.processValidatedText(parsedInput.data);
+  }
+
+  async processTextInput(rawInput: TextInputValue): Promise<InputProcessingResult> {
+    const parsedInput = textInputSchema.safeParse(rawInput);
+    if (!parsedInput.success) {
+      throw new DomainError("INVALID_INPUT", "Text input validation failed", { issues: parsedInput.error.issues });
+    }
+    return this.processValidatedText(parsedInput.data);
+  }
+
+  private async processValidatedText(input: TextInput): Promise<InputProcessingResult> {
+    const sourcePrefix = `${input.source}:`;
+    const dedupeKey = input.clientRequestId.startsWith(sourcePrefix)
+      ? input.clientRequestId
+      : `${sourcePrefix}${input.clientRequestId}`;
     const correlationId = this.ids.generateCorrelationId();
-    const inbox = await this.repositories.createOrGetManualInbox({
+    const inbox = await this.repositories.createOrGetTextInbox({
       userId: input.userId,
       text: input.text,
+      source: input.source,
       receivedAt: new Date(input.receivedAt),
       dedupeKey,
       correlationId
@@ -57,7 +75,7 @@ export class InputService {
         userId: input.userId,
         receivedAt: input.receivedAt,
         timeZone,
-        source: "manual"
+        source: input.source
       });
     } catch (error) {
       await this.repositories.setInboxStatus(input.userId, inbox.item.id, "failed");
@@ -144,7 +162,7 @@ export class InputService {
         officialDeadline: commandDraft.officialDeadline ? new Date(commandDraft.officialDeadline) : undefined,
         estimatedMinutes: commandDraft.estimatedMinutes,
         importance: commandDraft.importance!,
-        source: "manual",
+        source: input.source,
         correlationId: inbox.item.correlationId,
         idempotencyKey: eventKey
       });
