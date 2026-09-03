@@ -23,6 +23,7 @@ declare const createTaskSchema: z.ZodObject<{
     completionCriteria: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     source: z.ZodString;
     correlationId: z.ZodOptional<z.ZodPipe<z.ZodUUID, z.ZodTransform<import("@amber/shared").CorrelationId, string>>>;
+    idempotencyKey: z.ZodOptional<z.ZodString>;
 }, z.core.$strip>;
 export type CreateTaskInput = z.input<typeof createTaskSchema>;
 export interface TransitionOptions {

@@ -18,6 +18,7 @@
   "dependencies": {
     "@amber/core": "workspace:*",
     "@amber/shared": "workspace:*",
+    "openai": "7.9.0",
     "postgres": "3.4.7",
     "zod": "4.1.5"
   }

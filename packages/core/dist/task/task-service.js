@@ -19,7 +19,8 @@ const createTaskSchema = z.object({
     nextAction: z.string().trim().nullable().optional(),
     completionCriteria: z.string().trim().nullable().optional(),
     source: z.string().trim().min(1),
-    correlationId: correlationIdSchema.optional()
+    correlationId: correlationIdSchema.optional(),
+    idempotencyKey: z.string().trim().min(1).max(500).optional()
 });
 export class TaskService {
     repository;
@@ -55,6 +56,7 @@ export class TaskService {
             actorType: parsed.source,
             occurredAt: changedAt,
             correlationId,
+            ...(parsed.idempotencyKey && { idempotencyKey: parsed.idempotencyKey }),
             payload: {
                 previous_status: null,
                 next_status: "INBOX",
