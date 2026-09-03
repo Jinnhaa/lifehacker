@@ -1,0 +1,20 @@
+{
+  "name": "@amber/discord-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -b",
+    "dev": "tsc -b && node --enable-source-maps dist/index.js",
+    "typecheck": "tsc -b --pretty false"
+  },
+  "dependencies": {
+    "@amber/core": "workspace:*",
+    "@amber/input": "workspace:*",
+    "@amber/shared": "workspace:*",
+    "discord.js": "14.27.0",
+    "postgres": "3.4.7",
+    "zod": "4.1.5"
+  }
+}

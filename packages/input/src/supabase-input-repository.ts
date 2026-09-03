@@ -1,6 +1,6 @@
 import type { CorrelationId, TaskId, UserId } from "@amber/shared";
 import postgres, { type Sql } from "postgres";
-import type { ParsedTaskDraft, Provenance } from "./contracts.js";
+import type { InputSource, ParsedTaskDraft, Provenance } from "./contracts.js";
 import type {
   DomainCommand,
   DomainCommandRepository,
@@ -47,13 +47,13 @@ implements InboxItemRepository, ParsedEntityRepository, DomainCommandRepository 
     return rows[0]?.timezone ?? null;
   }
 
-  async createOrGetManualInbox(input: {
-    userId: UserId; text: string; receivedAt: Date; dedupeKey: string; correlationId: CorrelationId;
+  async createOrGetTextInbox(input: {
+    userId: UserId; text: string; source: InputSource; receivedAt: Date; dedupeKey: string; correlationId: CorrelationId;
   }): Promise<{ item: InboxItem; created: boolean }> {
     const inserted = await this.sql<InboxRow[]>`
       insert into public.inbox_items(
         user_id,source,raw_content,received_at,dedupe_key,provenance,parse_status,correlation_id
-      ) values (${input.userId},'manual',${input.text},${input.receivedAt},${input.dedupeKey},'user_explicit','pending',${input.correlationId})
+      ) values (${input.userId},${input.source},${input.text},${input.receivedAt},${input.dedupeKey},'user_explicit','pending',${input.correlationId})
       on conflict(user_id,dedupe_key) do nothing returning *
     `;
     if (inserted[0]) return { item: mapInbox(inserted[0]), created: true };

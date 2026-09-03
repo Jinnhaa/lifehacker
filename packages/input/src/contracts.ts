@@ -5,13 +5,20 @@ export const provenanceValues = ["user_explicit", "external", "system_derived", 
 export const provenanceSchema = z.enum(provenanceValues);
 export type Provenance = z.infer<typeof provenanceSchema>;
 
-export const manualTextInputSchema = z.object({
+export const inputSourceSchema = z.enum(["manual", "discord"]);
+export type InputSource = z.infer<typeof inputSourceSchema>;
+
+export const textInputSchema = z.object({
   userId: userIdSchema,
   text: z.string().trim().min(1),
   receivedAt: z.iso.datetime({ offset: true }),
-  source: z.literal("manual"),
+  source: inputSourceSchema,
   clientRequestId: z.string().trim().min(1).max(200)
 }).strict();
+export type TextInput = z.infer<typeof textInputSchema>;
+export type TextInputValue = z.input<typeof textInputSchema>;
+
+export const manualTextInputSchema = textInputSchema.extend({ source: z.literal("manual") }).strict();
 export type ManualTextInput = z.infer<typeof manualTextInputSchema>;
 export type ManualTextInputValue = z.input<typeof manualTextInputSchema>;
 
@@ -48,7 +55,7 @@ export interface ParseInput {
   readonly text: string;
   readonly receivedAt: string;
   readonly timeZone: string;
-  readonly source: "manual";
+  readonly source: InputSource;
 }
 
 export interface ExplicitTaskFacts {
