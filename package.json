@@ -9,7 +9,7 @@
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
     "test:unit": "vitest run --exclude '**/*.integration.test.ts'",
-    "test:integration": "vitest run packages/core/src/task/supabase-task-repository.integration.test.ts",
+    "test:integration": "vitest run packages/core/src/task/supabase-task-repository.integration.test.ts packages/input/src/input-service.integration.test.ts",
     "db:start": "supabase start",
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",

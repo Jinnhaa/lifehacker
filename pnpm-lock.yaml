@@ -42,6 +42,21 @@ importers:
         specifier: 4.1.5
         version: 4.1.5
 
+  packages/input:
+    dependencies:
+      '@amber/core':
+        specifier: workspace:*
+        version: link:../core
+      '@amber/shared':
+        specifier: workspace:*
+        version: link:../shared
+      postgres:
+        specifier: 3.4.7
+        version: 3.4.7
+      zod:
+        specifier: 4.1.5
+        version: 4.1.5
+
   packages/shared:
     dependencies:
       zod:
