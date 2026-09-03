@@ -1,0 +1,1 @@
+{"version":3,"file":"duration.d.ts","sourceRoot":"","sources":["../../src/rules/duration.ts"],"names":[],"mappings":"AAAA,eAAO,MAAM,mBAAmB,GAAI,kBAAkB,MAAM,GAAG,IAAI,EAAE,eAAe,MAAM,KAAG,MAAM,GAAG,IACpB,CAAC;AAEnF,eAAO,MAAM,gBAAgB,GAAI,kBAAkB,MAAM,EAAE,eAAe,MAAM,KAAG,MACjD,CAAC;AAEnC,eAAO,MAAM,yBAAyB,GAAI,kBAAkB,MAAM,EAAE,eAAe,MAAM,KAAG,MAAM,GAAG,IACnC,CAAC"}
