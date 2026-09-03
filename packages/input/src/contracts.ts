@@ -1,4 +1,4 @@
-import { userIdSchema } from "@amber/shared";
+import { userIdSchema, type UserId } from "@amber/shared";
 import { z } from "zod";
 
 export const provenanceValues = ["user_explicit", "external", "system_derived", "ai_inferred"] as const;
@@ -44,6 +44,7 @@ export const parseResultSchema = z.object({
 export type ParseResult = z.infer<typeof parseResultSchema>;
 
 export interface ParseInput {
+  readonly userId: UserId;
   readonly text: string;
   readonly receivedAt: string;
   readonly timeZone: string;

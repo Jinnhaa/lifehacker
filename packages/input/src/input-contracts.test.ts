@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { UserId } from "@amber/shared";
 import { ProviderAIInterpreter } from "./ai-interpreter.js";
 import { manualTextInputSchema, parseResultSchema } from "./contracts.js";
 import { applyExplicitTaskFacts, extractExplicitTaskFacts } from "./deterministic-facts.js";
@@ -17,13 +18,13 @@ describe("structured input contracts", () => {
 
   it("rejects malformed structured output at the provider adapter boundary", async () => {
     const interpreter = new ProviderAIInterpreter({ generateStructuredOutput: async () => ({ intent: "CREATE_TASK" }) });
-    await expect(interpreter.parseInput({ text: "task", receivedAt: "2026-09-03T10:00:00+09:00", timeZone: "Asia/Seoul", source: "manual" }))
+    await expect(interpreter.parseInput({ userId: "20000000-0000-4000-8000-000000000001" as UserId, text: "task", receivedAt: "2026-09-03T10:00:00+09:00", timeZone: "Asia/Seoul", source: "manual" }))
       .rejects.toMatchObject({ name: "ZodError" });
   });
 
   it("provides a deterministic task interpreter without a provider SDK", async () => {
     const result = await new DeterministicTestInterpreter().parseInput({
-      text: "자료 정리", receivedAt: "2026-09-03T10:00:00+09:00", timeZone: "Asia/Seoul", source: "manual"
+      userId: "20000000-0000-4000-8000-000000000001" as UserId, text: "자료 정리", receivedAt: "2026-09-03T10:00:00+09:00", timeZone: "Asia/Seoul", source: "manual"
     });
     expect(parseResultSchema.parse(result).entities[0]?.data).toEqual({ title: "자료 정리", inferredFields: [] });
   });

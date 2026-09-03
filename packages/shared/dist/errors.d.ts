@@ -1,4 +1,4 @@
-export declare const domainErrorCodes: readonly ["TASK_NOT_FOUND", "INVALID_TASK_TRANSITION", "CROSS_USER_ACCESS", "INVALID_INPUT", "CONFLICT"];
+export declare const domainErrorCodes: readonly ["TASK_NOT_FOUND", "INVALID_TASK_TRANSITION", "CROSS_USER_ACCESS", "INVALID_INPUT", "CONFLICT", "INPUT_DUPLICATE", "PARSE_FAILED", "PARSE_INVALID", "UNSUPPORTED_INTENT", "CONFIRMATION_REQUIRED", "COMMAND_ALREADY_APPLIED", "ENTITY_RESOLUTION_REQUIRED"];
 export type DomainErrorCode = (typeof domainErrorCodes)[number];
 export declare class DomainError extends Error {
     readonly code: DomainErrorCode;

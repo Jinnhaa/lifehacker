@@ -3,10 +3,16 @@ import { SupabaseTaskRepository, TaskService } from "@amber/core";
 import { FixedClock, type CorrelationId, type IdGenerator, type UserId } from "@amber/shared";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { AIInterpreter } from "./ai-interpreter.js";
+import { ProviderAIInterpreter, type AIInterpreter } from "./ai-interpreter.js";
 import type { ParseResult } from "./contracts.js";
 import { DeterministicTestInterpreter } from "./deterministic-interpreter.js";
 import { InputService } from "./input-service.js";
+import {
+  OpenAIStructuredOutputProvider,
+  type OpenAIInputConfig,
+  type OpenAIResponsesClient
+} from "./openai-structured-output-provider.js";
+import { SupabaseAIExecutionRecorder } from "./supabase-ai-execution-recorder.js";
 import { SupabaseInputRepository } from "./supabase-input-repository.js";
 
 const connectionString = process.env.TEST_DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
@@ -54,6 +60,84 @@ afterAll(async () => {
 });
 
 describe("InputService CREATE_TASK pipeline", () => {
+  it("records one AIExecution and keeps the existing TaskService event path", async () => {
+    const client: OpenAIResponsesClient = {
+      parse: async () => ({
+        status: "completed",
+        output_parsed: {
+          intent: "CREATE_TASK",
+          entities: [{
+            entityType: "task_candidate",
+            data: {
+              title: "데이터구조 과제",
+              description: null,
+              officialDeadline: null,
+              estimatedMinutes: 120,
+              importance: null,
+              workContextHint: null,
+              objectiveHint: null,
+              executionMode: null,
+              inferredFields: []
+            },
+            provenance: {
+              title: "user_explicit",
+              description: null,
+              officialDeadline: null,
+              estimatedMinutes: "user_explicit",
+              importance: null,
+              workContextHint: null,
+              objectiveHint: null,
+              executionMode: null
+            },
+            confidence: 0.98
+          }],
+          requiresConfirmation: false,
+          clarificationQuestions: []
+        },
+        output: [{ type: "message", content: [{ type: "output_text" }] }],
+        usage: { input_tokens: 42, output_tokens: 31 }
+      })
+    };
+    const config: OpenAIInputConfig = {
+      apiKey: "integration-test-key",
+      model: "gpt-5.6-luna",
+      reasoningEffort: "low",
+      timeoutMs: 15_000,
+      maxRetries: 0
+    };
+    const interpreter = new ProviderAIInterpreter(new OpenAIStructuredOutputProvider({
+      config,
+      client,
+      executionRecorder: new SupabaseAIExecutionRecorder(admin),
+      clock
+    }));
+    const result = await serviceWith(interpreter).processManualText(
+      manualInput("openai-provider-e2e", "데이터구조 과제 2시간 해야 해")
+    );
+    expect(result.status).toBe("applied");
+    if (result.status !== "applied") throw new Error("Expected applied result");
+
+    const rows = await admin<{
+      job_type: string; provider: string; model: string; status: string;
+      input_tokens: number; output_tokens: number; event_type: string;
+    }[]>`
+      select a.job_type,a.provider,a.model,a.status,a.input_tokens,a.output_tokens,e.event_type
+      from public.ai_executions a
+      join public.domain_events e on e.user_id=a.user_id and e.aggregate_id=${result.taskId} and e.event_type='task_created'
+      where a.user_id=${userId} and a.job_type='parse_input'
+      order by a.created_at desc limit 1
+    `;
+    expect(rows[0]).toEqual({
+      job_type: "parse_input",
+      provider: "openai",
+      model: "gpt-5.6-luna",
+      status: "completed",
+      input_tokens: 42,
+      output_tokens: 31,
+      event_type: "task_created"
+    });
+  });
+
   it("stores provenance and creates Task plus task_created event end-to-end", async () => {
     const interpreter = new DeterministicTestInterpreter(taskResult({
       entities: [{

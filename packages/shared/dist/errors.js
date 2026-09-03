@@ -3,7 +3,14 @@ export const domainErrorCodes = [
     "INVALID_TASK_TRANSITION",
     "CROSS_USER_ACCESS",
     "INVALID_INPUT",
-    "CONFLICT"
+    "CONFLICT",
+    "INPUT_DUPLICATE",
+    "PARSE_FAILED",
+    "PARSE_INVALID",
+    "UNSUPPORTED_INTENT",
+    "CONFIRMATION_REQUIRED",
+    "COMMAND_ALREADY_APPLIED",
+    "ENTITY_RESOLUTION_REQUIRED"
 ];
 export class DomainError extends Error {
     code;

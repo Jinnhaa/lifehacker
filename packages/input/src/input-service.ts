@@ -54,6 +54,7 @@ export class InputService {
     try {
       rawParseResult = await this.interpreter.parseInput({
         text: input.text,
+        userId: input.userId,
         receivedAt: input.receivedAt,
         timeZone,
         source: "manual"
@@ -61,6 +62,7 @@ export class InputService {
     } catch (error) {
       await this.repositories.setInboxStatus(input.userId, inbox.item.id, "failed");
       if (error instanceof ZodError) throw new DomainError("PARSE_INVALID", "Interpreter output failed schema validation", { issues: error.issues });
+      if (error instanceof DomainError) throw error;
       throw new DomainError("PARSE_FAILED", "Interpreter failed to parse input", { cause: error instanceof Error ? error.message : String(error) });
     }
     const validated = parseResultSchema.safeParse(rawParseResult);
