@@ -4,6 +4,7 @@
     { "path": "packages/shared" },
     { "path": "packages/core" },
     { "path": "packages/input" },
+    { "path": "packages/google-calendar" },
     { "path": "apps/discord-worker" }
   ]
 }
