@@ -403,6 +403,7 @@ Calendar fixed event와 Constraint를 계산한 derived state.
 
 - Discord
 - Web
+- iCloud Calendar
 - Google Calendar
 - Snowboard
 - Notion
@@ -860,7 +861,7 @@ Wake retry와 Focus/DND suppression을 포함해 발송 lifecycle을 audit한다
 
 ### IntegrationAccount
 
-Google Calendar, Notion 등 인증 연결.
+iCloud Calendar, Google Calendar, Notion 등 인증 연결.
 
 ### ExternalReference
 
@@ -870,7 +871,7 @@ Google Calendar, Notion 등 인증 연결.
 
 ```text
 task ↔ Snowboard assignment
-plan item ↔ Google Calendar event
+constraint ↔ iCloud/Google Calendar event
 project ↔ Notion page
 ```
 
@@ -895,7 +896,7 @@ MCP를 사용할 경우 server 단위 connection/config.
 | Task/Project/Goal/RecurringActivity | Supabase |
 | Decision/Pattern/Principle | Supabase |
 | Workflow/Approval state | Supabase |
-| Fixed-time calendar event | Google Calendar |
+| Fixed-time calendar event | iCloud Calendar (primary) |
 | Knowledge document | Notion |
 | Source code | GitHub |
 | Agent execution state | Supabase |

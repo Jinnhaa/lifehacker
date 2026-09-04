@@ -47,7 +47,7 @@ DomainEvent
 제외:
 - Next.js UI
 - Discord
-- Google Calendar
+- iCloud / Google Calendar
 - AI Gateway
 - Chief Agent
 - MCP

@@ -5,6 +5,7 @@
     { "path": "packages/core" },
     { "path": "packages/input" },
     { "path": "packages/google-calendar" },
+    { "path": "packages/icloud-calendar" },
     { "path": "apps/discord-worker" }
   ]
 }

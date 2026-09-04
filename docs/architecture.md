@@ -60,7 +60,7 @@ AI는 의미 해석, 복합 판단, 생성이 필요한 경우에만 호출한�
 | Daily Plan | Supabase |
 | Decision / Memory | Supabase |
 | Execution Event | Supabase |
-| Fixed-time Schedule | Google Calendar |
+| Fixed-time Schedule | iCloud Calendar (primary) |
 | Human-readable Project Knowledge | Notion |
 | Source code | GitHub repository |
 
@@ -74,7 +74,7 @@ AI는 의미 해석, 복합 판단, 생성이 필요한 경우에만 호출한�
 
 ### 2.4 Integration Isolation
 
-Google Calendar, Discord, Notion, Snowboard, Codex는 모두 adapter/interface 뒤에 둔다.
+iCloud Calendar, Google Calendar, Discord, Notion, Snowboard, Codex는 모두 adapter/interface 뒤에 둔다.
 
 외부 서비스 교체가 Core Domain 변경으로 이어지지 않아야 한다.
 
@@ -129,7 +129,7 @@ LLM provider를 feature 코드에서 직접 호출하지 않는다.
                         └───────────┘
 
      External adapters
-     ├─ Google Calendar
+     ├─ iCloud / Google Calendar
      ├─ Discord
      ├─ Notion
      ├─ Snowboard
@@ -159,6 +159,7 @@ LLM provider를 feature 코드에서 직접 호출하지 않는다.
 
 ### Integrations
 
+- iCloud Calendar CalDAV
 - Google Calendar API
 - Discord Bot
 - Notion API
@@ -938,14 +939,15 @@ Background agent loop가 무제한 반복되지 않도록 iteration/time/cost bo
 
 ## 25. Integration Contracts
 
-### Google Calendar Adapter
+### Calendar Adapters
+
+iCloud Calendar는 primary fixed-time source이며 CalDAV read-only adapter로 연결한다.
+Google Calendar는 선택적 read-only source다. 두 provider는 동일한 normalized event와
+ExternalReference/Constraint 계약을 사용하되 인증과 동기화 cursor는 adapter 내부에서 분리한다.
 
 최소 interface:
 
 - `listEvents(range)`
-- `createEvent(input)`
-- `updateEvent(id, input)`
-- `deleteEvent(id)`
 
 가용시간과 우선순위 계산은 adapter가 아니라 Core Rules가 담당한다.
 
@@ -1194,7 +1196,7 @@ PostgreSQL schema와 module boundary를 명확히 해 코드 구조의 확장성
 5. Rules Engine
 6. Manual Task input
 7. Discord adapter
-8. Google Calendar adapter
+8. Calendar adapters (iCloud primary, Google optional)
 9. Morning workflow
 10. Daily planning
 11. Execution / Focus domain

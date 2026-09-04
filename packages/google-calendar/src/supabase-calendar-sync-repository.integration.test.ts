@@ -13,6 +13,7 @@ const accountId = randomUUID();
 const now = new Date("2026-09-04T00:00:00Z");
 
 const makeEvent = (overrides: Partial<NormalizedCalendarEvent> = {}): NormalizedCalendarEvent => ({
+  source: "google_calendar", ownership: "external",
   calendarId: "primary", externalEventId: "event-1", externalVersion: "v1", title: "수업",
   start: "2026-09-04T01:30:00.000Z", end: "2026-09-04T02:30:00.000Z", allDay: false,
   timeZone: "Asia/Seoul", recurringEventId: "series-1", originalStart: "2026-09-04T10:00:00+09:00",

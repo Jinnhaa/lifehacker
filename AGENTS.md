@@ -58,7 +58,7 @@ V1의 첫 번째 성공 기준은 다음 하루 운영 루프가 실제로 끊�
 - Next.js App Router
 - Supabase PostgreSQL / Auth
 - Zod
-- Google Calendar API
+- iCloud Calendar CalDAV / Google Calendar API
 - Discord Bot
 - pnpm workspaces
 - Vercel: Web
@@ -81,7 +81,7 @@ V1의 첫 번째 성공 기준은 다음 하루 운영 루프가 실제로 끊�
 다음 규칙은 특별한 이유 없이 우회하지 않는다.
 
 - Supabase가 Amber HQ 내부 상태의 Source of Truth다.
-- Google Calendar는 시간 고정 일정의 Source of Truth다.
+- iCloud Calendar는 시간 고정 일정의 primary Source of Truth다. Google Calendar 연결은 동일한 외부 일정 계약을 따르는 선택적 read-only source다.
 - Notion은 지식/문서 저장소이며 Task Runtime DB가 아니다.
 - UI에 business logic을 넣지 않는다.
 - Discord Bot 내부에 domain logic을 넣지 않는다.
