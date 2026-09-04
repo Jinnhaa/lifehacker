@@ -40,6 +40,7 @@ export class SupabaseCalendarSyncRepository implements CalendarSyncRepository {
       let deleted = 0;
       const seen = new Set<string>();
       for (const event of input.events) {
+        if (event.source !== GOOGLE_CALENDAR_SOURCE || event.ownership !== "external") throw new Error("Calendar event source or ownership mismatch");
         const identity = externalIdentity(event);
         seen.add(identity);
         const changed = await this.reconcileEvent(tx, input, event, identity);

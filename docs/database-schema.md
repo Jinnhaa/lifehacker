@@ -909,7 +909,7 @@ Database
 → Domain Repository
 → Task State Machine / Rules Engine
 → Input Pipeline
-→ Discord / Google Calendar
+→ Discord / Calendar adapters
 → AI Gateway
 → Chief
 → Specialist Agent

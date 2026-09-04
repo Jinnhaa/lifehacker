@@ -1,0 +1,1 @@
+{"version":3,"file":"calendar.d.ts","sourceRoot":"","sources":["../src/calendar.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,CAAC,EAAE,MAAM,KAAK,CAAC;AAExB,eAAO,MAAM,6BAA6B;;;;;;;;;;;;;;;;;;;;;;;;kBAiB/B,CAAC;AAEZ,MAAM,MAAM,uBAAuB,GAAG,CAAC,CAAC,KAAK,CAAC,OAAO,6BAA6B,CAAC,CAAC;AAEpF,MAAM,WAAW,kBAAkB;IACjC,QAAQ,CAAC,KAAK,EAAE,IAAI,CAAC;IACrB,QAAQ,CAAC,GAAG,EAAE,IAAI,CAAC;CACpB"}

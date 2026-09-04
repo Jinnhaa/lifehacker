@@ -73,6 +73,8 @@ export function normalizeGoogleCalendarEvent(
     ? parseGoogleDateTime(event.end.dateTime, zone)
     : event.end?.date ? zonedDateTimeToUtc(event.end.date, zone) : start;
   const canonical = {
+    source: "google_calendar",
+    ownership: "external",
     calendarId,
     externalEventId: event.id,
     externalVersion: event.updated ?? event.etag ?? `${status}:${start.toISOString()}`,

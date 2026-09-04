@@ -9,6 +9,7 @@ const account = (syncToken: string | null = null): CalendarIntegrationAccount =>
 });
 
 const event = (id: string): NormalizedCalendarEvent => ({
+  source: "google_calendar", ownership: "external",
   calendarId: "primary", externalEventId: id, externalVersion: `v-${id}`, title: id,
   start: "2026-09-04T01:00:00.000Z", end: "2026-09-04T02:00:00.000Z",
   allDay: false, timeZone: "Asia/Seoul", recurringEventId: null, originalStart: null,
