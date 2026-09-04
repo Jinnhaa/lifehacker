@@ -1,4 +1,4 @@
-import type { Task, TaskRepository } from "@amber/core";
+import type { MorningMessageHandler, Task, TaskRepository } from "@amber/core";
 import { DomainError, type TaskId, type UserId } from "@amber/shared";
 import type { InputProcessingResult, TextInputValue } from "@amber/input";
 import type { DiscordUserResolver } from "./discord-user-resolver.js";
@@ -33,14 +33,15 @@ export interface TaskSummaryReader {
 
 export type DiscordMessageHandlingResult =
   | { readonly kind: "ignored" }
-  | { readonly kind: "replied"; readonly outcome: "applied" | "confirmation" | "pending" | "unsupported" | "failed" };
+  | { readonly kind: "replied"; readonly outcome: "workflow" | "applied" | "confirmation" | "pending" | "unsupported" | "failed" };
 
 export class DiscordMessageAdapter {
   constructor(
     private readonly allowedDiscordUserId: string,
     private readonly userResolver: DiscordUserResolver,
     private readonly inputProcessor: TextInputProcessor,
-    private readonly taskReader: Pick<TaskRepository, "getTaskById"> | TaskSummaryReader
+    private readonly taskReader: Pick<TaskRepository, "getTaskById"> | TaskSummaryReader,
+    private readonly morningHandler?: MorningMessageHandler
   ) {}
 
   async handle(message: DiscordInboundMessage): Promise<DiscordMessageHandlingResult> {
@@ -56,6 +57,17 @@ export class DiscordMessageAdapter {
     try {
       const identity = await this.userResolver.resolve(message.author.id);
       if (!identity) return this.reply(message, "지금은 기록하지 못했어. 잠시 후 다시 보내줘.", "failed");
+
+      if (this.morningHandler) {
+        const morning = await this.morningHandler.handleMorningMessage({
+          userId: identity.userId,
+          timeZone: identity.timeZone,
+          text: message.content,
+          messageId: `discord:${message.id}`,
+          receivedAt: message.createdAt
+        });
+        if (morning.handled && morning.reply) return this.reply(message, morning.reply, "workflow");
+      }
 
       const result = await this.inputProcessor.processTextInput({
         userId: identity.userId,

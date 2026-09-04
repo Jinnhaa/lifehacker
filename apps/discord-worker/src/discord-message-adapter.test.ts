@@ -97,6 +97,25 @@ describe("DiscordMessageAdapter", () => {
     }]);
   });
 
+  it("routes 일어남 to Morning Workflow without creating a Task input", async () => {
+    const { adapter: unused, processor } = adapterWith();
+    void unused;
+    const morningHandler = { handleMorningMessage: vi.fn(async () => ({ handled: true, reply: "오늘은 몇 시까지 할까?" })) };
+    const adapter = new DiscordMessageAdapter(
+      allowedDiscordUserId,
+      { resolve: vi.fn(async () => ({ userId, timeZone: "Asia/Seoul" })) },
+      processor,
+      { getTaskById: vi.fn(async () => task) },
+      morningHandler
+    );
+    const incoming = message({ content: "일어남" });
+
+    await expect(adapter.handle(incoming.value)).resolves.toEqual({ kind: "replied", outcome: "workflow" });
+    expect(morningHandler.handleMorningMessage).toHaveBeenCalledOnce();
+    expect(processor.processTextInput).not.toHaveBeenCalled();
+    expect(incoming.replies[0]?.content).toBe("오늘은 몇 시까지 할까?");
+  });
+
   it.each([
     ["another user", { author: { id: "223456789012345678", bot: false } }],
     ["bot message", { author: { id: allowedDiscordUserId, bot: true } }],

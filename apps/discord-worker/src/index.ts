@@ -1,6 +1,6 @@
 import { Client, Events, GatewayIntentBits, Partials } from "discord.js";
 import postgres from "postgres";
-import { SupabaseTaskRepository, TaskService } from "@amber/core";
+import { MorningWorkflowService, SupabaseMorningRepository, SupabaseTaskRepository, TaskService } from "@amber/core";
 import {
   InputService,
   OpenAIStructuredOutputProvider,
@@ -23,11 +23,13 @@ const interpreter = new ProviderAIInterpreter(
   OpenAIStructuredOutputProvider.fromEnvironment(process.env, { executionRecorder, clock })
 );
 const inputService = new InputService(inputRepository, interpreter, new TaskService(taskRepository, clock));
+const morningService = new MorningWorkflowService({ repository: new SupabaseMorningRepository(sql), clock });
 const adapter = new DiscordMessageAdapter(
   config.allowedDiscordUserId,
   new SupabaseDiscordUserResolver(sql),
   inputService,
-  taskRepository
+  taskRepository,
+  morningService
 );
 const client = new Client({
   intents: [GatewayIntentBits.DirectMessages],
