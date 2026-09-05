@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(19);
+select plan(23);
 
 insert into auth.users(id,email,created_at,updated_at) values
 ('20000000-0000-0000-0000-000000000001','owner-a@example.test',now(),now()),
@@ -56,6 +56,20 @@ insert into public.decisions(id,user_id,question,options,status) values
 insert into public.decision_feedback(id,user_id,decision_id,user_choice) values
 ('28000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001','27000000-0000-0000-0000-000000000002','{}');
 select throws_like($$insert into public.learning_cases(user_id,case_type,context_snapshot,decision_id,decision_feedback_id,status) values('20000000-0000-0000-0000-000000000001','decision','{}','27000000-0000-0000-0000-000000000001','28000000-0000-0000-0000-000000000001','open')$$,'%must belong%','LearningCase rejects feedback from another Decision');
+
+insert into public.learning_cases(id,user_id,case_type,context_snapshot,status) values
+('28100000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001','decision','{}','closed'),
+('28100000-0000-0000-0000-000000000002','20000000-0000-0000-0000-000000000002','decision','{}','closed');
+insert into public.patterns(id,user_id,pattern_type,condition,observed_behavior,confidence,evidence_count,evaluator_version,status,first_observed_at,last_observed_at) values
+('28200000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001','decision_preference','{}','Observed A',0.5,1,'test','candidate',now(),now()),
+('28200000-0000-0000-0000-000000000002','20000000-0000-0000-0000-000000000002','decision_preference','{}','Observed B',0.5,1,'test','candidate',now(),now());
+insert into public.domain_events(id,user_id,event_type,aggregate_type,aggregate_id,actor_type,occurred_at,correlation_id,idempotency_key,payload_version,payload) values
+('28300000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001','day_closed','daily_plan','28400000-0000-0000-0000-000000000001','user',now(),'28500000-0000-0000-0000-000000000001','learning-owner-a',1,'{}'),
+('28300000-0000-0000-0000-000000000002','20000000-0000-0000-0000-000000000002','day_closed','daily_plan','28400000-0000-0000-0000-000000000002','user',now(),'28500000-0000-0000-0000-000000000002','learning-owner-b',1,'{}');
+select lives_ok($$insert into public.pattern_evidence(pattern_id,learning_case_id,direction,weight,observed_at) values('28200000-0000-0000-0000-000000000001','28100000-0000-0000-0000-000000000001','supports',1,now())$$,'PatternEvidence accepts same-user link');
+select throws_like($$insert into public.pattern_evidence(pattern_id,learning_case_id,direction,weight,observed_at) values('28200000-0000-0000-0000-000000000001','28100000-0000-0000-0000-000000000002','supports',1,now())$$,'%Pattern evidence owner mismatch%','PatternEvidence rejects cross-user link');
+select lives_ok($$insert into public.learning_case_events(learning_case_id,domain_event_id,event_role) values('28100000-0000-0000-0000-000000000001','28300000-0000-0000-0000-000000000001','outcome')$$,'LearningCaseEvent accepts same-user link');
+select throws_like($$insert into public.learning_case_events(learning_case_id,domain_event_id,event_role) values('28100000-0000-0000-0000-000000000001','28300000-0000-0000-0000-000000000002','outcome')$$,'%LearningCase event owner mismatch%','LearningCaseEvent rejects cross-user link');
 
 insert into public.workflow_runs(id,user_id,workflow_type,status,checkpoint_version,idempotency_key,correlation_id,started_at)
 values('29000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001','approval','waiting',2,'workflow-1','29000000-0000-0000-0000-000000000002',now());

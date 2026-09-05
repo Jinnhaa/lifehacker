@@ -49,5 +49,14 @@ describe("DecisionLearningService", () => {
             .resolves.toEqual({ handled: true, reply: "알려줘서 고마워. 다음 판단에 참고할게." });
         expect(repo.recordPendingReason).toHaveBeenCalledWith(userId, "마감이 더 중요해서", "reason", now);
     });
+    it("evaluates patterns after LearningCase collection without failing the collection", async () => {
+        const repo = repository();
+        vi.mocked(repo.createLearningCasesForDay).mockResolvedValue(1);
+        const patternLearning = { evaluatePatterns: vi.fn().mockRejectedValue(new Error("pattern unavailable")) };
+        const service = new DecisionLearningService({ repository: repo, clock: new FixedClock(now), patternLearning });
+        const outcome = { userId, date: "2026-09-04", timeZone: "Asia/Seoul", dayCloseResult: {}, observedAt: now };
+        await expect(service.collectDayCloseOutcomes(outcome)).resolves.toBe(1);
+        expect(patternLearning.evaluatePatterns).toHaveBeenCalledWith(userId);
+    });
 });
 //# sourceMappingURL=decision-learning-service.test.js.map

@@ -81,13 +81,15 @@ describe("Supabase Decision Learning", () => {
       select
         (select count(*)::int from public.learning_cases where user_id=${userId}) cases,
         (select count(*)::int from public.outcomes where user_id=${userId}) outcomes,
+        (select count(*)::int from public.learning_case_events e
+          join public.learning_cases c on c.id=e.learning_case_id where c.user_id=${userId}) "linkedEvidence",
         l.context_snapshot->'evidenceRefs' evidence,
         f.user_reason reason,f.user_choice->>'reasonProvenance' provenance,l.context_snapshot->'observedOutcome' observed
       from public.learning_cases l join public.decision_feedback f on f.id=l.decision_feedback_id
       where l.user_id=${userId}
     `;
         expect(rows[0]).toEqual({
-            cases: 1, outcomes: 1,
+            cases: 1, outcomes: 1, linkedEvidence: 1,
             evidence: [{ domainEventId: dayClosedEvent, eventType: "day_closed", aggregateType: "daily_plan", aggregateId: planId }],
             reason: "오늘 마감 과제가 더 중요해서",
             provenance: "user_explicit", observed: { actualMinutes: 45, plannedMinutes: 60, completedTaskIds: [], blockedTaskIds: [] }

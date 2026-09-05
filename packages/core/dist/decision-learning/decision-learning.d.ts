@@ -1,4 +1,5 @@
 import type { Clock, UserId } from "@amber/shared";
+import type { PatternLearningEvaluator } from "../pattern-learning/pattern-learning.js";
 export type MaterialDecisionType = "morning_override" | "important_replan" | "focus_task_switch";
 export interface MaterialDecisionInput {
     readonly userId: UserId;
@@ -49,5 +50,6 @@ export interface DecisionLearningCollector {
 export interface DecisionLearningDependencies {
     readonly repository: DecisionLearningRepository;
     readonly clock: Clock;
+    readonly patternLearning?: PatternLearningEvaluator;
 }
 //# sourceMappingURL=decision-learning.d.ts.map

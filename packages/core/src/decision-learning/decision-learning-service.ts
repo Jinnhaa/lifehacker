@@ -22,10 +22,12 @@ export const hasDecisionReasonSignal = (text: string): boolean => extractExplici
 export class DecisionLearningService implements DecisionLearningRecorder, DecisionLearningCollector {
   private readonly repository: DecisionLearningDependencies["repository"];
   private readonly clock: DecisionLearningDependencies["clock"];
+  private readonly patternLearning: DecisionLearningDependencies["patternLearning"];
 
   constructor(dependencies: DecisionLearningDependencies) {
     this.repository = dependencies.repository;
     this.clock = dependencies.clock;
+    this.patternLearning = dependencies.patternLearning;
   }
 
   async recordMaterialDecision(input: MaterialDecisionInput): Promise<string | null> {
@@ -45,7 +47,13 @@ export class DecisionLearningService implements DecisionLearningRecorder, Decisi
       : { handled: false };
   }
 
-  collectDayCloseOutcomes(input: DecisionOutcomeInput): Promise<number> {
-    return this.repository.createLearningCasesForDay(input);
+  async collectDayCloseOutcomes(input: DecisionOutcomeInput): Promise<number> {
+    const created = await this.repository.createLearningCasesForDay(input);
+    try {
+      await this.patternLearning?.evaluatePatterns(input.userId);
+    } catch {
+      // LearningCase collection remains successful; a later Day Close retry can evaluate patterns.
+    }
+    return created;
   }
 }

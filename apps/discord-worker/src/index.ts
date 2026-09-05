@@ -10,6 +10,7 @@ import {
   SupabaseDayCloseRepository,
   SupabaseDecisionLearningRepository,
   SupabaseMorningRepository,
+  SupabasePatternLearningRepository,
   SupabaseReplanRepository,
   SupabaseTaskRepository,
   SupabaseWakeRepository,
@@ -42,7 +43,8 @@ const inputService = new InputService(inputRepository, interpreter, new TaskServ
 const morningRepository = new SupabaseMorningRepository(sql);
 const decisionLearning = new DecisionLearningService({
   repository: new SupabaseDecisionLearningRepository(sql),
-  clock
+  clock,
+  patternLearning: new SupabasePatternLearningRepository(sql)
 });
 const replanService = new DynamicReplanningService({
   repository: new SupabaseReplanRepository(sql),
