@@ -179,6 +179,8 @@ export const createMorningPlan = (input) => {
             taskIds: input.observation.tasks.map((value) => value.id),
             recurringActivityIds: input.observation.recurringActivities.map((value) => value.id),
             strategicDirectiveIds: input.observation.strategicDirectives.map((value) => value.id),
+            carryoverSourceDate: input.observation.carryoverContext?.sourceDate ?? null,
+            carryoverTaskIds: input.observation.carryoverContext?.taskIds ?? [],
             workUntil: input.workUntil.toISOString(),
             privateIntervals: input.privateIntervals.map((value) => ({ start: value.start.toISOString(), end: value.end.toISOString() }))
         }

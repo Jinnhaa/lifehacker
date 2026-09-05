@@ -144,7 +144,7 @@ export class SupabaseMorningRepository implements MorningRepository {
     `;
     const setting = settings[0] ?? { planning_buffer_minutes: 0, planning_policy: {}, week_starts_on: 1 };
     const week = weekRange(planDate, setting.week_starts_on);
-    const [taskRows, constraintRows, activityRows, directiveRows] = await Promise.all([
+    const [taskRows, constraintRows, activityRows, directiveRows, carryoverRows] = await Promise.all([
       this.sql<Record<string, unknown>[]>`select * from public.tasks where user_id=${userId} and status<>'DONE' order by created_at`,
       this.sql<{ id: string; constraint_type: string; value: unknown; hardness: string; valid_from: Date; valid_until: Date | null; origin: string }[]>`
         select id,constraint_type,value,hardness,valid_from,valid_until,origin from public.constraints
@@ -164,6 +164,11 @@ export class SupabaseMorningRepository implements MorningRepository {
         select id,directive,priority_order from public.strategic_directives
         where user_id=${userId} and valid_from<=${dayEnd} and (valid_until is null or valid_until>${dayStart})
           and confirmation_status in ('confirmed','approved','active') order by created_at
+      `,
+      this.sql<{ source_date: string; result: unknown }[]>`
+        select checkpoint_state->>'date' source_date,checkpoint_state->'result' result from public.workflow_runs
+        where user_id=${userId} and workflow_type='day_close' and status='completed'
+          and (checkpoint_state->>'date')::date<${planDate} order by (checkpoint_state->>'date')::date desc limit 1
       `
     ]);
     const constraints: MorningConstraint[] = constraintRows.map((row) => {
@@ -175,6 +180,7 @@ export class SupabaseMorningRepository implements MorningRepository {
         start: row.valid_from, end: row.valid_until ?? dayEnd
       };
     });
+    const carryover = carryoverRows[0] ? asRecord(carryoverRows[0].result) : null;
     return {
       timeZone,
       planningBufferMinutes: setting.planning_buffer_minutes,
@@ -187,7 +193,14 @@ export class SupabaseMorningRepository implements MorningRepository {
         preferredDays: row.preferred_days, importance: row.importance,
         completedCount: row.completed_count, occurrenceId: row.occurrence_id
       })),
-      strategicDirectives: directiveRows.map((row) => ({ id: row.id, directive: row.directive, priorityOrder: row.priority_order }))
+      strategicDirectives: directiveRows.map((row) => ({ id: row.id, directive: row.directive, priorityOrder: row.priority_order })),
+      carryoverContext: carryoverRows[0] && carryover ? {
+        sourceDate: carryoverRows[0].source_date,
+        taskIds: Array.isArray(carryover.carryoverTaskIds)
+          ? carryover.carryoverTaskIds.filter((id): id is string => typeof id === "string") : [],
+        blockedTaskIds: Array.isArray(carryover.blockedTaskIds)
+          ? carryover.blockedTaskIds.filter((id): id is string => typeof id === "string") : []
+      } : null
     };
   }
 

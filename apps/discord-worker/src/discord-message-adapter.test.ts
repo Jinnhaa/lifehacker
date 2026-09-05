@@ -155,6 +155,28 @@ describe("DiscordMessageAdapter", () => {
     expect(processor.processTextInput).not.toHaveBeenCalled();
   });
 
+  it("routes Day Close before every other workflow and InputService", async () => {
+    const { processor } = adapterWith();
+    const replanHandler = { handleReplanMessage: vi.fn(async () => ({ handled: true, reply: "replan" })) };
+    const dayCloseHandler = { handleDayCloseMessage: vi.fn(async () => ({ handled: true, reply: "오늘은 여기까지 정리했어." })) };
+    const adapter = new DiscordMessageAdapter(
+      allowedDiscordUserId,
+      { resolve: vi.fn(async () => ({ userId, timeZone: "Asia/Seoul" })) },
+      processor,
+      { getTaskById: vi.fn(async () => task) },
+      undefined,
+      undefined,
+      replanHandler,
+      dayCloseHandler
+    );
+    const incoming = message({ content: "오늘 끝" });
+
+    await expect(adapter.handle(incoming.value)).resolves.toEqual({ kind: "replied", outcome: "workflow" });
+    expect(dayCloseHandler.handleDayCloseMessage).toHaveBeenCalledOnce();
+    expect(replanHandler.handleReplanMessage).not.toHaveBeenCalled();
+    expect(processor.processTextInput).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["another user", { author: { id: "223456789012345678", bot: false } }],
     ["bot message", { author: { id: allowedDiscordUserId, bot: true } }],
