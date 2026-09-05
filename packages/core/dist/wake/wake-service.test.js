@@ -37,10 +37,39 @@ describe("WakeWorkflowService", () => {
         expect(repo.getOrCreateAwaitingWorkflow).toHaveBeenCalledWith(userId, targetDate, "Asia/Seoul", emptyContext, now);
         expect(vi.mocked(repo.schedule).mock.calls[0]?.[1].toISOString()).toBe(expectedWakeAt);
     });
-    it("does not schedule an already-passed same-day time", async () => {
+    it.each([
+        ["18:33에 깨워줘", "2026-09-04", "2026-09-04T09:33:00.000Z"],
+        ["18시 33분에 깨워줘", "2026-09-04", "2026-09-04T09:33:00.000Z"],
+        ["8:30에 깨워줘", "2026-09-04", "2026-09-03T23:30:00.000Z"],
+        ["내일 8:30에 깨워줘", "2026-09-05", "2026-09-04T23:30:00.000Z"],
+        ["내일 8시 30분에 깨워줘", "2026-09-05", "2026-09-04T23:30:00.000Z"],
+        ["오후 6시 30분에 깨워줘", "2026-09-04", "2026-09-04T09:30:00.000Z"],
+        ["내일 00:15에 깨워줘", "2026-09-05", "2026-09-04T15:15:00.000Z"],
+        ["23:59에 깨워줘", "2026-09-04", "2026-09-04T14:59:00.000Z"],
+        ["8시에 깨워줘", "2026-09-04", "2026-09-03T23:00:00.000Z"],
+        ["내일 8시에 깨워줘", "2026-09-05", "2026-09-04T23:00:00.000Z"],
+        ["오후 8시에 깨워줘", "2026-09-04", "2026-09-04T11:00:00.000Z"],
+        ["내일은 9시에 일어날래", "2026-09-05", "2026-09-05T00:00:00.000Z"]
+    ])("parses natural minute-level wake time: %s", async (text, targetDate, expectedWakeAt) => {
+        const earlyNow = new Date("2026-09-03T15:00:00.000Z"); // 00:00 Asia/Seoul
+        const repo = repository();
+        const result = await new WakeWorkflowService({ repository: repo, clock: new FixedClock(earlyNow) })
+            .handleWakeMessage(message(text, earlyNow));
+        expect(result.handled).toBe(true);
+        expect(repo.getOrCreateAwaitingWorkflow).toHaveBeenCalledWith(userId, targetDate, "Asia/Seoul", emptyContext, earlyNow);
+        expect(vi.mocked(repo.schedule).mock.calls[0]?.[1].toISOString()).toBe(expectedWakeAt);
+    });
+    it.each(["24:00에 깨워줘", "25:90에 깨워줘", "125:30에 깨워줘", "오후 18시 30분에 깨워줘"])("rejects invalid wake time: %s", async (text) => {
         const repo = repository();
         const result = await new WakeWorkflowService({ repository: repo, clock: new FixedClock(now) })
-            .handleWakeMessage(message("8시에 깨워줘"));
+            .handleWakeMessage(message(text));
+        expect(result).toEqual({ handled: true, reply: "몇 시에 깨울지 시간을 알려줘." });
+        expect(repo.schedule).not.toHaveBeenCalled();
+    });
+    it.each(["8시에 깨워줘", "8:30에 깨워줘"])("does not schedule an already-passed same-day time: %s", async (text) => {
+        const repo = repository();
+        const result = await new WakeWorkflowService({ repository: repo, clock: new FixedClock(now) })
+            .handleWakeMessage(message(text));
         expect(result.reply).toContain("이미 지났어");
         expect(repo.schedule).not.toHaveBeenCalled();
     });

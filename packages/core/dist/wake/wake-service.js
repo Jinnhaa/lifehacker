@@ -15,11 +15,14 @@ const timeLabel = (value, timeZone) => new Intl.DateTimeFormat("ko-KR", {
     timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23"
 }).format(value);
 const parseClockTime = (text) => {
-    const match = /(오전|오후)?\s*(\d{1,2})(?::(\d{2}))?\s*시/.exec(text);
+    const match = /(?<!\d)(오전|오후)?\s*(\d{1,2})(?::(\d{2})|\s*시(?:\s*(\d{1,2})\s*분)?)\s*(?:에)?(?!\d)/.exec(text);
     if (!match)
         return null;
-    let hour = Number(match[2]);
-    const minute = Number(match[3] ?? 0);
+    const rawHour = Number(match[2]);
+    let hour = rawHour;
+    const minute = Number(match[3] ?? match[4] ?? 0);
+    if (match[1] && (rawHour < 1 || rawHour > 12))
+        return null;
     if (match[1] === "오후" && hour < 12)
         hour += 12;
     if (match[1] === "오전" && hour === 12)
