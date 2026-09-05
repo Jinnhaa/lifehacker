@@ -1,4 +1,4 @@
-import type { FocusMessageHandler, MorningMessageHandler, ReplanMessageHandler, Task, TaskRepository } from "@amber/core";
+import type { DayCloseMessageHandler, FocusMessageHandler, MorningMessageHandler, ReplanMessageHandler, Task, TaskRepository } from "@amber/core";
 import { DomainError, type TaskId, type UserId } from "@amber/shared";
 import type { InputProcessingResult, TextInputValue } from "@amber/input";
 import type { DiscordUserResolver } from "./discord-user-resolver.js";
@@ -43,7 +43,8 @@ export class DiscordMessageAdapter {
     private readonly taskReader: Pick<TaskRepository, "getTaskById"> | TaskSummaryReader,
     private readonly morningHandler?: MorningMessageHandler,
     private readonly focusHandler?: FocusMessageHandler,
-    private readonly replanHandler?: ReplanMessageHandler
+    private readonly replanHandler?: ReplanMessageHandler,
+    private readonly dayCloseHandler?: DayCloseMessageHandler
   ) {}
 
   async handle(message: DiscordInboundMessage): Promise<DiscordMessageHandlingResult> {
@@ -59,6 +60,17 @@ export class DiscordMessageAdapter {
     try {
       const identity = await this.userResolver.resolve(message.author.id);
       if (!identity) return this.reply(message, "지금은 기록하지 못했어. 잠시 후 다시 보내줘.", "failed");
+
+      if (this.dayCloseHandler) {
+        const dayClose = await this.dayCloseHandler.handleDayCloseMessage({
+          userId: identity.userId,
+          timeZone: identity.timeZone,
+          text: message.content,
+          messageId: `discord:${message.id}`,
+          receivedAt: message.createdAt
+        });
+        if (dayClose.handled && dayClose.reply) return this.reply(message, dayClose.reply, "workflow");
+      }
 
       if (this.replanHandler) {
         const replan = await this.replanHandler.handleReplanMessage({

@@ -67,6 +67,11 @@ export interface MorningObservation {
   readonly tasks: readonly Task[];
   readonly recurringActivities: readonly MorningRecurringActivity[];
   readonly strategicDirectives: readonly MorningStrategicDirective[];
+  readonly carryoverContext?: {
+    readonly sourceDate: string;
+    readonly taskIds: readonly string[];
+    readonly blockedTaskIds: readonly string[];
+  } | null;
 }
 
 export interface MorningPlanItemDraft extends TimeInterval {

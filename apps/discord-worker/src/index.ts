@@ -1,10 +1,12 @@
 import { Client, Events, GatewayIntentBits, Partials } from "discord.js";
 import postgres from "postgres";
 import {
+  DayCloseService,
   FocusWorkflowService,
   DynamicReplanningService,
   MorningWorkflowService,
   SupabaseFocusRepository,
+  SupabaseDayCloseRepository,
   SupabaseMorningRepository,
   SupabaseReplanRepository,
   SupabaseTaskRepository,
@@ -40,6 +42,7 @@ const replanService = new DynamicReplanningService({
 });
 const morningService = new MorningWorkflowService({ repository: morningRepository, clock });
 const focusService = new FocusWorkflowService({ repository: new SupabaseFocusRepository(sql), clock, replanner: replanService });
+const dayCloseService = new DayCloseService({ repository: new SupabaseDayCloseRepository(sql), clock });
 const adapter = new DiscordMessageAdapter(
   config.allowedDiscordUserId,
   new SupabaseDiscordUserResolver(sql),
@@ -47,7 +50,8 @@ const adapter = new DiscordMessageAdapter(
   taskRepository,
   morningService,
   focusService,
-  replanService
+  replanService,
+  dayCloseService
 );
 const client = new Client({
   intents: [GatewayIntentBits.DirectMessages],
