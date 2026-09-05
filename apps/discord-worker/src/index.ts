@@ -6,11 +6,13 @@ import {
   FocusWorkflowService,
   DynamicReplanningService,
   MorningWorkflowService,
+  PrincipleApprovalService,
   SupabaseFocusRepository,
   SupabaseDayCloseRepository,
   SupabaseDecisionLearningRepository,
   SupabaseMorningRepository,
   SupabasePatternLearningRepository,
+  SupabasePrincipleApprovalRepository,
   SupabaseReplanRepository,
   SupabaseTaskRepository,
   SupabaseWakeRepository,
@@ -41,6 +43,10 @@ const interpreter = new ProviderAIInterpreter(
 );
 const inputService = new InputService(inputRepository, interpreter, new TaskService(taskRepository, clock));
 const morningRepository = new SupabaseMorningRepository(sql);
+const principleApproval = new PrincipleApprovalService({
+  repository: new SupabasePrincipleApprovalRepository(sql),
+  clock
+});
 const decisionLearning = new DecisionLearningService({
   repository: new SupabaseDecisionLearningRepository(sql),
   clock,
@@ -59,7 +65,8 @@ const focusService = new FocusWorkflowService({
 const wakeRepository = new SupabaseWakeRepository(sql);
 const wakeService = new WakeWorkflowService({ repository: wakeRepository, clock });
 const dayCloseServiceWithWake = new DayCloseService({
-  repository: new SupabaseDayCloseRepository(sql), clock, wakeFollowUp: wakeService, decisionLearning
+  repository: new SupabaseDayCloseRepository(sql), clock, wakeFollowUp: wakeService, decisionLearning,
+  principleFollowUp: principleApproval
 });
 const adapter = new DiscordMessageAdapter(
   config.allowedDiscordUserId,
@@ -70,7 +77,8 @@ const adapter = new DiscordMessageAdapter(
   focusService,
   replanService,
   dayCloseServiceWithWake,
-  wakeService
+  wakeService,
+  principleApproval
 );
 const client = new Client({
   intents: [GatewayIntentBits.DirectMessages],

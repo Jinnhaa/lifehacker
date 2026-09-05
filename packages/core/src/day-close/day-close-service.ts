@@ -80,12 +80,14 @@ export class DayCloseService implements DayCloseMessageHandler {
   private readonly clock: DayCloseServiceDependencies["clock"];
   private readonly wakeFollowUp: DayCloseServiceDependencies["wakeFollowUp"];
   private readonly decisionLearning: DayCloseServiceDependencies["decisionLearning"];
+  private readonly principleFollowUp: DayCloseServiceDependencies["principleFollowUp"];
 
   constructor(dependencies: DayCloseServiceDependencies) {
     this.repository = dependencies.repository;
     this.clock = dependencies.clock;
     this.wakeFollowUp = dependencies.wakeFollowUp;
     this.decisionLearning = dependencies.decisionLearning;
+    this.principleFollowUp = dependencies.principleFollowUp;
   }
 
   async handleDayCloseMessage(message: DayCloseMessage): Promise<DayCloseMessageResult> {
@@ -101,7 +103,7 @@ export class DayCloseService implements DayCloseMessageHandler {
     if (run.status === "completed" && run.checkpoint.result) {
       await this.collectLearning(message, run.checkpoint.result);
       return triggers.has(text) || run.checkpoint.lastMessageId === message.messageId
-        ? { handled: true, reply: await this.withWakeFollowUp(formatSummary(run.checkpoint.result), message) }
+        ? { handled: true, reply: await this.withFollowUps(formatSummary(run.checkpoint.result), message) }
         : { handled: false };
     }
     if (run.currentStep === "awaiting_focus_confirmation") {
@@ -126,7 +128,7 @@ export class DayCloseService implements DayCloseMessageHandler {
     const calculated = calculateDayCloseResult(observation, run.checkpoint.date, now);
     const completed = await this.repository.complete(run, calculated, message.messageId, now);
     await this.collectLearning(message, completed.result);
-    return { handled: true, reply: await this.withWakeFollowUp(formatSummary(completed.result), message) };
+    return { handled: true, reply: await this.withFollowUps(formatSummary(completed.result), message) };
   }
 
   private async collectLearning(message: DayCloseMessage, result: DayCloseResult): Promise<void> {
@@ -144,12 +146,20 @@ export class DayCloseService implements DayCloseMessageHandler {
     }
   }
 
-  private async withWakeFollowUp(summary: string, message: DayCloseMessage): Promise<string> {
+  private async withFollowUps(summary: string, message: DayCloseMessage): Promise<string> {
+    const followUps: string[] = [];
     try {
-      const followUp = await this.wakeFollowUp?.afterDayClose(message);
-      return followUp ? `${summary}\n\n${followUp}` : summary;
+      const wake = await this.wakeFollowUp?.afterDayClose(message);
+      if (wake) followUps.push(wake);
     } catch {
-      return summary;
+      // Wake follow-up remains optional.
     }
+    try {
+      const principle = await this.principleFollowUp?.afterPatternEvaluation(message.userId);
+      if (principle) followUps.push(principle);
+    } catch {
+      // Principle review remains optional and never blocks Day Close.
+    }
+    return followUps.length > 0 ? `${summary}\n\n${followUps.join("\n\n")}` : summary;
   }
 }

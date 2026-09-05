@@ -71,11 +71,13 @@ export class DayCloseService {
     clock;
     wakeFollowUp;
     decisionLearning;
+    principleFollowUp;
     constructor(dependencies) {
         this.repository = dependencies.repository;
         this.clock = dependencies.clock;
         this.wakeFollowUp = dependencies.wakeFollowUp;
         this.decisionLearning = dependencies.decisionLearning;
+        this.principleFollowUp = dependencies.principleFollowUp;
     }
     async handleDayCloseMessage(message) {
         const text = message.text.trim();
@@ -92,7 +94,7 @@ export class DayCloseService {
         if (run.status === "completed" && run.checkpoint.result) {
             await this.collectLearning(message, run.checkpoint.result);
             return triggers.has(text) || run.checkpoint.lastMessageId === message.messageId
-                ? { handled: true, reply: await this.withWakeFollowUp(formatSummary(run.checkpoint.result), message) }
+                ? { handled: true, reply: await this.withFollowUps(formatSummary(run.checkpoint.result), message) }
                 : { handled: false };
         }
         if (run.currentStep === "awaiting_focus_confirmation") {
@@ -120,7 +122,7 @@ export class DayCloseService {
         const calculated = calculateDayCloseResult(observation, run.checkpoint.date, now);
         const completed = await this.repository.complete(run, calculated, message.messageId, now);
         await this.collectLearning(message, completed.result);
-        return { handled: true, reply: await this.withWakeFollowUp(formatSummary(completed.result), message) };
+        return { handled: true, reply: await this.withFollowUps(formatSummary(completed.result), message) };
     }
     async collectLearning(message, result) {
         if (!this.decisionLearning)
@@ -138,14 +140,25 @@ export class DayCloseService {
             // Day Close remains complete; a same-day retry can collect the durable evidence.
         }
     }
-    async withWakeFollowUp(summary, message) {
+    async withFollowUps(summary, message) {
+        const followUps = [];
         try {
-            const followUp = await this.wakeFollowUp?.afterDayClose(message);
-            return followUp ? `${summary}\n\n${followUp}` : summary;
+            const wake = await this.wakeFollowUp?.afterDayClose(message);
+            if (wake)
+                followUps.push(wake);
         }
         catch {
-            return summary;
+            // Wake follow-up remains optional.
         }
+        try {
+            const principle = await this.principleFollowUp?.afterPatternEvaluation(message.userId);
+            if (principle)
+                followUps.push(principle);
+        }
+        catch {
+            // Principle review remains optional and never blocks Day Close.
+        }
+        return followUps.length > 0 ? `${summary}\n\n${followUps.join("\n\n")}` : summary;
     }
 }
 //# sourceMappingURL=day-close-service.js.map
