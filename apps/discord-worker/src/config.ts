@@ -5,13 +5,15 @@ export const LOCAL_SUPABASE_DATABASE_URL = "postgresql://postgres:postgres@127.0
 const discordWorkerEnvironmentSchema = z.object({
   DISCORD_BOT_TOKEN: z.string().trim().min(1),
   DISCORD_ALLOWED_USER_ID: z.string().trim().regex(/^\d{17,20}$/),
-  DATABASE_URL: z.string().trim().min(1).optional()
+  DATABASE_URL: z.string().trim().min(1).optional(),
+  WAKE_POLL_INTERVAL_MS: z.coerce.number().int().min(1_000).max(300_000).optional()
 }).strip();
 
 export interface DiscordWorkerConfig {
   readonly botToken: string;
   readonly allowedDiscordUserId: string;
   readonly databaseUrl: string;
+  readonly wakePollIntervalMs: number;
 }
 
 export function loadDiscordWorkerConfig(
@@ -21,6 +23,7 @@ export function loadDiscordWorkerConfig(
   return {
     botToken: parsed.DISCORD_BOT_TOKEN,
     allowedDiscordUserId: parsed.DISCORD_ALLOWED_USER_ID,
-    databaseUrl: parsed.DATABASE_URL || LOCAL_SUPABASE_DATABASE_URL
+    databaseUrl: parsed.DATABASE_URL || LOCAL_SUPABASE_DATABASE_URL,
+    wakePollIntervalMs: parsed.WAKE_POLL_INTERVAL_MS ?? 30_000
   };
 }

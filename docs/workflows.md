@@ -146,6 +146,8 @@ target wake
 
 모든 wake notification은 dedupe/idempotency를 갖는다.
 
+V0.1에서는 Day Close 완료 후 다음 날 fixed Calendar Constraint와 명시된 wake preference/개인시간 Constraint만 관찰한다. 정확한 시간을 계산할 명시값이 없으면 Day Close를 막지 않고 후속 질문으로 전환한다. 날짜별 `WorkflowRun` 하나와 교체 가능한 `Notification`/`ScheduledJob`으로 예약하며, persistent Discord worker가 due job을 claim한 뒤 DM을 발송한다. `일어남`은 당일 예약을 acknowledge/cancel한 후 기존 Morning Workflow로 이어진다.
+
 ---
 
 ## 10. RecurringActivity Scheduling

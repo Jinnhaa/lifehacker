@@ -9,8 +9,17 @@ describe("Discord worker config", () => {
     })).toEqual({
       botToken: "test-token",
       allowedDiscordUserId: "123456789012345678",
-      databaseUrl: LOCAL_SUPABASE_DATABASE_URL
+      databaseUrl: LOCAL_SUPABASE_DATABASE_URL,
+      wakePollIntervalMs: 30_000
     });
+  });
+
+  it("accepts a bounded wake polling interval", () => {
+    expect(loadDiscordWorkerConfig({
+      DISCORD_BOT_TOKEN: "test-token",
+      DISCORD_ALLOWED_USER_ID: "123456789012345678",
+      WAKE_POLL_INTERVAL_MS: "5000"
+    }).wakePollIntervalMs).toBe(5_000);
   });
 
   it("requires both the bot token and a Discord snowflake allowlist", () => {

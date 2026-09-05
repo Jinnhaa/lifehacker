@@ -1,4 +1,4 @@
-import type { DayCloseMessageHandler, FocusMessageHandler, MorningMessageHandler, ReplanMessageHandler, Task, TaskRepository } from "@amber/core";
+import type { DayCloseMessageHandler, FocusMessageHandler, MorningMessageHandler, ReplanMessageHandler, Task, TaskRepository, WakeMessageHandler } from "@amber/core";
 import { DomainError, type TaskId, type UserId } from "@amber/shared";
 import type { InputProcessingResult, TextInputValue } from "@amber/input";
 import type { DiscordUserResolver } from "./discord-user-resolver.js";
@@ -44,7 +44,8 @@ export class DiscordMessageAdapter {
     private readonly morningHandler?: MorningMessageHandler,
     private readonly focusHandler?: FocusMessageHandler,
     private readonly replanHandler?: ReplanMessageHandler,
-    private readonly dayCloseHandler?: DayCloseMessageHandler
+    private readonly dayCloseHandler?: DayCloseMessageHandler,
+    private readonly wakeHandler?: WakeMessageHandler
   ) {}
 
   async handle(message: DiscordInboundMessage): Promise<DiscordMessageHandlingResult> {
@@ -70,6 +71,17 @@ export class DiscordMessageAdapter {
           receivedAt: message.createdAt
         });
         if (dayClose.handled && dayClose.reply) return this.reply(message, dayClose.reply, "workflow");
+      }
+
+      if (this.wakeHandler) {
+        const wake = await this.wakeHandler.handleWakeMessage({
+          userId: identity.userId,
+          timeZone: identity.timeZone,
+          text: message.content,
+          messageId: `discord:${message.id}`,
+          receivedAt: message.createdAt
+        });
+        if (wake.handled && wake.reply) return this.reply(message, wake.reply, "workflow");
       }
 
       if (this.replanHandler) {

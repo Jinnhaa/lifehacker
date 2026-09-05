@@ -10,7 +10,9 @@ import {
   SupabaseMorningRepository,
   SupabaseReplanRepository,
   SupabaseTaskRepository,
-  TaskService
+  SupabaseWakeRepository,
+  TaskService,
+  WakeWorkflowService
 } from "@amber/core";
 import {
   InputService,
@@ -23,6 +25,7 @@ import { SystemClock } from "@amber/shared";
 import { loadDiscordWorkerConfig } from "./config.js";
 import { DiscordMessageAdapter } from "./discord-message-adapter.js";
 import { SupabaseDiscordUserResolver } from "./discord-user-resolver.js";
+import { WakeScheduler } from "./wake-scheduler.js";
 
 const config = loadDiscordWorkerConfig();
 const sql = postgres(config.databaseUrl, { max: 10 });
@@ -42,7 +45,11 @@ const replanService = new DynamicReplanningService({
 });
 const morningService = new MorningWorkflowService({ repository: morningRepository, clock });
 const focusService = new FocusWorkflowService({ repository: new SupabaseFocusRepository(sql), clock, replanner: replanService });
-const dayCloseService = new DayCloseService({ repository: new SupabaseDayCloseRepository(sql), clock });
+const wakeRepository = new SupabaseWakeRepository(sql);
+const wakeService = new WakeWorkflowService({ repository: wakeRepository, clock });
+const dayCloseServiceWithWake = new DayCloseService({
+  repository: new SupabaseDayCloseRepository(sql), clock, wakeFollowUp: wakeService
+});
 const adapter = new DiscordMessageAdapter(
   config.allowedDiscordUserId,
   new SupabaseDiscordUserResolver(sql),
@@ -51,15 +58,23 @@ const adapter = new DiscordMessageAdapter(
   morningService,
   focusService,
   replanService,
-  dayCloseService
+  dayCloseServiceWithWake,
+  wakeService
 );
 const client = new Client({
   intents: [GatewayIntentBits.DirectMessages],
   partials: [Partials.Channel],
   allowedMentions: { parse: [], repliedUser: false }
 });
+const wakeScheduler = new WakeScheduler(
+  wakeRepository,
+  { send: async (discordUserId, content) => { await (await client.users.fetch(discordUserId)).send(content); } },
+  clock,
+  config.wakePollIntervalMs
+);
 
 client.once(Events.ClientReady, () => {
+  wakeScheduler.start();
   console.info("Discord worker ready");
 });
 
@@ -88,6 +103,7 @@ let shuttingDown = false;
 const shutdown = async (): Promise<void> => {
   if (shuttingDown) return;
   shuttingDown = true;
+  wakeScheduler.stop();
   client.destroy();
   await sql.end();
   console.info("Discord worker stopped");

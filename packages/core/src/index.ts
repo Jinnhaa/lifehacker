@@ -25,3 +25,6 @@ export * from "./task/task-repository.js";
 export * from "./task/task-service.js";
 export * from "./task/task-state-machine.js";
 export * from "./task/task.js";
+export * from "./wake/wake.js";
+export * from "./wake/wake-service.js";
+export * from "./wake/supabase-wake-repository.js";

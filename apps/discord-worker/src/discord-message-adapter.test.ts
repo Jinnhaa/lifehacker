@@ -116,6 +116,46 @@ describe("DiscordMessageAdapter", () => {
     expect(incoming.replies[0]?.content).toBe("오늘은 몇 시까지 할까?");
   });
 
+  it("acknowledges Wake before routing 일어남 to the existing Morning Workflow", async () => {
+    const { processor } = adapterWith();
+    const wakeHandler = { handleWakeMessage: vi.fn(async () => ({ handled: false })) };
+    const morningHandler = { handleMorningMessage: vi.fn(async () => ({ handled: true, reply: "오늘은 몇 시까지 할까?" })) };
+    const adapter = new DiscordMessageAdapter(
+      allowedDiscordUserId,
+      { resolve: vi.fn(async () => ({ userId, timeZone: "Asia/Seoul" })) },
+      processor,
+      { getTaskById: vi.fn(async () => task) },
+      morningHandler,
+      undefined,
+      undefined,
+      undefined,
+      wakeHandler
+    );
+    await adapter.handle(message({ content: "일어남" }).value);
+    expect(wakeHandler.handleWakeMessage).toHaveBeenCalledOnce();
+    expect(morningHandler.handleMorningMessage).toHaveBeenCalledOnce();
+    expect(processor.processTextInput).not.toHaveBeenCalled();
+  });
+
+  it("routes direct wake requests before CREATE_TASK processing", async () => {
+    const { processor } = adapterWith();
+    const wakeHandler = { handleWakeMessage: vi.fn(async () => ({ handled: true, reply: "내일 08:00에 깨울게." })) };
+    const adapter = new DiscordMessageAdapter(
+      allowedDiscordUserId,
+      { resolve: vi.fn(async () => ({ userId, timeZone: "Asia/Seoul" })) },
+      processor,
+      { getTaskById: vi.fn(async () => task) },
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      wakeHandler
+    );
+    const incoming = message({ content: "내일 8시에 깨워줘" });
+    await expect(adapter.handle(incoming.value)).resolves.toEqual({ kind: "replied", outcome: "workflow" });
+    expect(processor.processTextInput).not.toHaveBeenCalled();
+  });
+
   it("routes Focus commands before InputService", async () => {
     const { processor } = adapterWith();
     const focusHandler = { handleFocusMessage: vi.fn(async () => ({ handled: true, reply: "집중을 시작할게." })) };
