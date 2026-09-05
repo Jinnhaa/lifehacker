@@ -3,6 +3,7 @@ import { zonedDateTimeToUtc, type UserId } from "@amber/shared";
 import type { JSONValue, Sql } from "postgres";
 import type { Task, TaskExecutionMode, TaskStatus } from "../task/task.js";
 import { deriveCurrentAction } from "../execution/current-action.js";
+import { SupabasePrincipleReader } from "../principle-application/supabase-principle-reader.js";
 import type {
   CurrentAction,
   MorningCheckpoint,
@@ -144,7 +145,7 @@ export class SupabaseMorningRepository implements MorningRepository {
     `;
     const setting = settings[0] ?? { planning_buffer_minutes: 0, planning_policy: {}, week_starts_on: 1 };
     const week = weekRange(planDate, setting.week_starts_on);
-    const [taskRows, constraintRows, activityRows, directiveRows, carryoverRows] = await Promise.all([
+    const [taskRows, constraintRows, activityRows, directiveRows, carryoverRows, principles] = await Promise.all([
       this.sql<Record<string, unknown>[]>`select * from public.tasks where user_id=${userId} and status<>'DONE' order by created_at`,
       this.sql<{ id: string; constraint_type: string; value: unknown; hardness: string; valid_from: Date; valid_until: Date | null; origin: string }[]>`
         select id,constraint_type,value,hardness,valid_from,valid_until,origin from public.constraints
@@ -169,7 +170,8 @@ export class SupabaseMorningRepository implements MorningRepository {
         select checkpoint_state->>'date' source_date,checkpoint_state->'result' result from public.workflow_runs
         where user_id=${userId} and workflow_type='day_close' and status='completed'
           and (checkpoint_state->>'date')::date<${planDate} order by (checkpoint_state->>'date')::date desc limit 1
-      `
+      `,
+      new SupabasePrincipleReader(this.sql).loadActiveApproved(userId)
     ]);
     const constraints: MorningConstraint[] = constraintRows.map((row) => {
       const value = asRecord(row.value);
@@ -194,6 +196,7 @@ export class SupabaseMorningRepository implements MorningRepository {
         completedCount: row.completed_count, occurrenceId: row.occurrence_id
       })),
       strategicDirectives: directiveRows.map((row) => ({ id: row.id, directive: row.directive, priorityOrder: row.priority_order })),
+      principles,
       carryoverContext: carryoverRows[0] && carryover ? {
         sourceDate: carryoverRows[0].source_date,
         taskIds: Array.isArray(carryover.carryoverTaskIds)

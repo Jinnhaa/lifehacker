@@ -1,6 +1,7 @@
 import type { Clock, UserId } from "@amber/shared";
 import type { Task } from "../task/task.js";
 import type { DecisionLearningRecorder } from "../decision-learning/decision-learning.js";
+import type { ApprovedPlanningPrinciple } from "../principle-application/principle-application.js";
 export type MorningStep = "observe" | "awaiting_context" | "awaiting_approval" | "completed";
 export interface MorningCheckpoint {
     readonly planDate: string;
@@ -60,6 +61,7 @@ export interface MorningObservation {
     readonly tasks: readonly Task[];
     readonly recurringActivities: readonly MorningRecurringActivity[];
     readonly strategicDirectives: readonly MorningStrategicDirective[];
+    readonly principles?: readonly ApprovedPlanningPrinciple[];
     readonly carryoverContext?: {
         readonly sourceDate: string;
         readonly taskIds: readonly string[];

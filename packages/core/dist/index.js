@@ -22,6 +22,8 @@ export * from "./pattern-learning/supabase-pattern-learning-repository.js";
 export * from "./principle-approval/principle-approval.js";
 export * from "./principle-approval/principle-approval-service.js";
 export * from "./principle-approval/supabase-principle-approval-repository.js";
+export * from "./principle-application/principle-application.js";
+export * from "./principle-application/supabase-principle-reader.js";
 export * from "./replan/replan.js";
 export * from "./replan/replan-impact.js";
 export * from "./replan/replan-planner.js";

@@ -33,6 +33,9 @@ const mapProposal = (row: ProposalRow): PrincipleProposal => {
 const statementFor = (condition: Record<string, unknown>): string => {
   const situation = typeof condition.situationType === "string" ? condition.situationType : "";
   const action = typeof condition.choiceAction === "string" ? condition.choiceAction : "";
+  if (situation.includes("deadline") && condition.consistencyValue === "deadline_priority") {
+    return "중요한 마감이 임박한 날에는 장기 루틴보다 마감을 우선한다";
+  }
   if (situation.includes("deadline") && action === "approve") return "마감 위험이 있는 중요한 일정 변경에서는 제안된 변경을 적용한다";
   if (situation.includes("deadline") && action === "reject") return "마감 위험이 있는 중요한 일정 변경에서는 제안된 변경을 적용하지 않는다";
   if (situation.includes("deadline") && action === "exclude_tasks") return "마감 위험이 있는 Morning 계획에서는 해당 Task 제외 선택을 유지한다";
@@ -63,13 +66,22 @@ export class SupabasePrincipleApprovalRepository implements PrincipleApprovalRep
       const evidence = await tx<{ learning_case_id: string }[]>`
         select learning_case_id from public.pattern_evidence where pattern_id=${pattern.id} order by observed_at
       `;
+      const condition = object(pattern.condition);
+      const applicationPolicy = typeof condition.situationType === "string"
+        && condition.situationType.includes("deadline")
+        && condition.consistencyValue === "deadline_priority"
+        ? "deadline_over_routine" : null;
       const inserted = await tx<ProposalRow[]>`
         insert into public.principles(
           user_id,source_pattern_id,statement,origin,created_by,confirmation_status,source_reference,
           valid_from,status
         ) values(
           ${userId},${pattern.id},${statementFor(object(pattern.condition))},'pattern_observed','system','pending',
-          ${tx.json({ revision: 1, evidenceLearningCaseIds: evidence.map((item) => item.learning_case_id) })},
+          ${tx.json({
+            revision: 1,
+            evidenceLearningCaseIds: evidence.map((item) => item.learning_case_id),
+            ...(applicationPolicy ? { applicationPolicy } : {})
+          })},
           ${now},'candidate'
         ) returning *,${pattern.evidence_count}::int evidence_count
       `;

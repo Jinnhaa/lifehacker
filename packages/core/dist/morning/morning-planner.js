@@ -1,5 +1,6 @@
 import { calculateRecurringActivityRisk } from "../rules/recurring-activity.js";
 import { getDaysUntilDeadline } from "../rules/deadline.js";
+import { applyApprovedPrinciples } from "../principle-application/principle-application.js";
 const MINUTE = 60_000;
 const minutesBetween = (interval) => Math.max(0, Math.floor((interval.end.getTime() - interval.start.getTime()) / MINUTE));
 const mergeIntervals = (intervals, horizon) => {
@@ -92,10 +93,7 @@ const buildCandidates = (observation, now, localWeekday) => {
                 risk: result.risk
             }];
     });
-    return [...tasks, ...routines].sort((a, b) => a.rank - b.rank
-        || b.importance - a.importance
-        || (a.deadline?.getTime() ?? Number.MAX_SAFE_INTEGER) - (b.deadline?.getTime() ?? Number.MAX_SAFE_INTEGER)
-        || a.title.localeCompare(b.title));
+    return [...tasks, ...routines];
 };
 const allocate = (intervals, candidate, maximumMinutes) => {
     const available = intervals.reduce((sum, value) => sum + minutesBetween(value), 0);
@@ -139,7 +137,8 @@ export const createMorningPlan = (input) => {
     const bufferMinutes = Math.min(input.observation.planningBufferMinutes, availableMinutes);
     let workBudget = Math.min(availableMinutes - bufferMinutes, input.maximumWorkMinutes ?? Number.MAX_SAFE_INTEGER);
     const items = [];
-    const candidates = buildCandidates(input.observation, input.now, input.localWeekday);
+    const principleResult = applyApprovedPrinciples(buildCandidates(input.observation, input.now, input.localWeekday), input.observation.principles ?? [], input.now, input.observation.timeZone);
+    const candidates = principleResult.candidates;
     for (const candidate of candidates) {
         if (workBudget <= 0)
             break;
@@ -168,6 +167,8 @@ export const createMorningPlan = (input) => {
         const source = input.observation.recurringActivities.find((value) => value.id === routine.id);
         highlights.push(`${routine.title}: 이번 주 ${Math.max(source.targetCount - source.completedCount, 0)}회 남음`);
     }
+    if (principleResult.explanation)
+        highlights.push(principleResult.explanation);
     return {
         items,
         fixedEvents,
@@ -179,6 +180,7 @@ export const createMorningPlan = (input) => {
             taskIds: input.observation.tasks.map((value) => value.id),
             recurringActivityIds: input.observation.recurringActivities.map((value) => value.id),
             strategicDirectiveIds: input.observation.strategicDirectives.map((value) => value.id),
+            usedPrincipleIds: principleResult.usedPrincipleIds,
             carryoverSourceDate: input.observation.carryoverContext?.sourceDate ?? null,
             carryoverTaskIds: input.observation.carryoverContext?.taskIds ?? [],
             workUntil: input.workUntil.toISOString(),

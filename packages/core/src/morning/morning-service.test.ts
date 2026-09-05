@@ -25,6 +25,7 @@ const observation: MorningObservation = {
 class FakeMorningRepository implements MorningRepository {
   runs = new Map<string, MorningWorkflowRun>();
   plans: MorningPlan[] = [];
+  snapshots: Readonly<Record<string, unknown>>[] = [];
   createCount = 0;
   eventCount = 0;
   observationLoads = 0;
@@ -65,6 +66,7 @@ class FakeMorningRepository implements MorningRepository {
       items: draft.items, fixedEvents: draft.fixedEvents, highlights: draft.highlights
     };
     this.plans.push(plan);
+    this.snapshots.push(draft.inputSnapshot);
     this.eventCount += 1;
     await this.updateCheckpoint(run, { ...run.checkpoint, planId: plan.id }, "awaiting_approval", "waiting_for_user");
     return plan;
@@ -119,6 +121,21 @@ describe("MorningWorkflowService", () => {
 
   it("creates a new immutable revision for a modification and isolates users", async () => {
     const repository = new FakeMorningRepository();
+    repository.loadObservation = async () => ({
+      ...observation,
+      planningBufferMinutes: 0,
+      tasks: [{ ...observation.tasks[0]!, officialDeadline: new Date("2026-09-06T14:59:59.000Z") }],
+      recurringActivities: [{
+        id: "routine", title: "일본어", targetCount: 2, completedCount: 0, expectedMinutes: 30,
+        minimumMinutes: 30, preferredDays: [5], importance: 4, occurrenceId: null
+      }],
+      principles: [{
+        id: "principle", statement: "마감이 가까운 일을 우선한다", origin: "pattern_observed",
+        decisionType: "important_replan", situationType: "deadline_risk_increased", choiceAction: "approve",
+        consistencyKind: "reason", consistencyValue: "deadline_priority",
+        applicationPolicy: "deadline_over_routine"
+      }]
+    });
     const decisionLearning = { recordMaterialDecision: vi.fn().mockResolvedValue("왜 바꾸고 싶어?") };
     const service = new MorningWorkflowService({ repository, clock: new FixedClock(now), decisionLearning });
     await service.handleMorningMessage(message("일어남"));
@@ -131,6 +148,8 @@ describe("MorningWorkflowService", () => {
     expect(repository.plans[0]).toBe(firstPlan);
     expect(repository.plans[0]?.items).toEqual(firstItems);
     expect(repository.plans[1]?.items.some((item) => item.title === "운영체제 과제")).toBe(false);
+    expect(repository.snapshots[0]?.usedPrincipleIds).toEqual(["principle"]);
+    expect(repository.snapshots[1]?.usedPrincipleIds).toEqual([]);
     expect(revised.reply).toContain("왜 바꾸고 싶어?");
     expect(decisionLearning.recordMaterialDecision).toHaveBeenCalledOnce();
 
