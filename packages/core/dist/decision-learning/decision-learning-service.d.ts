@@ -5,6 +5,7 @@ export declare const hasDecisionReasonSignal: (text: string) => boolean;
 export declare class DecisionLearningService implements DecisionLearningRecorder, DecisionLearningCollector {
     private readonly repository;
     private readonly clock;
+    private readonly patternLearning;
     constructor(dependencies: DecisionLearningDependencies);
     recordMaterialDecision(input: MaterialDecisionInput): Promise<string | null>;
     handleReasonMessage(message: DecisionReasonMessage): Promise<DecisionReasonResult>;

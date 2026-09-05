@@ -139,6 +139,12 @@ export class SupabaseDecisionLearningRepository implements DecisionLearningRepos
           returning id
         `;
         const learningCaseId = cases[0]!.id;
+        for (const event of evidence) {
+          await tx`
+            insert into public.learning_case_events(learning_case_id,domain_event_id,event_role)
+            values(${learningCaseId},${event.id},'outcome') on conflict do nothing
+          `;
+        }
         const dayClosed = evidence.find((event) => event.event_type === "day_closed") ?? evidence[0]!;
         await tx`
           insert into public.outcomes(user_id,learning_case_id,source_event_id,outcome_type,summary,payload,observed_at)

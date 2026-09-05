@@ -10,9 +10,11 @@ export const hasDecisionReasonSignal = (text) => extractExplicitDecisionReason(t
 export class DecisionLearningService {
     repository;
     clock;
+    patternLearning;
     constructor(dependencies) {
         this.repository = dependencies.repository;
         this.clock = dependencies.clock;
+        this.patternLearning = dependencies.patternLearning;
     }
     async recordMaterialDecision(input) {
         const reason = extractExplicitDecisionReason(input.userMessage);
@@ -28,8 +30,15 @@ export class DecisionLearningService {
             ? { handled: true, reply: "알려줘서 고마워. 다음 판단에 참고할게." }
             : { handled: false };
     }
-    collectDayCloseOutcomes(input) {
-        return this.repository.createLearningCasesForDay(input);
+    async collectDayCloseOutcomes(input) {
+        const created = await this.repository.createLearningCasesForDay(input);
+        try {
+            await this.patternLearning?.evaluatePatterns(input.userId);
+        }
+        catch {
+            // LearningCase collection remains successful; a later Day Close retry can evaluate patterns.
+        }
+        return created;
     }
 }
 //# sourceMappingURL=decision-learning-service.js.map

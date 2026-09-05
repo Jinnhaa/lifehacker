@@ -17,6 +17,8 @@ export * from "./morning/morning.js";
 export * from "./morning/morning-planner.js";
 export * from "./morning/morning-service.js";
 export * from "./morning/supabase-morning-repository.js";
+export * from "./pattern-learning/pattern-learning.js";
+export * from "./pattern-learning/supabase-pattern-learning-repository.js";
 export * from "./replan/replan.js";
 export * from "./replan/replan-impact.js";
 export * from "./replan/replan-planner.js";
