@@ -33,7 +33,8 @@ const addPattern = async (owner: UserId, action: string, evidenceCount: number):
     insert into public.patterns(
       id,user_id,pattern_type,condition,observed_behavior,confidence,evidence_count,evaluator_version,status,first_observed_at,last_observed_at
     ) values(${patternId},${owner},'decision_preference',${sql.json({
-      signature: randomUUID(), decisionType: "important_replan", situationType: "deadline_risk_increased", choiceAction: action
+      signature: randomUUID(), decisionType: "important_replan", situationType: "deadline_risk_increased", choiceAction: action,
+      consistencyKind: "reason", consistencyValue: "deadline_priority"
     })},'마감 위험이 있을 때 선택이 반복됨',0.85,${evidenceCount},'decision-pattern-v0.1','candidate',${now},${now})
   `;
   for (let index = 0; index < evidenceCount; index += 1) {
@@ -59,6 +60,11 @@ describe("Supabase Principle Approval", () => {
     await addPattern(userId, "reject", 3);
     const reply = await service.afterPatternEvaluation(userId);
     expect(reply).toContain("이런 선택이 3번 반복됐어");
+    const pending = await sql<{ policy: string }[]>`
+      select source_reference->>'applicationPolicy' policy from public.principles
+      where user_id=${userId} and confirmation_status='pending'
+    `;
+    expect(pending[0]?.policy).toBe("deadline_over_routine");
     expect(await service.afterPatternEvaluation(userId)).toBeNull();
   });
 

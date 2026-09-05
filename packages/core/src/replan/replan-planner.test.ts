@@ -83,4 +83,24 @@ describe("Dynamic replanning deterministic planner", () => {
     });
     expect(draft.items.every((item) => item.end <= new Date("2026-09-04T04:00:00.000Z"))).toBe(true);
   });
+
+  it("uses the same approved preference and requires approval if a protected routine falls out", () => {
+    const principled: MorningObservation = {
+      ...observation,
+      tasks: [{ ...first, officialDeadline: new Date("2026-09-06T14:59:59.000Z") }],
+      principles: [{
+        id: "principle", statement: "마감이 가까운 일을 우선한다", origin: "pattern_observed",
+        decisionType: "important_replan", situationType: "deadline_risk_increased", choiceAction: "approve",
+        consistencyKind: "reason", consistencyValue: "deadline_priority",
+        applicationPolicy: "deadline_over_routine"
+      }]
+    };
+    const draft = buildReplanDraft({ observation: principled, previous, now });
+    expect(draft.inputSnapshot.usedPrincipleIds).toEqual(["principle"]);
+    expect(draft.items.some((item) => item.taskId === first.id)).toBe(true);
+    expect(draft.items.some((item) => item.itemType === "routine")).toBe(false);
+    expect(classifyReplanImpact(previous, draft, principled, 5)).toMatchObject({
+      impact: "IMPORTANT_CHANGE", reasons: expect.arrayContaining(["protected_routine_removed"])
+    });
+  });
 });

@@ -57,4 +57,33 @@ describe("createMorningPlan", () => {
     });
     expect(plan.items).toEqual([]);
   });
+
+  it("traces an applied deadline preference without crossing fixed Calendar time", () => {
+    const plan = createMorningPlan({
+      observation: observation({
+        planningBufferMinutes: 0,
+        constraints: [{
+          id: "fixed", title: "수업", start: new Date("2026-09-04T00:30:00.000Z"),
+          end: new Date("2026-09-04T01:00:00.000Z"), blocksCapacity: true,
+          constraintType: "fixed_event", hardness: "hard", origin: "calendar"
+        }],
+        tasks: [task({ officialDeadline: new Date("2026-09-06T14:59:59.000Z"), estimatedMinutes: 60, importance: 3 })],
+        recurringActivities: [{
+          id: "routine", title: "일본어", targetCount: 2, completedCount: 0, expectedMinutes: 30,
+          minimumMinutes: 30, preferredDays: [5], importance: 4, occurrenceId: null
+        }],
+        principles: [{
+          id: "principle", statement: "마감이 가까운 일을 우선한다", origin: "pattern_observed",
+          decisionType: "important_replan", situationType: "deadline_risk_increased", choiceAction: "approve",
+          consistencyKind: "reason", consistencyValue: "deadline_priority",
+          applicationPolicy: "deadline_over_routine"
+        }]
+      }),
+      now: new Date("2026-09-04T00:00:00.000Z"), workUntil: new Date("2026-09-04T01:30:00.000Z"),
+      privateIntervals: [], localWeekday: 5
+    });
+    expect(plan.items[0]?.itemType).toBe("task");
+    expect(plan.inputSnapshot.usedPrincipleIds).toEqual(["principle"]);
+    expect(plan.items.every((item) => item.end <= new Date("2026-09-04T00:30:00.000Z") || item.start >= new Date("2026-09-04T01:00:00.000Z"))).toBe(true);
+  });
 });
