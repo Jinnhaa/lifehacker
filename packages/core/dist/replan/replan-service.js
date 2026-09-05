@@ -55,10 +55,12 @@ export class DynamicReplanningService {
     repository;
     observationReader;
     clock;
+    decisionLearning;
     constructor(dependencies) {
         this.repository = dependencies.repository;
         this.observationReader = dependencies.observationReader;
         this.clock = dependencies.clock;
+        this.decisionLearning = dependencies.decisionLearning;
     }
     async processLatestTrigger(userId, timeZone, receivedAt) {
         const trigger = await this.repository.findLatestPendingTrigger(userId);
@@ -67,7 +69,7 @@ export class DynamicReplanningService {
     async handleReplanMessage(message) {
         const text = message.text.trim();
         const planDate = localDate(message.receivedAt, message.timeZone);
-        if (text === "승인") {
+        if (text.startsWith("승인")) {
             const workflow = await this.repository.findPendingApproval(message.userId, planDate);
             if (!workflow) {
                 const completed = await this.repository.findCompletedApprovalByMessage(message.userId, planDate, message.messageId);
@@ -75,12 +77,25 @@ export class DynamicReplanningService {
             }
             const result = await this.observationReader.approve(asMorningWorkflow(workflow), this.clock.now(), message.messageId);
             const action = await this.repository.deriveCurrentAction(message.userId, planDate);
+            const baseReply = result.duplicate
+                ? "이미 새 계획을 승인했어."
+                : action ? `새 계획을 승인했어. 다음 할 일은 ${action.title}이야.` : "새 계획을 승인했어. 지금 시작할 계획 항목은 없어.";
+            const followUp = workflow.impact === "IMPORTANT_CHANGE"
+                ? await this.recordImportantDecision(message, workflow, "approve") : null;
             return {
                 handled: true,
-                reply: result.duplicate
-                    ? "이미 새 계획을 승인했어."
-                    : action ? `새 계획을 승인했어. 다음 할 일은 ${action.title}이야.` : "새 계획을 승인했어. 지금 시작할 계획 항목은 없어."
+                reply: followUp ? `${baseReply}\n\n${followUp}` : baseReply
             };
+        }
+        if (text === "거절" || text.startsWith("거절,") || text.startsWith("기존 계획 유지")) {
+            const workflow = await this.repository.findPendingApproval(message.userId, planDate);
+            if (!workflow)
+                return { handled: false };
+            const rejected = await this.repository.reject(workflow, this.clock.now(), message.messageId);
+            const baseReply = rejected.duplicate ? "이미 이 변경을 거절했어." : "알겠어. 기존 계획을 유지할게.";
+            const followUp = workflow.impact === "IMPORTANT_CHANGE"
+                ? await this.recordImportantDecision(message, workflow, "reject") : null;
+            return { handled: true, reply: followUp ? `${baseReply}\n\n${followUp}` : baseReply };
         }
         if (text !== "다시 짜줘" && text !== "오늘 일정 다시 짜줘")
             return { handled: false };
@@ -99,6 +114,31 @@ export class DynamicReplanningService {
         const trigger = await this.repository.createManualTrigger(message.userId, this.clock.now(), message.messageId);
         const reply = await this.processTrigger(trigger, message.timeZone, message.receivedAt);
         return { handled: true, reply: reply ?? "승인된 오늘 계획이 없어. 먼저 오늘 계획을 만들어줘." };
+    }
+    async recordImportantDecision(message, workflow, choice) {
+        if (!this.decisionLearning)
+            return null;
+        const revision = await this.repository.findByTrigger(message.userId, workflow.triggerId);
+        return this.decisionLearning.recordMaterialDecision({
+            userId: message.userId,
+            workflowRunId: workflow.id,
+            idempotencyKey: `important-replan:${workflow.id}:${choice}`,
+            decisionType: "important_replan",
+            situation: {
+                planDate: workflow.planDate,
+                planId: workflow.planId,
+                triggerId: workflow.triggerId,
+                impactReasons: workflow.impactReasons ?? []
+            },
+            amberRecommendation: {
+                action: "apply_replanned_schedule",
+                planId: workflow.planId,
+                itemIds: revision?.plan.items.map((item) => item.taskId ?? item.recurringActivityId ?? item.title) ?? []
+            },
+            userChoice: { action: choice },
+            userMessage: message.text,
+            occurredAt: this.clock.now()
+        });
     }
     async processTrigger(trigger, timeZone, receivedAt) {
         const prior = await this.repository.findByTrigger(trigger.userId, trigger.id);

@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { classifyBlockReason, formatRecovery } from "./focus-service.js";
+import { FixedClock } from "@amber/shared";
+import { describe, expect, it, vi } from "vitest";
+import { classifyBlockReason, FocusWorkflowService, formatRecovery } from "./focus-service.js";
 const context = {
     sessionId: "session", taskId: "task", planItemId: "item", taskTitle: "운영체제 과제",
     taskCompletionCriteria: "보고서 제출 가능 상태", estimatedMinutes: 60, nextAction: "개요 작성",
@@ -36,6 +37,32 @@ describe("Focus deterministic recovery", () => {
     });
     it("leaves ambiguous text unclassified", () => {
         expect(classifyBlockReason("그냥 그래")).toBeNull();
+    });
+});
+describe("Focus decision learning", () => {
+    it("records a decision only after the user confirms the switch guardrail", async () => {
+        const userId = "10000000-0000-4000-8000-000000000001";
+        const now = new Date("2026-09-04T03:00:00.000Z");
+        const workflow = {
+            id: "workflow", userId, status: "waiting_for_user",
+            currentStep: "awaiting_switch_confirmation",
+            checkpoint: { sessionId: "session", taskId: "task", planItemId: "item" },
+            checkpointVersion: 1, correlationId: "correlation"
+        };
+        const repository = {
+            findCurrentWorkflow: vi.fn().mockResolvedValue(workflow),
+            start: vi.fn(), complete: vi.fn(), requestBlockReason: vi.fn(), waitForBlockDetail: vi.fn(),
+            recordBlock: vi.fn(), resume: vi.fn(), requestSwitch: vi.fn(),
+            confirmSwitch: vi.fn().mockResolvedValue({ previousTaskTitle: "운영체제 과제", nextAction: null })
+        };
+        const decisionLearning = { recordMaterialDecision: vi.fn().mockResolvedValue("왜 바꾸고 싶어?") };
+        const service = new FocusWorkflowService({ repository, clock: new FixedClock(now), decisionLearning });
+        const response = await service.handleFocusMessage({
+            userId, timeZone: "Asia/Seoul", text: "다음 거 할래", messageId: "discord:switch", receivedAt: now
+        });
+        expect(repository.confirmSwitch).toHaveBeenCalledOnce();
+        expect(decisionLearning.recordMaterialDecision).toHaveBeenCalledOnce();
+        expect(response.reply).toContain("왜 바꾸고 싶어?");
     });
 });
 //# sourceMappingURL=focus-service.test.js.map

@@ -1,5 +1,5 @@
 import { FixedClock, type TaskId, type UserId } from "@amber/shared";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
   CurrentAction, MorningObservation, MorningPlan, MorningPlanDraft, MorningRepository,
   MorningStep, MorningWorkflowRun
@@ -119,20 +119,37 @@ describe("MorningWorkflowService", () => {
 
   it("creates a new immutable revision for a modification and isolates users", async () => {
     const repository = new FakeMorningRepository();
-    const service = new MorningWorkflowService({ repository, clock: new FixedClock(now) });
+    const decisionLearning = { recordMaterialDecision: vi.fn().mockResolvedValue("왜 바꾸고 싶어?") };
+    const service = new MorningWorkflowService({ repository, clock: new FixedClock(now), decisionLearning });
     await service.handleMorningMessage(message("일어남"));
     await service.handleMorningMessage(message("오후 6시까지", userId, "context"));
     const firstPlan = repository.plans[0]!;
     const firstItems = [...firstPlan.items];
 
-    await service.handleMorningMessage(message("수정: 운영체제 과제 제외", userId, "revision"));
+    const revised = await service.handleMorningMessage(message("수정: 운영체제 과제 제외", userId, "revision"));
     expect(repository.plans).toHaveLength(2);
     expect(repository.plans[0]).toBe(firstPlan);
     expect(repository.plans[0]?.items).toEqual(firstItems);
     expect(repository.plans[1]?.items.some((item) => item.title === "운영체제 과제")).toBe(false);
+    expect(revised.reply).toContain("왜 바꾸고 싶어?");
+    expect(decisionLearning.recordMaterialDecision).toHaveBeenCalledOnce();
 
     expect(await service.handleMorningMessage(message("승인", otherUserId))).toEqual({ handled: false });
     expect(repository.runs.has(`${otherUserId}:2026-09-04`)).toBe(false);
+  });
+
+  it("does not record a minor Morning adjustment", async () => {
+    const repository = new FakeMorningRepository();
+    repository.loadObservation = async () => ({
+      ...observation,
+      tasks: [{ ...observation.tasks[0]!, importance: 2, officialDeadline: null }]
+    });
+    const decisionLearning = { recordMaterialDecision: vi.fn() };
+    const service = new MorningWorkflowService({ repository, clock: new FixedClock(now), decisionLearning });
+    await service.handleMorningMessage(message("일어남"));
+    await service.handleMorningMessage(message("오후 6시까지", userId, "context-minor"));
+    await service.handleMorningMessage(message("수정: 운영체제 과제 제외", userId, "revision-minor"));
+    expect(decisionLearning.recordMaterialDecision).not.toHaveBeenCalled();
   });
 
   it("uses a known default work-until without asking it again", async () => {

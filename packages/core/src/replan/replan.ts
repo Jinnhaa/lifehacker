@@ -2,6 +2,7 @@ import type { Clock, UserId } from "@amber/shared";
 import type { DerivedCurrentAction } from "../execution/current-action.js";
 import type { MorningObservation, MorningPlan, MorningPlanDraft, MorningPlanItemDraft, MorningRepository } from "../morning/morning.js";
 import type { ReplanTriggerReason } from "../rules/replan.js";
+import type { DecisionLearningRecorder } from "../decision-learning/decision-learning.js";
 
 export type ReplanImpact = "SMALL_CHANGE" | "IMPORTANT_CHANGE";
 
@@ -50,6 +51,7 @@ export interface ReplanWorkflowRun {
   readonly planId: string;
   readonly triggerId: string;
   readonly impact: ReplanImpact;
+  readonly impactReasons?: readonly string[];
   readonly lastMessageId?: string;
 }
 
@@ -74,6 +76,7 @@ export interface ReplanRepository {
     decision: ReplanDecision,
     now: Date
   ): Promise<ReplanRevisionResult>;
+  reject(workflow: ReplanWorkflowRun, now: Date, messageId: string): Promise<{ readonly duplicate: boolean }>;
   deriveCurrentAction(userId: UserId, planDate: string): Promise<DerivedCurrentAction | null>;
 }
 
@@ -102,6 +105,7 @@ export interface ReplanServiceDependencies {
   readonly repository: ReplanRepository;
   readonly observationReader: Pick<MorningRepository, "loadObservation" | "approve">;
   readonly clock: Clock;
+  readonly decisionLearning?: DecisionLearningRecorder;
 }
 
 export interface BuildReplanDraftInput {

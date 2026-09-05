@@ -1,4 +1,5 @@
 import type { DayCloseMessage, DayCloseMessageHandler, DayCloseMessageResult, DayCloseObservation, DayCloseResult, DayCloseServiceDependencies, DayCloseWorkflowRun } from "./day-close.js";
+import { hasDecisionReasonSignal } from "../decision-learning/decision-learning-service.js";
 
 const triggers = new Set(["오늘 끝", "오늘은 끝", "잘게", "이제 잘게"]);
 const confirmations = new Set(["응", "그래", "확인", "마칠게", "여기까지 할게", ...triggers]);
@@ -78,20 +79,27 @@ export class DayCloseService implements DayCloseMessageHandler {
   private readonly repository: DayCloseServiceDependencies["repository"];
   private readonly clock: DayCloseServiceDependencies["clock"];
   private readonly wakeFollowUp: DayCloseServiceDependencies["wakeFollowUp"];
+  private readonly decisionLearning: DayCloseServiceDependencies["decisionLearning"];
 
   constructor(dependencies: DayCloseServiceDependencies) {
     this.repository = dependencies.repository;
     this.clock = dependencies.clock;
     this.wakeFollowUp = dependencies.wakeFollowUp;
+    this.decisionLearning = dependencies.decisionLearning;
   }
 
   async handleDayCloseMessage(message: DayCloseMessage): Promise<DayCloseMessageResult> {
     const text = message.text.trim();
+    if (this.decisionLearning && hasDecisionReasonSignal(text)) {
+      const reason = await this.decisionLearning.handleReasonMessage(message);
+      if (reason.handled) return reason;
+    }
     const date = localDate(message.receivedAt, message.timeZone);
     let run = await this.repository.findWorkflow(message.userId, date);
     if (!run && !triggers.has(text)) return { handled: false };
     run ??= await this.repository.getOrCreateWorkflow(message.userId, date, message.timeZone, this.clock.now());
     if (run.status === "completed" && run.checkpoint.result) {
+      await this.collectLearning(message, run.checkpoint.result);
       return triggers.has(text) || run.checkpoint.lastMessageId === message.messageId
         ? { handled: true, reply: await this.withWakeFollowUp(formatSummary(run.checkpoint.result), message) }
         : { handled: false };
@@ -117,7 +125,23 @@ export class DayCloseService implements DayCloseMessageHandler {
     const now = this.clock.now();
     const calculated = calculateDayCloseResult(observation, run.checkpoint.date, now);
     const completed = await this.repository.complete(run, calculated, message.messageId, now);
+    await this.collectLearning(message, completed.result);
     return { handled: true, reply: await this.withWakeFollowUp(formatSummary(completed.result), message) };
+  }
+
+  private async collectLearning(message: DayCloseMessage, result: DayCloseResult): Promise<void> {
+    if (!this.decisionLearning) return;
+    try {
+      await this.decisionLearning.collectDayCloseOutcomes({
+        userId: message.userId,
+        date: result.date,
+        timeZone: message.timeZone,
+        dayCloseResult: { ...result },
+        observedAt: this.clock.now()
+      });
+    } catch {
+      // Day Close remains complete; a same-day retry can collect the durable evidence.
+    }
   }
 
   private async withWakeFollowUp(summary: string, message: DayCloseMessage): Promise<string> {

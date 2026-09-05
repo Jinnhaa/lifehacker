@@ -1,5 +1,6 @@
 import type { Clock, UserId } from "@amber/shared";
 import type { DerivedCurrentAction } from "../execution/current-action.js";
+import type { DecisionLearningRecorder } from "../decision-learning/decision-learning.js";
 
 export const blockCategories = ["unclear", "hard", "avoidance", "perfectionism", "missing_material", "other"] as const;
 export type BlockCategory = (typeof blockCategories)[number];
@@ -107,4 +108,5 @@ export interface FocusServiceDependencies {
   readonly replanner?: {
     processLatestTrigger(userId: UserId, timeZone: string, receivedAt: Date): Promise<string | null>;
   };
+  readonly decisionLearning?: DecisionLearningRecorder;
 }

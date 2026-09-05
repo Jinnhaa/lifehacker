@@ -126,4 +126,28 @@ describe("DayCloseService", () => {
     expect(repository.complete).toHaveBeenCalledOnce();
     expect(response.reply).toContain("오늘은 여기까지 정리했어");
   });
+
+  it("collects learning cases only after Day Close produces an outcome", async () => {
+    const decisionLearning = {
+      collectDayCloseOutcomes: vi.fn().mockResolvedValue(1),
+      handleReasonMessage: vi.fn().mockResolvedValue({ handled: false })
+    };
+    const instance = new DayCloseService({ repository, clock: new FixedClock(now), decisionLearning });
+    await instance.handleDayCloseMessage(message("오늘 끝"));
+    expect(repository.complete).toHaveBeenCalledOnce();
+    expect(decisionLearning.collectDayCloseOutcomes).toHaveBeenCalledWith(expect.objectContaining({
+      userId, date: "2026-09-04", timeZone: "Asia/Seoul"
+    }));
+  });
+
+  it("stores a pending decision reason without reopening Day Close", async () => {
+    const decisionLearning = {
+      collectDayCloseOutcomes: vi.fn(),
+      handleReasonMessage: vi.fn().mockResolvedValue({ handled: true, reply: "이유를 저장했어." })
+    };
+    const instance = new DayCloseService({ repository, clock: new FixedClock(now), decisionLearning });
+    const response = await instance.handleDayCloseMessage(message("이유는 마감이 더 중요해서", "discord:reason"));
+    expect(response).toEqual({ handled: true, reply: "이유를 저장했어." });
+    expect(repository.findWorkflow).not.toHaveBeenCalled();
+  });
 });

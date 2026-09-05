@@ -51,6 +51,7 @@ describe("DynamicReplanningService", () => {
             findByTrigger: vi.fn().mockResolvedValue(null),
             loadPlanState: vi.fn().mockResolvedValue(state),
             createRevision: vi.fn().mockResolvedValue(result),
+            reject: vi.fn().mockResolvedValue({ duplicate: false }),
             deriveCurrentAction: vi.fn().mockResolvedValue(null)
         };
         approve.mockReset().mockResolvedValue({ plan, duplicate: false });
@@ -85,11 +86,37 @@ describe("DynamicReplanningService", () => {
     it("requires approval for an important revision and resumes it safely", async () => {
         const workflow = { ...result.workflow, status: "waiting_for_user", currentStep: "awaiting_approval", impact: "IMPORTANT_CHANGE" };
         vi.mocked(repository.findPendingApproval).mockResolvedValue(workflow);
-        const response = await service().handleReplanMessage({
+        const decisionLearning = { recordMaterialDecision: vi.fn().mockResolvedValue("왜 바꾸고 싶어?") };
+        const instance = new DynamicReplanningService({
+            repository,
+            observationReader: { loadObservation: vi.fn().mockResolvedValue(observation), approve },
+            clock: new FixedClock(now),
+            decisionLearning
+        });
+        const response = await instance.handleReplanMessage({
             userId, timeZone: "Asia/Seoul", text: "승인", messageId: "discord:approve", receivedAt: now
         });
         expect(response.reply).toContain("새 계획을 승인했어");
+        expect(response.reply).toContain("왜 바꾸고 싶어?");
         expect(approve).toHaveBeenCalledOnce();
+        expect(decisionLearning.recordMaterialDecision).toHaveBeenCalledOnce();
+    });
+    it("records an important rejection after preserving the existing plan", async () => {
+        const workflow = { ...result.workflow, status: "waiting_for_user", currentStep: "awaiting_approval", impact: "IMPORTANT_CHANGE" };
+        vi.mocked(repository.findPendingApproval).mockResolvedValue(workflow);
+        const decisionLearning = { recordMaterialDecision: vi.fn().mockResolvedValue(null) };
+        const instance = new DynamicReplanningService({
+            repository,
+            observationReader: { loadObservation: vi.fn().mockResolvedValue(observation), approve },
+            clock: new FixedClock(now),
+            decisionLearning
+        });
+        const response = await instance.handleReplanMessage({
+            userId, timeZone: "Asia/Seoul", text: "거절, 마감 과제가 더 중요해서", messageId: "discord:reject", receivedAt: now
+        });
+        expect(response.reply).toContain("기존 계획을 유지할게");
+        expect(repository.reject).toHaveBeenCalledOnce();
+        expect(decisionLearning.recordMaterialDecision).toHaveBeenCalledOnce();
     });
 });
 //# sourceMappingURL=replan-service.test.js.map

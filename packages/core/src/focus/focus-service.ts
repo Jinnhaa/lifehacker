@@ -82,11 +82,13 @@ export class FocusWorkflowService implements FocusMessageHandler {
   private readonly repository: FocusServiceDependencies["repository"];
   private readonly clock: FocusServiceDependencies["clock"];
   private readonly replanner: FocusServiceDependencies["replanner"];
+  private readonly decisionLearning: FocusServiceDependencies["decisionLearning"];
 
   constructor(dependencies: FocusServiceDependencies) {
     this.repository = dependencies.repository;
     this.clock = dependencies.clock;
     this.replanner = dependencies.replanner;
+    this.decisionLearning = dependencies.decisionLearning;
   }
 
   async handleFocusMessage(message: FocusMessage): Promise<FocusMessageResult> {
@@ -129,16 +131,35 @@ export class FocusWorkflowService implements FocusMessageHandler {
       const context = await this.repository.requestBlockReason(message.userId, this.clock.now(), message.messageId);
       return { handled: true, reply: context ? BLOCK_QUESTION : "막힘을 기록할 active Focus가 없어." };
     }
-    if (text === "다른 거 할래" || text === "다음 거 할래") {
+    if (text.startsWith("다른 거 할래") || text.startsWith("다음 거 할래")) {
       if (workflow?.currentStep === "awaiting_switch_confirmation") {
+        const context = workflow;
         const result = await this.repository.confirmSwitch(message.userId, planDate, this.clock.now(), message.messageId);
         if (!result) return { handled: true, reply: "전환할 active Focus가 없어." };
         const adjustment = await this.replanAdjustment(message);
+        const baseReply = adjustment
+          ? `${result.previousTaskTitle}의 진행 상태를 저장했어.\n\n${adjustment}`
+          : `${result.previousTaskTitle}의 진행 상태를 저장했어.\n\n${nextActionText(result.nextAction)}`;
+        const followUp = context && this.decisionLearning
+          ? await this.decisionLearning.recordMaterialDecision({
+              userId: message.userId,
+              workflowRunId: context.id,
+              idempotencyKey: `focus-switch:${context.id}`,
+              decisionType: "focus_task_switch",
+              situation: {
+                planDate,
+                taskIds: [context.checkpoint.taskId],
+                sessionIds: [context.checkpoint.sessionId]
+              },
+              amberRecommendation: { action: "continue_current_task", taskId: context.checkpoint.taskId },
+              userChoice: { action: "switch_task", taskId: context.checkpoint.taskId },
+              userMessage: message.text,
+              occurredAt: this.clock.now()
+            })
+          : null;
         return {
           handled: true,
-          reply: adjustment
-            ? `${result.previousTaskTitle}의 진행 상태를 저장했어.\n\n${adjustment}`
-            : `${result.previousTaskTitle}의 진행 상태를 저장했어.\n\n${nextActionText(result.nextAction)}`
+          reply: followUp ? `${baseReply}\n\n${followUp}` : baseReply
         };
       }
       const context = await this.repository.requestSwitch(message.userId, this.clock.now(), message.messageId);

@@ -2,11 +2,13 @@ import { Client, Events, GatewayIntentBits, Partials } from "discord.js";
 import postgres from "postgres";
 import {
   DayCloseService,
+  DecisionLearningService,
   FocusWorkflowService,
   DynamicReplanningService,
   MorningWorkflowService,
   SupabaseFocusRepository,
   SupabaseDayCloseRepository,
+  SupabaseDecisionLearningRepository,
   SupabaseMorningRepository,
   SupabaseReplanRepository,
   SupabaseTaskRepository,
@@ -38,17 +40,24 @@ const interpreter = new ProviderAIInterpreter(
 );
 const inputService = new InputService(inputRepository, interpreter, new TaskService(taskRepository, clock));
 const morningRepository = new SupabaseMorningRepository(sql);
+const decisionLearning = new DecisionLearningService({
+  repository: new SupabaseDecisionLearningRepository(sql),
+  clock
+});
 const replanService = new DynamicReplanningService({
   repository: new SupabaseReplanRepository(sql),
   observationReader: morningRepository,
-  clock
+  clock,
+  decisionLearning
 });
-const morningService = new MorningWorkflowService({ repository: morningRepository, clock });
-const focusService = new FocusWorkflowService({ repository: new SupabaseFocusRepository(sql), clock, replanner: replanService });
+const morningService = new MorningWorkflowService({ repository: morningRepository, clock, decisionLearning });
+const focusService = new FocusWorkflowService({
+  repository: new SupabaseFocusRepository(sql), clock, replanner: replanService, decisionLearning
+});
 const wakeRepository = new SupabaseWakeRepository(sql);
 const wakeService = new WakeWorkflowService({ repository: wakeRepository, clock });
 const dayCloseServiceWithWake = new DayCloseService({
-  repository: new SupabaseDayCloseRepository(sql), clock, wakeFollowUp: wakeService
+  repository: new SupabaseDayCloseRepository(sql), clock, wakeFollowUp: wakeService, decisionLearning
 });
 const adapter = new DiscordMessageAdapter(
   config.allowedDiscordUserId,

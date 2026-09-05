@@ -94,10 +94,12 @@ const formatApproved = (action: CurrentAction | null): string =>
 export class MorningWorkflowService implements MorningMessageHandler {
   private readonly repository: MorningRepository;
   private readonly clock: Clock;
+  private readonly decisionLearning: MorningServiceDependencies["decisionLearning"];
 
   constructor(dependencies: MorningServiceDependencies) {
     this.repository = dependencies.repository;
     this.clock = dependencies.clock;
+    this.decisionLearning = dependencies.decisionLearning;
   }
 
   async handleMorningMessage(message: MorningMessage): Promise<MorningMessageResult> {
@@ -165,6 +167,7 @@ export class MorningWorkflowService implements MorningMessageHandler {
 
   private async revise(message: MorningMessage, run: MorningWorkflowRun): Promise<MorningMessageResult> {
     const observation = await this.repository.loadObservation(message.userId, run.checkpoint.planDate, message.timeZone, this.clock.now());
+    const previousProposal = await this.repository.getProposal(run);
     const parsed = parseContext(message.text, run.checkpoint);
     const excludedTaskIds = observation.tasks
       .filter((task) => message.text.includes(task.title) && /(제외|빼)/.test(message.text))
@@ -175,7 +178,33 @@ export class MorningWorkflowService implements MorningMessageHandler {
       excludedTaskIds: [...new Set([...(run.checkpoint.excludedTaskIds ?? []), ...excludedTaskIds])]
     };
     const updated = await this.repository.updateCheckpoint(run, checkpoint, "observe", "running", this.clock.now(), message.messageId);
-    return this.prepareProposal(message, updated, observation);
+    const response = await this.prepareProposal(message, updated, observation);
+    const materialTasks = observation.tasks.filter((task) => excludedTaskIds.includes(task.id) && (
+      task.importance >= 4
+      || (task.officialDeadline !== null && localDate(task.officialDeadline, message.timeZone) <= run.checkpoint.planDate)
+      || (task.internalDeadline !== null && localDate(task.internalDeadline, message.timeZone) <= run.checkpoint.planDate)
+    ));
+    if (materialTasks.length === 0 || !this.decisionLearning) return response;
+    const followUp = await this.decisionLearning.recordMaterialDecision({
+      userId: message.userId,
+      workflowRunId: run.id,
+      idempotencyKey: `morning-override:${message.messageId}`,
+      decisionType: "morning_override",
+      situation: {
+        planDate: run.checkpoint.planDate,
+        planId: previousProposal?.id ?? run.checkpoint.planId ?? null,
+        taskIds: materialTasks.map((task) => task.id),
+        reasons: materialTasks.map((task) => task.importance >= 4 ? "important_task_removed" : "deadline_risk_accepted")
+      },
+      amberRecommendation: {
+        planId: previousProposal?.id ?? null,
+        includedTaskIds: previousProposal?.items.flatMap((item) => item.taskId ? [item.taskId] : []) ?? []
+      },
+      userChoice: { action: "exclude_tasks", taskIds: materialTasks.map((task) => task.id) },
+      userMessage: message.text,
+      occurredAt: this.clock.now()
+    });
+    return followUp && response.reply ? { ...response, reply: `${response.reply}\n\n${followUp}` } : response;
   }
 
   private async prepareProposal(

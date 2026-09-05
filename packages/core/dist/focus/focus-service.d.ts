@@ -5,6 +5,7 @@ export declare class FocusWorkflowService implements FocusMessageHandler {
     private readonly repository;
     private readonly clock;
     private readonly replanner;
+    private readonly decisionLearning;
     constructor(dependencies: FocusServiceDependencies);
     handleFocusMessage(message: FocusMessage): Promise<FocusMessageResult>;
     private handleBlockReason;

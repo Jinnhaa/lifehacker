@@ -54,6 +54,9 @@ const mapWorkflow = (row: WorkflowRow): ReplanWorkflowRun => {
     planId: String(checkpoint.planId),
     triggerId: String(checkpoint.triggerId),
     impact: String(checkpoint.impact) as ReplanWorkflowRun["impact"],
+    ...(Array.isArray(checkpoint.impactReasons)
+      ? { impactReasons: checkpoint.impactReasons.filter((value): value is string => typeof value === "string") }
+      : {}),
     ...(typeof checkpoint.lastMessageId === "string" ? { lastMessageId: checkpoint.lastMessageId } : {})
   };
 };
@@ -247,7 +250,8 @@ export class SupabaseReplanRepository implements ReplanRepository {
       await this.insertItems(tx, trigger.userId, previous.planDate, planId, draft);
       await tx`update public.daily_plans set status='superseded' where id=${previous.planId} and user_id=${trigger.userId} and status='approved'`;
       const checkpoint = {
-        planDate: previous.planDate, timeZone: previous.timeZone, planId, triggerId: trigger.id, impact: decision.impact
+        planDate: previous.planDate, timeZone: previous.timeZone, planId, triggerId: trigger.id,
+        impact: decision.impact, impactReasons: decision.reasons
       };
       await tx`
         update public.workflow_runs set checkpoint_state=${tx.json(checkpoint)},updated_at=${now},
@@ -288,6 +292,42 @@ export class SupabaseReplanRepository implements ReplanRepository {
 
   async deriveCurrentAction(userId: UserId, planDate: string) {
     return deriveCurrentAction(this.sql, userId, planDate);
+  }
+
+  async reject(workflow: ReplanWorkflowRun, now: Date, messageId: string): Promise<{ duplicate: boolean }> {
+    return this.sql.begin(async (tx) => {
+      const rows = await tx<WorkflowRow[]>`
+        select * from public.workflow_runs where id=${workflow.id} and user_id=${workflow.userId} for update
+      `;
+      const current = mapWorkflow(rows[0]!);
+      if (current.status === "completed") return { duplicate: true };
+      const plans = await tx<{ supersedes_plan_id: string | null }[]>`
+        select supersedes_plan_id from public.daily_plans where id=${current.planId} and user_id=${current.userId} for update
+      `;
+      const previousPlanId = plans[0]?.supersedes_plan_id ?? null;
+      await tx`update public.daily_plans set status='superseded' where id=${current.planId} and user_id=${current.userId} and status='pending_approval'`;
+      if (previousPlanId) {
+        await tx`update public.daily_plans set status='approved' where id=${previousPlanId} and user_id=${current.userId} and status='superseded'`;
+      }
+      await tx`
+        update public.approval_requests set status='rejected',responded_at=${now},responded_by='user',response_payload=${tx.json({ messageId })}
+        where user_id=${current.userId} and workflow_run_id=${current.id} and status='pending'
+      `;
+      await tx`
+        update public.workflow_runs set status='completed',current_step='completed',
+          checkpoint_state=checkpoint_state || ${tx.json({ lastMessageId: messageId, rejected: true })},
+          checkpoint_version=checkpoint_version+1,updated_at=${now},completed_at=${now}
+        where id=${current.id} and user_id=${current.userId}
+      `;
+      await tx`
+        insert into public.domain_events(
+          user_id,event_type,aggregate_type,aggregate_id,actor_type,occurred_at,correlation_id,workflow_run_id,idempotency_key,payload_version,payload
+        ) values(${current.userId},'plan_rejected','daily_plan',${current.planId},'user',${now},${current.correlationId},${current.id},
+          ${`replan-plan-rejected:${current.id}`},1,${tx.json({ restored_plan_id: previousPlanId })})
+        on conflict(user_id,idempotency_key) do nothing
+      `;
+      return { duplicate: false };
+    });
   }
 
   private async loadItems(sql: Sql, userId: UserId, planId: string): Promise<ReplanPlanItem[]> {

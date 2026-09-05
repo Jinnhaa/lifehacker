@@ -1,5 +1,6 @@
 import type { Clock, UserId } from "@amber/shared";
 import type { Task } from "../task/task.js";
+import type { DecisionLearningRecorder } from "../decision-learning/decision-learning.js";
 export type MorningStep = "observe" | "awaiting_context" | "awaiting_approval" | "completed";
 export interface MorningCheckpoint {
     readonly planDate: string;
@@ -120,5 +121,6 @@ export interface MorningMessageHandler {
 export interface MorningServiceDependencies {
     readonly repository: MorningRepository;
     readonly clock: Clock;
+    readonly decisionLearning?: DecisionLearningRecorder;
 }
 //# sourceMappingURL=morning.d.ts.map

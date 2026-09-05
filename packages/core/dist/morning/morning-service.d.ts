@@ -2,6 +2,7 @@ import type { MorningMessage, MorningMessageHandler, MorningMessageResult, Morni
 export declare class MorningWorkflowService implements MorningMessageHandler {
     private readonly repository;
     private readonly clock;
+    private readonly decisionLearning;
     constructor(dependencies: MorningServiceDependencies);
     handleMorningMessage(message: MorningMessage): Promise<MorningMessageResult>;
     private resumeReply;
