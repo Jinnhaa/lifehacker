@@ -116,6 +116,24 @@ describe("DiscordMessageAdapter", () => {
     expect(incoming.replies[0]?.content).toBe("오늘은 몇 시까지 할까?");
   });
 
+  it("routes Focus commands before InputService", async () => {
+    const { processor } = adapterWith();
+    const focusHandler = { handleFocusMessage: vi.fn(async () => ({ handled: true, reply: "집중을 시작할게." })) };
+    const adapter = new DiscordMessageAdapter(
+      allowedDiscordUserId,
+      { resolve: vi.fn(async () => ({ userId, timeZone: "Asia/Seoul" })) },
+      processor,
+      { getTaskById: vi.fn(async () => task) },
+      { handleMorningMessage: vi.fn(async () => ({ handled: false })) },
+      focusHandler
+    );
+    const incoming = message({ content: "시작" });
+
+    await expect(adapter.handle(incoming.value)).resolves.toEqual({ kind: "replied", outcome: "workflow" });
+    expect(focusHandler.handleFocusMessage).toHaveBeenCalledOnce();
+    expect(processor.processTextInput).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["another user", { author: { id: "223456789012345678", bot: false } }],
     ["bot message", { author: { id: allowedDiscordUserId, bot: true } }],

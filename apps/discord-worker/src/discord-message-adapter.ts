@@ -1,4 +1,4 @@
-import type { MorningMessageHandler, Task, TaskRepository } from "@amber/core";
+import type { FocusMessageHandler, MorningMessageHandler, Task, TaskRepository } from "@amber/core";
 import { DomainError, type TaskId, type UserId } from "@amber/shared";
 import type { InputProcessingResult, TextInputValue } from "@amber/input";
 import type { DiscordUserResolver } from "./discord-user-resolver.js";
@@ -41,7 +41,8 @@ export class DiscordMessageAdapter {
     private readonly userResolver: DiscordUserResolver,
     private readonly inputProcessor: TextInputProcessor,
     private readonly taskReader: Pick<TaskRepository, "getTaskById"> | TaskSummaryReader,
-    private readonly morningHandler?: MorningMessageHandler
+    private readonly morningHandler?: MorningMessageHandler,
+    private readonly focusHandler?: FocusMessageHandler
   ) {}
 
   async handle(message: DiscordInboundMessage): Promise<DiscordMessageHandlingResult> {
@@ -67,6 +68,17 @@ export class DiscordMessageAdapter {
           receivedAt: message.createdAt
         });
         if (morning.handled && morning.reply) return this.reply(message, morning.reply, "workflow");
+      }
+
+      if (this.focusHandler) {
+        const focus = await this.focusHandler.handleFocusMessage({
+          userId: identity.userId,
+          timeZone: identity.timeZone,
+          text: message.content,
+          messageId: `discord:${message.id}`,
+          receivedAt: message.createdAt
+        });
+        if (focus.handled && focus.reply) return this.reply(message, focus.reply, "workflow");
       }
 
       const result = await this.inputProcessor.processTextInput({
