@@ -217,6 +217,25 @@ describe("DiscordMessageAdapter", () => {
     expect(processor.processTextInput).not.toHaveBeenCalled();
   });
 
+  it("routes an outstanding rule approval after existing workflows and before InputService", async () => {
+    const { processor } = adapterWith();
+    const principleApprovalHandler = {
+      handlePrincipleApprovalMessage: vi.fn(async () => ({ handled: true, reply: "승인한 기준으로 저장했어." }))
+    };
+    const adapter = new DiscordMessageAdapter(
+      allowedDiscordUserId,
+      { resolve: vi.fn(async () => ({ userId, timeZone: "Asia/Seoul" })) },
+      processor,
+      { getTaskById: vi.fn(async () => task) },
+      undefined, undefined, undefined, undefined, undefined,
+      principleApprovalHandler
+    );
+    const incoming = message({ content: "승인" });
+    await expect(adapter.handle(incoming.value)).resolves.toEqual({ kind: "replied", outcome: "workflow" });
+    expect(principleApprovalHandler.handlePrincipleApprovalMessage).toHaveBeenCalledOnce();
+    expect(processor.processTextInput).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["another user", { author: { id: "223456789012345678", bot: false } }],
     ["bot message", { author: { id: allowedDiscordUserId, bot: true } }],

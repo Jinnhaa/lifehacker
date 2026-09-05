@@ -127,6 +127,21 @@ describe("DayCloseService", () => {
     expect(response.reply).toContain("오늘은 여기까지 정리했어");
   });
 
+  it("offers an eligible observed rule only after Day Close learning", async () => {
+    const decisionLearning = {
+      collectDayCloseOutcomes: vi.fn().mockResolvedValue(1),
+      handleReasonMessage: vi.fn().mockResolvedValue({ handled: false })
+    };
+    const principleFollowUp = { afterPatternEvaluation: vi.fn().mockResolvedValue("이런 선택이 3번 반복됐어.") };
+    const instance = new DayCloseService({
+      repository, clock: new FixedClock(now), decisionLearning, principleFollowUp
+    });
+    const response = await instance.handleDayCloseMessage(message("오늘 끝"));
+    expect(decisionLearning.collectDayCloseOutcomes).toHaveBeenCalledOnce();
+    expect(principleFollowUp.afterPatternEvaluation).toHaveBeenCalledWith(userId);
+    expect(response.reply).toContain("이런 선택이 3번 반복됐어");
+  });
+
   it("collects learning cases only after Day Close produces an outcome", async () => {
     const decisionLearning = {
       collectDayCloseOutcomes: vi.fn().mockResolvedValue(1),

@@ -1,5 +1,6 @@
 import type { Clock, UserId } from "@amber/shared";
 import type { DecisionLearningCollector } from "../decision-learning/decision-learning.js";
+import type { PrincipleProposalFollowUp } from "../principle-approval/principle-approval.js";
 
 export interface DayCloseRecurringStatus {
   readonly recurringActivityId: string;
@@ -108,4 +109,5 @@ export interface DayCloseServiceDependencies {
     afterDayClose(message: DayCloseMessage): Promise<string | null>;
   };
   readonly decisionLearning?: DecisionLearningCollector;
+  readonly principleFollowUp?: PrincipleProposalFollowUp;
 }

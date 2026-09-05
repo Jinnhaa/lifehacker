@@ -5,10 +5,11 @@ export declare class DayCloseService implements DayCloseMessageHandler {
     private readonly clock;
     private readonly wakeFollowUp;
     private readonly decisionLearning;
+    private readonly principleFollowUp;
     constructor(dependencies: DayCloseServiceDependencies);
     handleDayCloseMessage(message: DayCloseMessage): Promise<DayCloseMessageResult>;
     private finish;
     private collectLearning;
-    private withWakeFollowUp;
+    private withFollowUps;
 }
 //# sourceMappingURL=day-close-service.d.ts.map

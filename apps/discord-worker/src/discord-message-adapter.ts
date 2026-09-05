@@ -1,4 +1,4 @@
-import type { DayCloseMessageHandler, FocusMessageHandler, MorningMessageHandler, ReplanMessageHandler, Task, TaskRepository, WakeMessageHandler } from "@amber/core";
+import type { DayCloseMessageHandler, FocusMessageHandler, MorningMessageHandler, PrincipleApprovalMessageHandler, ReplanMessageHandler, Task, TaskRepository, WakeMessageHandler } from "@amber/core";
 import { DomainError, type TaskId, type UserId } from "@amber/shared";
 import type { InputProcessingResult, TextInputValue } from "@amber/input";
 import type { DiscordUserResolver } from "./discord-user-resolver.js";
@@ -45,7 +45,8 @@ export class DiscordMessageAdapter {
     private readonly focusHandler?: FocusMessageHandler,
     private readonly replanHandler?: ReplanMessageHandler,
     private readonly dayCloseHandler?: DayCloseMessageHandler,
-    private readonly wakeHandler?: WakeMessageHandler
+    private readonly wakeHandler?: WakeMessageHandler,
+    private readonly principleApprovalHandler?: PrincipleApprovalMessageHandler
   ) {}
 
   async handle(message: DiscordInboundMessage): Promise<DiscordMessageHandlingResult> {
@@ -115,6 +116,16 @@ export class DiscordMessageAdapter {
           receivedAt: message.createdAt
         });
         if (focus.handled && focus.reply) return this.reply(message, focus.reply, "workflow");
+      }
+
+      if (this.principleApprovalHandler) {
+        const principle = await this.principleApprovalHandler.handlePrincipleApprovalMessage({
+          userId: identity.userId,
+          text: message.content,
+          messageId: `discord:${message.id}`,
+          receivedAt: message.createdAt
+        });
+        if (principle.handled && principle.reply) return this.reply(message, principle.reply, "workflow");
       }
 
       const result = await this.inputProcessor.processTextInput({
