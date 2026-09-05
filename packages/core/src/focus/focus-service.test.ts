@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
-import { classifyBlockReason, formatRecovery } from "./focus-service.js";
-import type { BlockCategory, FocusContext, RecoveryResult } from "./focus.js";
+import { FixedClock, type UserId } from "@amber/shared";
+import { describe, expect, it, vi } from "vitest";
+import { classifyBlockReason, FocusWorkflowService, formatRecovery } from "./focus-service.js";
+import type { BlockCategory, FocusContext, FocusRepository, RecoveryResult } from "./focus.js";
 
 const context: FocusContext = {
   sessionId: "session", taskId: "task", planItemId: "item", taskTitle: "운영체제 과제",
@@ -41,5 +42,34 @@ describe("Focus deterministic recovery", () => {
 
   it("leaves ambiguous text unclassified", () => {
     expect(classifyBlockReason("그냥 그래")).toBeNull();
+  });
+});
+
+describe("Focus decision learning", () => {
+  it("records a decision only after the user confirms the switch guardrail", async () => {
+    const userId = "10000000-0000-4000-8000-000000000001" as UserId;
+    const now = new Date("2026-09-04T03:00:00.000Z");
+    const workflow = {
+      id: "workflow", userId, status: "waiting_for_user" as const,
+      currentStep: "awaiting_switch_confirmation" as const,
+      checkpoint: { sessionId: "session", taskId: "task", planItemId: "item" },
+      checkpointVersion: 1, correlationId: "correlation"
+    };
+    const repository: FocusRepository = {
+      findCurrentWorkflow: vi.fn().mockResolvedValue(workflow),
+      start: vi.fn(), complete: vi.fn(), requestBlockReason: vi.fn(), waitForBlockDetail: vi.fn(),
+      recordBlock: vi.fn(), resume: vi.fn(), requestSwitch: vi.fn(),
+      confirmSwitch: vi.fn().mockResolvedValue({ previousTaskTitle: "운영체제 과제", nextAction: null })
+    };
+    const decisionLearning = { recordMaterialDecision: vi.fn().mockResolvedValue("왜 바꾸고 싶어?") };
+    const service = new FocusWorkflowService({ repository, clock: new FixedClock(now), decisionLearning });
+
+    const response = await service.handleFocusMessage({
+      userId, timeZone: "Asia/Seoul", text: "다음 거 할래", messageId: "discord:switch", receivedAt: now
+    });
+
+    expect(repository.confirmSwitch).toHaveBeenCalledOnce();
+    expect(decisionLearning.recordMaterialDecision).toHaveBeenCalledOnce();
+    expect(response.reply).toContain("왜 바꾸고 싶어?");
   });
 });
