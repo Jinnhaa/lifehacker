@@ -134,6 +134,27 @@ describe("DiscordMessageAdapter", () => {
     expect(processor.processTextInput).not.toHaveBeenCalled();
   });
 
+  it("routes manual replanning before Morning Workflow and InputService", async () => {
+    const { processor } = adapterWith();
+    const morningHandler = { handleMorningMessage: vi.fn(async () => ({ handled: true, reply: "morning revision" })) };
+    const replanHandler = { handleReplanMessage: vi.fn(async () => ({ handled: true, reply: "일정 조금 조정했어." })) };
+    const adapter = new DiscordMessageAdapter(
+      allowedDiscordUserId,
+      { resolve: vi.fn(async () => ({ userId, timeZone: "Asia/Seoul" })) },
+      processor,
+      { getTaskById: vi.fn(async () => task) },
+      morningHandler,
+      undefined,
+      replanHandler
+    );
+    const incoming = message({ content: "오늘 일정 다시 짜줘" });
+
+    await expect(adapter.handle(incoming.value)).resolves.toEqual({ kind: "replied", outcome: "workflow" });
+    expect(replanHandler.handleReplanMessage).toHaveBeenCalledOnce();
+    expect(morningHandler.handleMorningMessage).not.toHaveBeenCalled();
+    expect(processor.processTextInput).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["another user", { author: { id: "223456789012345678", bot: false } }],
     ["bot message", { author: { id: allowedDiscordUserId, bot: true } }],

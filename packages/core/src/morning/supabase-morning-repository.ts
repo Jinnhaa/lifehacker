@@ -23,7 +23,7 @@ interface WorkflowRow {
 
 interface PlanRow { id: string; revision_no: number; status: string; input_snapshot: unknown }
 interface PlanItemRow {
-  item_type: "task" | "routine" | "buffer";
+  item_type: "task" | "routine" | "rest" | "buffer";
   task_id: string | null; recurring_activity_id: string | null;
   planned_start_at: Date; planned_end_at: Date; planned_minutes: number; title: string | null;
 }
@@ -48,6 +48,8 @@ const mapCheckpoint = (value: unknown): MorningCheckpoint => {
     ...(typeof record.revisionRequest === "string" ? { revisionRequest: record.revisionRequest } : {}),
     ...(typeof record.planId === "string" ? { planId: record.planId } : {}),
     ...(typeof record.lastMessageId === "string" ? { lastMessageId: record.lastMessageId } : {}),
+    ...(typeof record.triggerId === "string" ? { triggerId: record.triggerId } : {}),
+    ...(record.impact === "SMALL_CHANGE" || record.impact === "IMPORTANT_CHANGE" ? { impact: record.impact } : {}),
     ...(Array.isArray(record.excludedTaskIds) ? { excludedTaskIds: record.excludedTaskIds.filter((id): id is string => typeof id === "string") } : {})
   };
 };

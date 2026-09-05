@@ -20,6 +20,8 @@ const mapCheckpoint = (value) => {
         ...(typeof record.revisionRequest === "string" ? { revisionRequest: record.revisionRequest } : {}),
         ...(typeof record.planId === "string" ? { planId: record.planId } : {}),
         ...(typeof record.lastMessageId === "string" ? { lastMessageId: record.lastMessageId } : {}),
+        ...(typeof record.triggerId === "string" ? { triggerId: record.triggerId } : {}),
+        ...(record.impact === "SMALL_CHANGE" || record.impact === "IMPORTANT_CHANGE" ? { impact: record.impact } : {}),
         ...(Array.isArray(record.excludedTaskIds) ? { excludedTaskIds: record.excludedTaskIds.filter((id) => typeof id === "string") } : {})
     };
 };

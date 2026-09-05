@@ -81,10 +81,12 @@ export const formatRecovery = (result: RecoveryResult): string => {
 export class FocusWorkflowService implements FocusMessageHandler {
   private readonly repository: FocusServiceDependencies["repository"];
   private readonly clock: FocusServiceDependencies["clock"];
+  private readonly replanner: FocusServiceDependencies["replanner"];
 
   constructor(dependencies: FocusServiceDependencies) {
     this.repository = dependencies.repository;
     this.clock = dependencies.clock;
+    this.replanner = dependencies.replanner;
   }
 
   async handleFocusMessage(message: FocusMessage): Promise<FocusMessageResult> {
@@ -114,7 +116,14 @@ export class FocusWorkflowService implements FocusMessageHandler {
     }
     if (text === "완료" || text === "끝") {
       const result = await this.repository.complete(message.userId, planDate, this.clock.now(), message.messageId);
-      return { handled: true, reply: result ? formatCompletion(result) : "완료할 active Focus가 없어." };
+      if (!result) return { handled: true, reply: "완료할 active Focus가 없어." };
+      const adjustment = await this.replanAdjustment(message);
+      return {
+        handled: true,
+        reply: adjustment && result.kind === "task_completed"
+          ? `${result.taskTitle}을 완료했어.\n\n${adjustment}`
+          : formatCompletion(result)
+      };
     }
     if (text === "막혔어") {
       const context = await this.repository.requestBlockReason(message.userId, this.clock.now(), message.messageId);
@@ -123,7 +132,14 @@ export class FocusWorkflowService implements FocusMessageHandler {
     if (text === "다른 거 할래" || text === "다음 거 할래") {
       if (workflow?.currentStep === "awaiting_switch_confirmation") {
         const result = await this.repository.confirmSwitch(message.userId, planDate, this.clock.now(), message.messageId);
-        return { handled: true, reply: result ? `${result.previousTaskTitle}의 진행 상태를 저장했어.\n\n${nextActionText(result.nextAction)}` : "전환할 active Focus가 없어." };
+        if (!result) return { handled: true, reply: "전환할 active Focus가 없어." };
+        const adjustment = await this.replanAdjustment(message);
+        return {
+          handled: true,
+          reply: adjustment
+            ? `${result.previousTaskTitle}의 진행 상태를 저장했어.\n\n${adjustment}`
+            : `${result.previousTaskTitle}의 진행 상태를 저장했어.\n\n${nextActionText(result.nextAction)}`
+        };
       }
       const context = await this.repository.requestSwitch(message.userId, this.clock.now(), message.messageId);
       return { handled: true, reply: context ? SWITCH_GUARDRAIL : "전환할 active Focus가 없어." };
@@ -155,6 +171,17 @@ export class FocusWorkflowService implements FocusMessageHandler {
   private async finishDetailedBlock(message: FocusMessage, planDate: string, category: "missing_material" | "other"): Promise<FocusMessageResult> {
     if (message.text.trim().length === 0) return { handled: true, reply: "짧게 한 문장으로 알려줘." };
     const result = await this.repository.recordBlock(message.userId, planDate, category, message.text, this.clock.now(), message.messageId);
-    return { handled: true, reply: result ? formatRecovery(result) : "막힘을 기록할 active Focus가 없어." };
+    if (!result) return { handled: true, reply: "막힘을 기록할 active Focus가 없어." };
+    const adjustment = await this.replanAdjustment(message);
+    return { handled: true, reply: adjustment ? `${formatRecovery(result)}\n\n${adjustment}` : formatRecovery(result) };
+  }
+
+  private async replanAdjustment(message: FocusMessage): Promise<string | null> {
+    if (!this.replanner) return null;
+    try {
+      return await this.replanner.processLatestTrigger(message.userId, message.timeZone, message.receivedAt);
+    } catch {
+      return null;
+    }
   }
 }

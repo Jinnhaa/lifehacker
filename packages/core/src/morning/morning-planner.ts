@@ -69,6 +69,7 @@ const remainingSuitableDays = (activity: MorningRecurringActivity, localWeekday:
 const buildCandidates = (observation: MorningObservation, now: Date, localWeekday: number): Candidate[] => {
   const directiveOrders = observation.strategicDirectives.map((value) => value.priorityOrder);
   const tasks: Candidate[] = observation.tasks.flatMap((task) => {
+    if (task.status === "DONE" || task.status === "BLOCKED" || task.status === "WAITING_FOR_USER") return [];
     const minutes = Math.max((task.estimatedUserMinutes ?? task.estimatedMinutes ?? 0) - task.actualMinutes, 0);
     if (minutes === 0) return [];
     const deadlines = [task.officialDeadline, task.internalDeadline].filter((value): value is Date => value !== null);
@@ -150,6 +151,7 @@ export interface CreateMorningPlanInput {
   readonly workUntil: Date;
   readonly privateIntervals: readonly TimeInterval[];
   readonly localWeekday: number;
+  readonly maximumWorkMinutes?: number;
 }
 
 export const createMorningPlan = (input: CreateMorningPlanInput): MorningPlanDraft => {
@@ -161,7 +163,7 @@ export const createMorningPlan = (input: CreateMorningPlanInput): MorningPlanDra
     : [];
   const availableMinutes = intervals.reduce((sum, value) => sum + minutesBetween(value), 0);
   const bufferMinutes = Math.min(input.observation.planningBufferMinutes, availableMinutes);
-  let workBudget = availableMinutes - bufferMinutes;
+  let workBudget = Math.min(availableMinutes - bufferMinutes, input.maximumWorkMinutes ?? Number.MAX_SAFE_INTEGER);
   const items: MorningPlanItemDraft[] = [];
   const candidates = buildCandidates(input.observation, input.now, input.localWeekday);
   for (const candidate of candidates) {

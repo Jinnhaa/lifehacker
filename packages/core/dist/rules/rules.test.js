@@ -59,12 +59,14 @@ describe("replan trigger", () => {
         taskDurationOverrunMinutes: 10,
         durationOverrunThresholdMinutes: 10,
         importantDeadlineConflict: false,
-        activePlanItemUnavailable: false
+        activePlanItemUnavailable: false,
+        releasedCapacityMinutes: 0
     };
     it("does not trigger at the threshold", () => expect(shouldReplan(baseline)).toBe(false));
     it.each([
         { ...baseline, overCapacity: true },
         { ...baseline, taskDurationOverrunMinutes: 11 },
+        { ...baseline, releasedCapacityMinutes: 1 },
         { ...baseline, importantDeadlineConflict: true },
         { ...baseline, activePlanItemUnavailable: true }
     ])("triggers when any deterministic condition is true", (input) => expect(shouldReplan(input)).toBe(true));

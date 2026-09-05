@@ -104,4 +104,7 @@ export interface FocusMessageHandler {
 export interface FocusServiceDependencies {
   readonly repository: FocusRepository;
   readonly clock: Clock;
+  readonly replanner?: {
+    processLatestTrigger(userId: UserId, timeZone: string, receivedAt: Date): Promise<string | null>;
+  };
 }

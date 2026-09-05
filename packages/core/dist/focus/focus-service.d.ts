@@ -4,9 +4,11 @@ export declare const formatRecovery: (result: RecoveryResult) => string;
 export declare class FocusWorkflowService implements FocusMessageHandler {
     private readonly repository;
     private readonly clock;
+    private readonly replanner;
     constructor(dependencies: FocusServiceDependencies);
     handleFocusMessage(message: FocusMessage): Promise<FocusMessageResult>;
     private handleBlockReason;
     private finishDetailedBlock;
+    private replanAdjustment;
 }
 //# sourceMappingURL=focus-service.d.ts.map

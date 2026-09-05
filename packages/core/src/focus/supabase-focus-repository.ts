@@ -27,7 +27,7 @@ interface SessionRow {
 
 interface TaskRow {
   id: string; title: string; status: string; completion_criteria: string | null;
-  estimated_minutes: number | null; estimated_user_minutes: number | null; next_action: string | null;
+  estimated_minutes: number | null; estimated_user_minutes: number | null; actual_minutes: number; next_action: string | null;
 }
 
 interface StepRow {
@@ -140,7 +140,7 @@ export class SupabaseFocusRepository implements FocusRepository {
 
       const action = await deriveCurrentAction(tx, userId, planDate);
       if (!action || action.kind !== "task") return { context: null, action, duplicate: false };
-      const tasks = await tx<TaskRow[]>`select id,title,status,completion_criteria,estimated_minutes,estimated_user_minutes,next_action from public.tasks where id=${action.taskId} and user_id=${userId} for update`;
+      const tasks = await tx<TaskRow[]>`select id,title,status,completion_criteria,estimated_minutes,estimated_user_minutes,actual_minutes,next_action from public.tasks where id=${action.taskId} and user_id=${userId} for update`;
       const task = tasks[0];
       if (!task) return { context: null, action: null, duplicate: false };
       const steps = await tx<StepRow[]>`
@@ -210,7 +210,7 @@ export class SupabaseFocusRepository implements FocusRepository {
       `;
       const workflow = workflows[0] ? mapWorkflow(workflows[0]) : null;
       if (!workflow) throw new Error("Focus workflow missing");
-      const tasks = await tx<TaskRow[]>`select id,title,status,completion_criteria,estimated_minutes,estimated_user_minutes,next_action from public.tasks where id=${session.task_id} and user_id=${userId} for update`;
+      const tasks = await tx<TaskRow[]>`select id,title,status,completion_criteria,estimated_minutes,estimated_user_minutes,actual_minutes,next_action from public.tasks where id=${session.task_id} and user_id=${userId} for update`;
       const task = tasks[0];
       if (!task) throw new Error("Focused task missing");
       if (session.current_step_id) {
@@ -272,6 +272,22 @@ export class SupabaseFocusRepository implements FocusRepository {
         idempotencyKey: `focus-complete:${messageId}`,
         payload: { result: "task_completed", task_id: task.id, task_title: task.title, actual_minutes: minutes }
       });
+      const estimate = task.estimated_user_minutes ?? task.estimated_minutes;
+      if (estimate !== null) {
+        const delta = task.actual_minutes + minutes - estimate;
+        if (delta !== 0) {
+          await event(tx, {
+            userId, eventType: "replan_triggered", aggregateType: session.plan_item_id ? "plan_item" : "task",
+            aggregateId: session.plan_item_id ?? task.id, occurredAt: now, correlationId: workflow.correlationId,
+            workflowRunId: workflow.id, idempotencyKey: `focus-complete-replan:${messageId}`,
+            payload: {
+              reason: delta > 0 ? "task_overrun" : "task_completed_early",
+              delta_minutes: delta,
+              replan_executed: false
+            }
+          });
+        }
+      }
       return { kind: "task_completed", taskTitle: task.title, nextAction: await deriveCurrentAction(tx, userId, planDate) };
     });
   }
@@ -344,6 +360,12 @@ export class SupabaseFocusRepository implements FocusRepository {
             occurredAt: now, correlationId: workflow.correlationId, workflowRunId: workflow.id,
             idempotencyKey: `focus-task-blocked:${messageId}`,
             payload: { previous_status: previous, next_status: "BLOCKED", reason: detail, category, source: "discord", changed_at: now.toISOString() }
+          });
+          await event(tx, {
+            userId, eventType: "replan_triggered", aggregateType: session.plan_item_id ? "plan_item" : "task",
+            aggregateId: session.plan_item_id ?? session.task_id, occurredAt: now, correlationId: workflow.correlationId,
+            workflowRunId: workflow.id, idempotencyKey: `focus-blocked-replan:${messageId}`,
+            payload: { reason: "task_blocked", delta_minutes: 0, replan_executed: false }
           });
         }
         if (session.plan_item_id) await tx`update public.plan_items set status='blocked',updated_at=${now} where id=${session.plan_item_id} and user_id=${userId}`;
@@ -498,7 +520,7 @@ export class SupabaseFocusRepository implements FocusRepository {
     const session = sessions[0];
     if (!session) return null;
     const tasks = await sql<TaskRow[]>`
-      select id,title,status,completion_criteria,estimated_minutes,estimated_user_minutes,next_action
+      select id,title,status,completion_criteria,estimated_minutes,estimated_user_minutes,actual_minutes,next_action
       from public.tasks where id=${session.task_id} and user_id=${userId}
     `;
     const task = tasks[0];

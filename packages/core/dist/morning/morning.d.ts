@@ -11,6 +11,8 @@ export interface MorningCheckpoint {
     readonly excludedTaskIds?: readonly string[];
     readonly planId?: string;
     readonly lastMessageId?: string;
+    readonly triggerId?: string;
+    readonly impact?: "SMALL_CHANGE" | "IMPORTANT_CHANGE";
 }
 export interface MorningWorkflowRun {
     readonly id: string;
@@ -59,7 +61,7 @@ export interface MorningObservation {
     readonly strategicDirectives: readonly MorningStrategicDirective[];
 }
 export interface MorningPlanItemDraft extends TimeInterval {
-    readonly itemType: "task" | "routine" | "buffer";
+    readonly itemType: "task" | "routine" | "rest" | "buffer";
     readonly title: string;
     readonly plannedMinutes: number;
     readonly taskId?: string;
