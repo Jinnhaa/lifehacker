@@ -1,6 +1,7 @@
 import { Client, Events, GatewayIntentBits, Partials } from "discord.js";
 import postgres from "postgres";
 import {
+  ChiefAgentService,
   DayCloseService,
   DecisionLearningService,
   FocusWorkflowService,
@@ -16,6 +17,8 @@ import {
   SupabaseReplanRepository,
   SupabaseTaskRepository,
   SupabaseWakeRepository,
+  SupabaseChiefContextReader,
+  SupabaseChiefRunRecorder,
   TaskService,
   WakeWorkflowService
 } from "@amber/core";
@@ -68,6 +71,11 @@ const dayCloseServiceWithWake = new DayCloseService({
   repository: new SupabaseDayCloseRepository(sql), clock, wakeFollowUp: wakeService, decisionLearning,
   principleFollowUp: principleApproval
 });
+const chiefService = new ChiefAgentService({
+  contextReader: new SupabaseChiefContextReader(sql, morningRepository),
+  runRecorder: new SupabaseChiefRunRecorder(sql),
+  clock
+});
 const adapter = new DiscordMessageAdapter(
   config.allowedDiscordUserId,
   new SupabaseDiscordUserResolver(sql),
@@ -78,7 +86,8 @@ const adapter = new DiscordMessageAdapter(
   replanService,
   dayCloseServiceWithWake,
   wakeService,
-  principleApproval
+  principleApproval,
+  chiefService
 );
 const client = new Client({
   intents: [GatewayIntentBits.DirectMessages],

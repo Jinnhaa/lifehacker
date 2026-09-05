@@ -236,6 +236,25 @@ describe("DiscordMessageAdapter", () => {
     expect(processor.processTextInput).not.toHaveBeenCalled();
   });
 
+  it("routes an explicit Chief request after workflows and before CREATE_TASK processing", async () => {
+    const { processor } = adapterWith();
+    const morningHandler = { handleMorningMessage: vi.fn(async () => ({ handled: false })) };
+    const chiefHandler = { handleChiefMessage: vi.fn(async () => ({ handled: true, reply: "지금 할 일\n운영체제 과제" })) };
+    const adapter = new DiscordMessageAdapter(
+      allowedDiscordUserId,
+      { resolve: vi.fn(async () => ({ userId, timeZone: "Asia/Seoul" })) },
+      processor,
+      { getTaskById: vi.fn(async () => task) },
+      morningHandler, undefined, undefined, undefined, undefined, undefined,
+      chiefHandler
+    );
+    const incoming = message({ content: "지금 뭐 해야 해?" });
+    await expect(adapter.handle(incoming.value)).resolves.toEqual({ kind: "replied", outcome: "workflow" });
+    expect(morningHandler.handleMorningMessage).toHaveBeenCalledOnce();
+    expect(chiefHandler.handleChiefMessage).toHaveBeenCalledOnce();
+    expect(processor.processTextInput).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["another user", { author: { id: "223456789012345678", bot: false } }],
     ["bot message", { author: { id: allowedDiscordUserId, bot: true } }],
