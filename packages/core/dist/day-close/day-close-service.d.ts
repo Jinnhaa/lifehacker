@@ -3,8 +3,10 @@ export declare const calculateDayCloseResult: (observation: DayCloseObservation,
 export declare class DayCloseService implements DayCloseMessageHandler {
     private readonly repository;
     private readonly clock;
+    private readonly wakeFollowUp;
     constructor(dependencies: DayCloseServiceDependencies);
     handleDayCloseMessage(message: DayCloseMessage): Promise<DayCloseMessageResult>;
     private finish;
+    private withWakeFollowUp;
 }
 //# sourceMappingURL=day-close-service.d.ts.map

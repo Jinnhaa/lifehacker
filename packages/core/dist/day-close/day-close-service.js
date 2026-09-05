@@ -68,9 +68,11 @@ const formatSummary = (result) => {
 export class DayCloseService {
     repository;
     clock;
+    wakeFollowUp;
     constructor(dependencies) {
         this.repository = dependencies.repository;
         this.clock = dependencies.clock;
+        this.wakeFollowUp = dependencies.wakeFollowUp;
     }
     async handleDayCloseMessage(message) {
         const text = message.text.trim();
@@ -81,7 +83,7 @@ export class DayCloseService {
         run ??= await this.repository.getOrCreateWorkflow(message.userId, date, message.timeZone, this.clock.now());
         if (run.status === "completed" && run.checkpoint.result) {
             return triggers.has(text) || run.checkpoint.lastMessageId === message.messageId
-                ? { handled: true, reply: formatSummary(run.checkpoint.result) }
+                ? { handled: true, reply: await this.withWakeFollowUp(formatSummary(run.checkpoint.result), message) }
                 : { handled: false };
         }
         if (run.currentStep === "awaiting_focus_confirmation") {
@@ -108,7 +110,16 @@ export class DayCloseService {
         const now = this.clock.now();
         const calculated = calculateDayCloseResult(observation, run.checkpoint.date, now);
         const completed = await this.repository.complete(run, calculated, message.messageId, now);
-        return { handled: true, reply: formatSummary(completed.result) };
+        return { handled: true, reply: await this.withWakeFollowUp(formatSummary(completed.result), message) };
+    }
+    async withWakeFollowUp(summary, message) {
+        try {
+            const followUp = await this.wakeFollowUp?.afterDayClose(message);
+            return followUp ? `${summary}\n\n${followUp}` : summary;
+        }
+        catch {
+            return summary;
+        }
     }
 }
 //# sourceMappingURL=day-close-service.js.map

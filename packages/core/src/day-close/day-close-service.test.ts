@@ -109,4 +109,21 @@ describe("DayCloseService", () => {
     });
     await expect(service().handleDayCloseMessage(message("새 과제 기록", "discord:ordinary"))).resolves.toEqual({ handled: false });
   });
+
+  it("completes Day Close before adding a non-blocking Wake follow-up", async () => {
+    const wakeFollowUp = { afterDayClose: vi.fn().mockResolvedValue("내일 몇 시에 깨울까?") };
+    const instance = new DayCloseService({ repository, clock: new FixedClock(now), wakeFollowUp });
+    const response = await instance.handleDayCloseMessage(message("오늘 끝"));
+    expect(repository.complete).toHaveBeenCalledOnce();
+    expect(response.reply).toContain("오늘은 여기까지 정리했어");
+    expect(response.reply).toContain("내일 몇 시에 깨울까?");
+  });
+
+  it("keeps Day Close completed when the optional Wake follow-up fails", async () => {
+    const wakeFollowUp = { afterDayClose: vi.fn().mockRejectedValue(new Error("wake unavailable")) };
+    const instance = new DayCloseService({ repository, clock: new FixedClock(now), wakeFollowUp });
+    const response = await instance.handleDayCloseMessage(message("오늘 끝"));
+    expect(repository.complete).toHaveBeenCalledOnce();
+    expect(response.reply).toContain("오늘은 여기까지 정리했어");
+  });
 });

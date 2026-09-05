@@ -94,5 +94,8 @@ export interface DayCloseMessageHandler {
 export interface DayCloseServiceDependencies {
     readonly repository: DayCloseRepository;
     readonly clock: Clock;
+    readonly wakeFollowUp?: {
+        afterDayClose(message: DayCloseMessage): Promise<string | null>;
+    };
 }
 //# sourceMappingURL=day-close.d.ts.map
