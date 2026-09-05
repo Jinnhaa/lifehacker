@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { zonedDateTimeToUtc, type UserId } from "@amber/shared";
 import type { JSONValue, Sql } from "postgres";
 import type { Task, TaskExecutionMode, TaskStatus } from "../task/task.js";
+import { deriveCurrentAction } from "../execution/current-action.js";
 import type {
   CurrentAction,
   MorningCheckpoint,
@@ -350,23 +351,8 @@ export class SupabaseMorningRepository implements MorningRepository {
   }
 
   async deriveCurrentAction(userId: UserId, planDate: string): Promise<CurrentAction | null> {
-    const focus = await this.sql<{ title: string }[]>`
-      select t.title from public.focus_sessions f join public.tasks t on t.id=f.task_id and t.user_id=f.user_id
-      where f.user_id=${userId} and f.status='active' order by f.started_at desc limit 1
-    `;
-    if (focus[0]) return { title: focus[0].title, source: "focus_session" };
-    const items = await this.sql<{ title: string }[]>`
-      select coalesce(t.title,a.title) title from public.daily_plans p
-      join public.plan_items i on i.daily_plan_id=p.id and i.user_id=p.user_id
-      left join public.tasks t on t.id=i.task_id and t.user_id=i.user_id
-      left join public.activity_occurrences o on o.id=i.activity_occurrence_id and o.user_id=i.user_id
-      left join public.recurring_activities a on a.id=o.recurring_activity_id and a.user_id=o.user_id
-      where p.user_id=${userId} and p.plan_date=${planDate} and p.status='approved'
-        and i.item_type in ('task','routine') and i.status not in ('completed','skipped','cancelled')
-        and (t.id is null or t.status<>'DONE') and (o.id is null or o.status not in ('completed','skipped','cancelled'))
-      order by i.position limit 1
-    `;
-    return items[0] ? { title: items[0].title, source: "plan_item" } : null;
+    const action = await deriveCurrentAction(this.sql, userId, planDate);
+    return action ? { title: action.title, source: action.source } : null;
   }
 
   private async getPlan(sql: Sql, userId: UserId, planId: string | null): Promise<MorningPlan | null> {

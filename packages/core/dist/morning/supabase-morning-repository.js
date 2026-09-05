@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { zonedDateTimeToUtc } from "@amber/shared";
+import { deriveCurrentAction } from "../execution/current-action.js";
 const asRecord = (value) => value && typeof value === "object" && !Array.isArray(value)
     ? value : {};
 const mapCheckpoint = (value) => {
@@ -311,24 +312,8 @@ export class SupabaseMorningRepository {
         });
     }
     async deriveCurrentAction(userId, planDate) {
-        const focus = await this.sql `
-      select t.title from public.focus_sessions f join public.tasks t on t.id=f.task_id and t.user_id=f.user_id
-      where f.user_id=${userId} and f.status='active' order by f.started_at desc limit 1
-    `;
-        if (focus[0])
-            return { title: focus[0].title, source: "focus_session" };
-        const items = await this.sql `
-      select coalesce(t.title,a.title) title from public.daily_plans p
-      join public.plan_items i on i.daily_plan_id=p.id and i.user_id=p.user_id
-      left join public.tasks t on t.id=i.task_id and t.user_id=i.user_id
-      left join public.activity_occurrences o on o.id=i.activity_occurrence_id and o.user_id=i.user_id
-      left join public.recurring_activities a on a.id=o.recurring_activity_id and a.user_id=o.user_id
-      where p.user_id=${userId} and p.plan_date=${planDate} and p.status='approved'
-        and i.item_type in ('task','routine') and i.status not in ('completed','skipped','cancelled')
-        and (t.id is null or t.status<>'DONE') and (o.id is null or o.status not in ('completed','skipped','cancelled'))
-      order by i.position limit 1
-    `;
-        return items[0] ? { title: items[0].title, source: "plan_item" } : null;
+        const action = await deriveCurrentAction(this.sql, userId, planDate);
+        return action ? { title: action.title, source: action.source } : null;
     }
     async getPlan(sql, userId, planId) {
         if (!planId)
