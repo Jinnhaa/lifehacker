@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { UserId } from "@amber/shared";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { SupabaseChiefRunRecorder } from "../chief/supabase-chief-context-reader.js";
 import { SupabaseProjectPmRepository, SupabaseProjectPmRunRecorder } from "./supabase-project-pm-repository.js";
 
 const connectionString = process.env.TEST_DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
@@ -13,6 +14,7 @@ const otherProjectId = randomUUID();
 const foreignProjectId = randomUUID();
 const courseId = randomUUID();
 const scopeId = randomUUID();
+const globalScopeId = randomUUID();
 const otherScopeId = randomUUID();
 const foreignScopeId = randomUUID();
 const taskId = randomUUID();
@@ -23,6 +25,8 @@ const goalId = randomUUID();
 const planId = randomUUID();
 const templateId = randomUUID();
 const instanceId = randomUUID();
+const chiefTemplateId = randomUUID();
+const chiefInstanceId = randomUUID();
 const repository = new SupabaseProjectPmRepository(sql);
 
 beforeAll(async () => {
@@ -34,6 +38,7 @@ beforeAll(async () => {
   await sql`insert into public.profiles(id,timezone) values(${userId},'Asia/Seoul'),(${otherUserId},'Asia/Seoul')`;
   await sql`
     insert into public.scopes(id,user_id,kind,label) values
+      (${globalScopeId},${userId},'global','Global'),
       (${scopeId},${userId},'work_context','LogFolio'),
       (${otherScopeId},${userId},'work_context','NEXTiME'),
       (${foreignScopeId},${otherUserId},'work_context','Foreign')
@@ -75,11 +80,15 @@ beforeAll(async () => {
   `;
   await sql`
     insert into public.agent_templates(id,user_id,template_key,version,name,role,instructions,active)
-    values(${templateId},${userId},'project_pm','1','Project PM','project_pm','read only',true)
+    values
+      (${templateId},${userId},'project_pm','1','Project PM','project_pm','read only',true),
+      (${chiefTemplateId},${userId},'chief','1','Chief','chief','delegate only',true)
   `;
   await sql`
     insert into public.agent_instances(id,user_id,agent_template_id,template_version,name,home_scope_id,status)
-    values(${instanceId},${userId},${templateId},'1','LogFolio PM',${scopeId},'active')
+    values
+      (${instanceId},${userId},${templateId},'1','LogFolio PM',${scopeId},'active'),
+      (${chiefInstanceId},${userId},${chiefTemplateId},'1','Chief',${globalScopeId},'active')
   `;
 });
 
@@ -119,20 +128,42 @@ describe("SupabaseProjectPmRepository", () => {
       source: "discord",
       reply: "LogFolio 현황",
       nextTaskId: taskId,
+      correlationId: "chief-delegation:integration",
       startedAt: new Date("2026-09-06T03:00:00Z"),
       completedAt: new Date("2026-09-06T03:00:01Z")
     };
     await recorder.recordCompleted(input);
     await recorder.recordCompleted(input);
     await expect(recorder.findCompleted(userId, input.triggerId)).resolves.toBe(input.reply);
-    const rows = await sql<{ run_count: number; package_count: number; artifact_count: number; scope_matches: boolean }[]>`
+    await new SupabaseChiefRunRecorder(sql).recordDelegationCompleted({
+      userId,
+      triggerId: "discord:chief-trace",
+      source: "discord",
+      correlationId: input.correlationId,
+      report: {
+        project: { id: projectId, title: "LogFolio" },
+        status: { open: 1, done: 0, inProgress: 1, blocked: 0, overdue: 0, dueSoon: 0 },
+        nextAction: { taskId, title: "발표 수정", remainingMinutes: 45 },
+        blockers: [],
+        nearestDeadline: null,
+        warnings: []
+      },
+      reply: "LogFolio PM에게 확인했어.",
+      startedAt: input.startedAt,
+      completedAt: input.completedAt
+    });
+    const rows = await sql<{
+      run_count: number; package_count: number; artifact_count: number; scope_matches: boolean; correlated_runs: number;
+    }[]>`
       select
         (select count(*)::int from public.agent_runs where user_id=${userId} and agent_instance_id=${instanceId}) run_count,
         (select count(*)::int from public.context_packages where user_id=${userId} and source_refs->>'triggerId'=${input.triggerId}) package_count,
         (select count(*)::int from public.artifacts where user_id=${userId} and artifact_type='project_pm_response') artifact_count,
         exists(select 1 from public.context_packages where user_id=${userId} and scope_id=${scopeId}
-          and source_refs->>'triggerId'=${input.triggerId}) scope_matches
+          and source_refs->>'triggerId'=${input.triggerId}) scope_matches,
+        (select count(*)::int from public.context_packages where user_id=${userId}
+          and source_refs->>'correlationId'=${input.correlationId}) correlated_runs
     `;
-    expect(rows[0]).toEqual({ run_count: 1, package_count: 1, artifact_count: 1, scope_matches: true });
+    expect(rows[0]).toEqual({ run_count: 1, package_count: 1, artifact_count: 1, scope_matches: true, correlated_runs: 2 });
   });
 });

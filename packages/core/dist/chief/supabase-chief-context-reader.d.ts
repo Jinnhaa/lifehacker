@@ -13,5 +13,6 @@ export declare class SupabaseChiefRunRecorder implements ChiefRunRecorder {
     constructor(sql: Sql);
     findCompleted(userId: UserId, triggerId: string): Promise<ChiefRunRecord | null>;
     recordCompleted(input: Parameters<ChiefRunRecorder["recordCompleted"]>[0]): Promise<void>;
+    recordDelegationCompleted(input: Parameters<NonNullable<ChiefRunRecorder["recordDelegationCompleted"]>>[0]): Promise<void>;
 }
 //# sourceMappingURL=supabase-chief-context-reader.d.ts.map

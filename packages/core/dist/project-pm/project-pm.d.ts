@@ -67,6 +67,7 @@ export interface ProjectPmRunRecorder {
         readonly source: string;
         readonly reply: string;
         readonly nextTaskId: string | null;
+        readonly correlationId?: string;
         readonly startedAt: Date;
         readonly completedAt: Date;
     }): Promise<void>;
@@ -81,6 +82,33 @@ export interface ProjectPmMessage {
 export interface ProjectPmMessageResult {
     readonly handled: boolean;
     readonly reply?: string;
+    readonly report?: ProjectPmReport;
+}
+export interface ProjectPmReport {
+    readonly project: {
+        readonly id: string;
+        readonly title: string;
+    };
+    readonly status: {
+        readonly open: number;
+        readonly done: number;
+        readonly inProgress: number;
+        readonly blocked: number;
+        readonly overdue: number;
+        readonly dueSoon: number;
+    };
+    readonly nextAction: {
+        readonly taskId: string;
+        readonly title: string;
+        readonly remainingMinutes: number | null;
+    } | null;
+    readonly blockers: readonly string[];
+    readonly nearestDeadline: {
+        readonly taskId: string;
+        readonly title: string;
+        readonly at: Date;
+    } | null;
+    readonly warnings: readonly string[];
 }
 export interface ProjectPmReportRequest {
     readonly userId: UserId;
@@ -90,6 +118,7 @@ export interface ProjectPmReportRequest {
     readonly triggerId: string;
     readonly source: string;
     readonly receivedAt: Date;
+    readonly correlationId?: string;
 }
 export interface ProjectPmMessageHandler {
     handleProjectPmMessage(message: ProjectPmMessage): Promise<ProjectPmMessageResult>;

@@ -74,14 +74,15 @@ const dayCloseServiceWithWake = new DayCloseService({
   repository: new SupabaseDayCloseRepository(sql), clock, wakeFollowUp: wakeService, decisionLearning,
   principleFollowUp: principleApproval
 });
-const chiefService = new ChiefAgentService({
-  contextReader: new SupabaseChiefContextReader(sql, morningRepository),
-  runRecorder: new SupabaseChiefRunRecorder(sql),
-  clock
-});
 const projectPmService = new ProjectPmService({
   repository: new SupabaseProjectPmRepository(sql),
   runRecorder: new SupabaseProjectPmRunRecorder(sql),
+  clock
+});
+const chiefService = new ChiefAgentService({
+  contextReader: new SupabaseChiefContextReader(sql, morningRepository),
+  runRecorder: new SupabaseChiefRunRecorder(sql),
+  projectPm: projectPmService,
   clock
 });
 const adapter = new DiscordMessageAdapter(
@@ -95,8 +96,7 @@ const adapter = new DiscordMessageAdapter(
   dayCloseServiceWithWake,
   wakeService,
   principleApproval,
-  chiefService,
-  projectPmService
+  chiefService
 );
 const client = new Client({
   intents: [GatewayIntentBits.DirectMessages],
