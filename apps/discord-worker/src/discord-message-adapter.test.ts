@@ -255,23 +255,20 @@ describe("DiscordMessageAdapter", () => {
     expect(processor.processTextInput).not.toHaveBeenCalled();
   });
 
-  it("routes an explicit Project PM request without invoking Chief or CREATE_TASK", async () => {
+  it("routes a project request through Chief without direct PM mediation or CREATE_TASK", async () => {
     const { processor } = adapterWith();
-    const chiefHandler = { handleChiefMessage: vi.fn(async () => ({ handled: false })) };
-    const projectPmHandler = { handleProjectPmMessage: vi.fn(async () => ({ handled: true, reply: "LogFolio 현황\n\n남은 일 2" })) };
+    const chiefHandler = { handleChiefMessage: vi.fn(async () => ({ handled: true, reply: "LogFolio PM에게 확인했어.\n\n남은 일 2개" })) };
     const adapter = new DiscordMessageAdapter(
       allowedDiscordUserId,
       { resolve: vi.fn(async () => ({ userId, timeZone: "Asia/Seoul" })) },
       processor,
       { getTaskById: vi.fn(async () => task) },
       undefined, undefined, undefined, undefined, undefined, undefined,
-      chiefHandler,
-      projectPmHandler
+      chiefHandler
     );
     const incoming = message({ content: "LogFolio 현황 봐줘" });
     await expect(adapter.handle(incoming.value)).resolves.toEqual({ kind: "replied", outcome: "workflow" });
-    expect(projectPmHandler.handleProjectPmMessage).toHaveBeenCalledOnce();
-    expect(chiefHandler.handleChiefMessage).not.toHaveBeenCalled();
+    expect(chiefHandler.handleChiefMessage).toHaveBeenCalledOnce();
     expect(processor.processTextInput).not.toHaveBeenCalled();
   });
 

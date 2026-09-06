@@ -5,7 +5,7 @@ const REQUEST_PATTERNS = [
     { pattern: /^(.+?)\s+프로젝트\s+상태\s*알려줘[?.!]?$/, kind: "status" },
     { pattern: /^(.+?)에서\s+지금\s+뭐\s*해야\s*돼[?.!]?$/, kind: "next_action" }
 ];
-const parseRequest = (text) => {
+export const parseProjectPmRequest = (text) => {
     const normalized = text.trim().replace(/\s+/g, " ");
     for (const entry of REQUEST_PATTERNS) {
         const match = entry.pattern.exec(normalized);
@@ -77,6 +77,25 @@ const formatStatus = (context) => {
         && isDueWithin(deadline(task), 3, context.observedAt, context.timeZone));
     const nearest = [...open].filter((task) => deadline(task) !== null).sort(compareDeadline)[0] ?? null;
     const selected = nextTask(context);
+    const warnings = [
+        ...(overdue.length > 0 ? [`${overdue.length}개 일이 마감을 지났어.`] : []),
+        ...(dueSoon.length > 0 ? [`${dueSoon.length}개 일이 3일 안에 마감이야.`] : [])
+    ];
+    const report = {
+        project: { id: context.project.id, title: context.project.title },
+        status: {
+            open: open.length, done: done.length, inProgress: inProgress.length, blocked: blocked.length,
+            overdue: overdue.length, dueSoon: dueSoon.length
+        },
+        nextAction: selected ? {
+            taskId: selected.id,
+            title: selected.nextAction ?? selected.title,
+            remainingMinutes: estimateRemaining(selected)
+        } : null,
+        blockers: blocked.map((task) => task.title),
+        nearestDeadline: nearest ? { taskId: nearest.id, title: nearest.title, at: deadline(nearest) } : null,
+        warnings
+    };
     const lines = [
         `${context.project.title} 현황`, "",
         `진행 중 ${inProgress.length} · 남은 일 ${open.length} · 완료 ${done.length} · 막힘 ${blocked.length}`,
@@ -87,7 +106,7 @@ const formatStatus = (context) => {
     lines.push("", "지금 할 일", selected ? formatTask(selected) : "지금 바로 진행할 수 있는 일은 없어.");
     if (blocked.length > 0)
         lines.push("", "막힌 일", ...blocked.slice(0, 3).map((task) => task.title));
-    return { reply: lines.join("\n"), nextTaskId: selected?.id ?? null };
+    return { reply: lines.join("\n"), report };
 };
 export class ProjectPmService {
     dependencies;
@@ -95,7 +114,7 @@ export class ProjectPmService {
         this.dependencies = dependencies;
     }
     async handleProjectPmMessage(message) {
-        const request = parseRequest(message.text);
+        const request = parseProjectPmRequest(message.text);
         if (!request)
             return { handled: false };
         return this.getProjectReport({
@@ -109,7 +128,9 @@ export class ProjectPmService {
         });
     }
     async getProjectReport(request) {
-        const previous = await this.findPrevious(request.userId, request.triggerId);
+        const previous = request.source === "chief_delegation"
+            ? null
+            : await this.findPrevious(request.userId, request.triggerId);
         if (previous)
             return { handled: true, reply: previous };
         const projects = await this.dependencies.repository.listProjects(request.userId);
@@ -131,7 +152,8 @@ export class ProjectPmService {
                 triggerId: request.triggerId,
                 source: request.source,
                 reply: result.reply,
-                nextTaskId: result.nextTaskId,
+                nextTaskId: result.report.nextAction?.taskId ?? null,
+                ...(request.correlationId ? { correlationId: request.correlationId } : {}),
                 startedAt,
                 completedAt: this.dependencies.clock.now()
             });
@@ -139,7 +161,7 @@ export class ProjectPmService {
         catch {
             // Execution trace is best-effort and must not block a read-only project report.
         }
-        return { handled: true, reply: result.reply };
+        return { handled: true, reply: result.reply, report: result.report };
     }
     async findPrevious(userId, triggerId) {
         try {
@@ -150,5 +172,5 @@ export class ProjectPmService {
         }
     }
 }
-export const isProjectPmRequest = (text) => parseRequest(text) !== null;
+export const isProjectPmRequest = (text) => parseProjectPmRequest(text) !== null;
 //# sourceMappingURL=project-pm-service.js.map

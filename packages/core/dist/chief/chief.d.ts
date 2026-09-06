@@ -1,7 +1,8 @@
 import type { Clock, UserId } from "@amber/shared";
 import type { DerivedCurrentAction } from "../execution/current-action.js";
 import type { MorningObservation } from "../morning/morning.js";
-export type ChiefRequestKind = "status" | "next_action";
+import type { ProjectPmMessageResult, ProjectPmReport, ProjectPmReportRequest } from "../project-pm/project-pm.js";
+export type ChiefRequestKind = "status" | "next_action" | "project_delegation";
 export interface ChiefApprovedPlan {
     readonly id: string;
     readonly revisionNo: number;
@@ -42,6 +43,19 @@ export interface ChiefRunRecorder {
         readonly startedAt: Date;
         readonly completedAt: Date;
     }): Promise<void>;
+    recordDelegationCompleted?(input: {
+        readonly userId: UserId;
+        readonly triggerId: string;
+        readonly source: string;
+        readonly correlationId: string;
+        readonly report: ProjectPmReport;
+        readonly reply: string;
+        readonly startedAt: Date;
+        readonly completedAt: Date;
+    }): Promise<void>;
+}
+export interface ProjectPmDelegator {
+    getProjectReport(request: ProjectPmReportRequest): Promise<ProjectPmMessageResult>;
 }
 export interface ChiefMessage {
     readonly userId: UserId;
@@ -61,5 +75,6 @@ export interface ChiefServiceDependencies {
     readonly contextReader: ChiefContextReader;
     readonly clock: Clock;
     readonly runRecorder?: ChiefRunRecorder;
+    readonly projectPm?: ProjectPmDelegator;
 }
 //# sourceMappingURL=chief.d.ts.map

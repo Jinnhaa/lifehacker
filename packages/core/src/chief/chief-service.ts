@@ -1,6 +1,8 @@
 import { getDaysUntilDeadline, isDueWithin, isOverdue } from "../rules/deadline.js";
 import { calculateRecurringActivityRisk, type RecurringActivityRisk } from "../rules/recurring-activity.js";
 import { applyApprovedPrinciples, type PlanningPriorityCandidate } from "../principle-application/principle-application.js";
+import { parseProjectPmRequest } from "../project-pm/project-pm-service.js";
+import type { ProjectPmReport } from "../project-pm/project-pm.js";
 import type { Task } from "../task/task.js";
 import type {
   ChiefContext,
@@ -113,6 +115,28 @@ const candidates = (context: ChiefContext, risks: readonly RoutineRisk[]) => {
 const actionLine = (title: string, minutes: number | null): string =>
   minutes && minutes > 0 ? `${title} · 예상 ${minutes}분` : title;
 
+const projectDateLabel = (value: Date, timeZone: string): string => {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone, month: "numeric", day: "numeric" }).formatToParts(value);
+  const field = (type: string): string => parts.find((part) => part.type === type)?.value ?? "";
+  return `${field("month")}/${field("day")}`;
+};
+
+const formatDelegatedProject = (report: ProjectPmReport, timeZone: string): string => {
+  const lines = [
+    `${report.project.title} PM에게 확인했어.`, "",
+    `남은 일 ${report.status.open}개 · 진행 중 ${report.status.inProgress}개`
+  ];
+  if (report.nearestDeadline) {
+    lines.push(`가장 가까운 마감은 ${report.nearestDeadline.title} · ${projectDateLabel(report.nearestDeadline.at, timeZone)}이야.`);
+  }
+  lines.push("", report.nextAction
+    ? `지금은 ${report.nextAction.title}부터 하는 게 좋아.${report.nextAction.remainingMinutes !== null ? ` 예상 ${report.nextAction.remainingMinutes}분이야.` : ""}`
+    : "지금 바로 진행할 수 있는 일은 없어.");
+  if (report.blockers.length > 0) lines.push(`${report.blockers.slice(0, 3).join(", ")}은 아직 막혀 있어.`);
+  if (report.warnings.length > 0) lines.push("", "주의", ...report.warnings);
+  return lines.join("\n");
+};
+
 const currentActionSelection = (context: ChiefContext): { title: string; estimatedMinutes: number | null } | null => {
   const action = context.currentAction;
   if (!action) return null;
@@ -174,6 +198,8 @@ export class ChiefAgentService implements ChiefMessageHandler {
   constructor(private readonly dependencies: ChiefServiceDependencies) {}
 
   async handleChiefMessage(message: ChiefMessage): Promise<ChiefMessageResult> {
+    const projectRequest = parseProjectPmRequest(message.text);
+    if (projectRequest && this.dependencies.projectPm) return this.delegateProject(message, projectRequest);
     const kind = requestKind(message.text);
     if (!kind) return { handled: false };
     const previous = await this.findPrevious(message);
@@ -202,6 +228,47 @@ export class ChiefAgentService implements ChiefMessageHandler {
     return { handled: true, reply: result.reply };
   }
 
+  private async delegateProject(
+    message: ChiefMessage,
+    request: NonNullable<ReturnType<typeof parseProjectPmRequest>>
+  ): Promise<ChiefMessageResult> {
+    const previous = await this.findPrevious(message);
+    if (previous) return { handled: true, reply: previous.reply };
+    const startedAt = this.dependencies.clock.now();
+    const correlationId = `chief-delegation:${message.messageId}`;
+    try {
+      const result = await this.dependencies.projectPm!.getProjectReport({
+        userId: message.userId,
+        timeZone: message.timeZone,
+        projectName: request.projectName,
+        requestKind: request.kind,
+        triggerId: `${message.messageId}:project-pm`,
+        source: "chief_delegation",
+        receivedAt: message.receivedAt,
+        correlationId
+      });
+      if (!result.report) return { handled: true, reply: result.reply ?? "어느 프로젝트를 확인할지 정확한 이름을 알려줘." };
+      const reply = formatDelegatedProject(result.report, message.timeZone);
+      try {
+        await this.dependencies.runRecorder?.recordDelegationCompleted?.({
+          userId: message.userId,
+          triggerId: message.messageId,
+          source: "discord",
+          correlationId,
+          report: result.report,
+          reply,
+          startedAt,
+          completedAt: this.dependencies.clock.now()
+        });
+      } catch {
+        // Delegation trace is best-effort and must not block the read-only result.
+      }
+      return { handled: true, reply };
+    } catch {
+      return { handled: true, reply: "프로젝트 현황을 지금은 확인하지 못했어. 잠시 후 다시 물어봐줘." };
+    }
+  }
+
   private async findPrevious(message: ChiefMessage) {
     try {
       return await this.dependencies.runRecorder?.findCompleted(message.userId, message.messageId) ?? null;
@@ -211,4 +278,4 @@ export class ChiefAgentService implements ChiefMessageHandler {
   }
 }
 
-export const isChiefRequest = (text: string): boolean => requestKind(text) !== null;
+export const isChiefRequest = (text: string): boolean => requestKind(text) !== null || parseProjectPmRequest(text) !== null;

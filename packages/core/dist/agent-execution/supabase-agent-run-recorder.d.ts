@@ -12,6 +12,7 @@ export interface AgentExecutionTraceInput {
     readonly policyVersion: string;
     readonly startedAt: Date;
     readonly completedAt: Date;
+    readonly correlationId?: string;
     readonly requiredScopeId?: string;
 }
 export declare class SupabaseAgentRunRecorder {

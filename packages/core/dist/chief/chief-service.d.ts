@@ -3,6 +3,7 @@ export declare class ChiefAgentService implements ChiefMessageHandler {
     private readonly dependencies;
     constructor(dependencies: ChiefServiceDependencies);
     handleChiefMessage(message: ChiefMessage): Promise<ChiefMessageResult>;
+    private delegateProject;
     private findPrevious;
 }
 export declare const isChiefRequest: (text: string) => boolean;

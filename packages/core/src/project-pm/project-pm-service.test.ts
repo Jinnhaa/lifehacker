@@ -76,6 +76,12 @@ describe("ProjectPmService", () => {
     expect(result.reply).toContain("발표 스크립트 수정 · 예상 30분");
     expect(result.reply).toContain("TAM 수치 검증");
     expect(result.reply).not.toContain("NEXTiME 비밀 작업");
+    expect(result.report).toMatchObject({
+      project: { id: project().id, title: "LogFolio" },
+      status: { open: 2, done: 1, inProgress: 1, blocked: 1 },
+      nextAction: { title: "발표 스크립트 수정", remainingMinutes: 30 },
+      blockers: ["TAM 수치 검증"]
+    });
   });
 
   it("asks for an exact name when the project is ambiguous or absent", async () => {

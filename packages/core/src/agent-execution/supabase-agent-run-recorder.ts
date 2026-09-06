@@ -14,6 +14,7 @@ export interface AgentExecutionTraceInput {
   readonly policyVersion: string;
   readonly startedAt: Date;
   readonly completedAt: Date;
+  readonly correlationId?: string;
   readonly requiredScopeId?: string;
 }
 
@@ -60,7 +61,7 @@ export class SupabaseAgentRunRecorder {
       `;
       const instance = instances[0];
       if (!instance) return;
-      const correlationId = randomUUID();
+      const correlationId = input.correlationId ?? randomUUID();
       const packages = await tx<{ id: string }[]>`
         insert into public.context_packages(user_id,scope_id,payload,source_refs,policy_version)
         values(${input.userId},${instance.home_scope_id},${tx.json(input.contextPayload as unknown as JSONValue)},

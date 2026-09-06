@@ -87,5 +87,28 @@ export class SupabaseChiefRunRecorder {
             completedAt: input.completedAt
         });
     }
+    async recordDelegationCompleted(input) {
+        await this.recorder.recordCompleted({
+            userId: input.userId,
+            agentTemplateKey: "chief",
+            artifactType: "chief_response",
+            triggerId: input.triggerId,
+            source: input.source,
+            requestKind: "project_delegation",
+            contextPayload: {
+                delegatedAgent: "project_pm",
+                projectId: input.report.project.id,
+                status: input.report.status,
+                nextTaskId: input.report.nextAction?.taskId ?? null,
+                blockerCount: input.report.blockers.length,
+                nearestDeadlineTaskId: input.report.nearestDeadline?.taskId ?? null
+            },
+            reply: input.reply,
+            policyVersion: "chief-v0.1",
+            startedAt: input.startedAt,
+            completedAt: input.completedAt,
+            correlationId: input.correlationId
+        });
+    }
 }
 //# sourceMappingURL=supabase-chief-context-reader.js.map

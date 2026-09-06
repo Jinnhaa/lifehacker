@@ -1,4 +1,9 @@
-import type { ProjectPmMessage, ProjectPmMessageHandler, ProjectPmMessageResult, ProjectPmReportRequest, ProjectPmServiceDependencies } from "./project-pm.js";
+import type { ProjectPmMessage, ProjectPmMessageHandler, ProjectPmMessageResult, ProjectPmReportRequest, ProjectPmRequestKind, ProjectPmServiceDependencies } from "./project-pm.js";
+export interface ParsedProjectRequest {
+    readonly projectName: string;
+    readonly kind: ProjectPmRequestKind;
+}
+export declare const parseProjectPmRequest: (text: string) => ParsedProjectRequest | null;
 export declare class ProjectPmService implements ProjectPmMessageHandler {
     private readonly dependencies;
     constructor(dependencies: ProjectPmServiceDependencies);
