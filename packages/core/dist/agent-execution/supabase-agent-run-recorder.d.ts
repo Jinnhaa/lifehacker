@@ -1,8 +1,9 @@
 import type { UserId } from "@amber/shared";
 import type { Sql } from "postgres";
+import { type BuiltInAgentType } from "./agent-bootstrap.js";
 export interface AgentExecutionTraceInput {
     readonly userId: UserId;
-    readonly agentTemplateKey: string;
+    readonly agentTemplateKey: BuiltInAgentType;
     readonly artifactType: string;
     readonly triggerId: string;
     readonly source: string;
@@ -17,6 +18,7 @@ export interface AgentExecutionTraceInput {
 }
 export declare class SupabaseAgentRunRecorder {
     private readonly sql;
+    private readonly bootstrap;
     constructor(sql: Sql);
     findCompleted(userId: UserId, agentTemplateKey: string, artifactType: string, triggerId: string): Promise<string | null>;
     recordCompleted(input: AgentExecutionTraceInput): Promise<void>;

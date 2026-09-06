@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { SupabaseChiefRunRecorder } from "../chief/supabase-chief-context-reader.js";
+import { AgentBootstrapService } from "../agent-execution/agent-bootstrap.js";
 import { SupabaseProjectPmRepository, SupabaseProjectPmRunRecorder } from "./supabase-project-pm-repository.js";
 const connectionString = process.env.TEST_DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 const sql = postgres(connectionString, { max: 10 });
@@ -15,16 +16,13 @@ const scopeId = randomUUID();
 const globalScopeId = randomUUID();
 const otherScopeId = randomUUID();
 const foreignScopeId = randomUUID();
+const otherGlobalScopeId = randomUUID();
 const taskId = randomUUID();
 const otherTaskId = randomUUID();
 const foreignTaskId = randomUUID();
 const objectiveId = randomUUID();
 const goalId = randomUUID();
 const planId = randomUUID();
-const templateId = randomUUID();
-const instanceId = randomUUID();
-const chiefTemplateId = randomUUID();
-const chiefInstanceId = randomUUID();
 const repository = new SupabaseProjectPmRepository(sql);
 beforeAll(async () => {
     await sql `
@@ -38,6 +36,7 @@ beforeAll(async () => {
       (${globalScopeId},${userId},'global','Global'),
       (${scopeId},${userId},'work_context','LogFolio'),
       (${otherScopeId},${userId},'work_context','NEXTiME'),
+      (${otherGlobalScopeId},${otherUserId},'global','Global'),
       (${foreignScopeId},${otherUserId},'work_context','Foreign')
   `;
     await sql `
@@ -75,24 +74,37 @@ beforeAll(async () => {
     insert into public.domain_events(user_id,event_type,aggregate_type,aggregate_id,actor_type,occurred_at,correlation_id,payload_version,payload)
     values(${userId},'task_started','task',${taskId},'user','2026-09-06T01:00:00Z',${randomUUID()},1,'{}')
   `;
-    await sql `
-    insert into public.agent_templates(id,user_id,template_key,version,name,role,instructions,active)
-    values
-      (${templateId},${userId},'project_pm','1','Project PM','project_pm','read only',true),
-      (${chiefTemplateId},${userId},'chief','1','Chief','chief','delegate only',true)
-  `;
-    await sql `
-    insert into public.agent_instances(id,user_id,agent_template_id,template_version,name,home_scope_id,status)
-    values
-      (${instanceId},${userId},${templateId},'1','LogFolio PM',${scopeId},'active'),
-      (${chiefInstanceId},${userId},${chiefTemplateId},'1','Chief',${globalScopeId},'active')
-  `;
 });
 afterAll(async () => {
     await sql `delete from auth.users where id in (${userId},${otherUserId})`;
     await sql.end();
 });
 describe("SupabaseProjectPmRepository", () => {
+    it("bootstraps built-in instances idempotently by user, type, and scope", async () => {
+        const bootstrap = new AgentBootstrapService(sql);
+        const [chiefA, chiefRetry, pmA, pmConcurrent] = await Promise.all([
+            bootstrap.ensureAgentInstance(userId, "chief"),
+            bootstrap.ensureAgentInstance(userId, "chief"),
+            bootstrap.ensureAgentInstance(userId, "project_pm", scopeId),
+            bootstrap.ensureAgentInstance(userId, "project_pm", scopeId)
+        ]);
+        const otherChief = await bootstrap.ensureAgentInstance(otherUserId, "chief");
+        expect(chiefA?.id).toBe(chiefRetry?.id);
+        expect(pmA?.id).toBe(pmConcurrent?.id);
+        expect(chiefA?.id).not.toBe(pmA?.id);
+        expect(otherChief?.id).not.toBe(chiefA?.id);
+        const counts = await sql `
+      select i.user_id,t.template_key,count(*)::int count from public.agent_instances i
+      join public.agent_templates t on t.id=i.agent_template_id and t.user_id=i.user_id
+      where i.user_id in (${userId},${otherUserId}) and i.status='active'
+      group by i.user_id,t.template_key order by i.user_id,t.template_key
+    `;
+        expect(counts).toEqual(expect.arrayContaining([
+            { user_id: userId, template_key: "chief", count: 1 },
+            { user_id: userId, template_key: "project_pm", count: 1 },
+            { user_id: otherUserId, template_key: "chief", count: 1 }
+        ]));
+    });
     it("loads only project WorkContexts and keeps project facts isolated by user and project", async () => {
         const projects = await repository.listProjects(userId);
         expect(projects.map((item) => item.title)).toEqual(["LogFolio", "NEXTiME"]);
@@ -107,6 +119,7 @@ describe("SupabaseProjectPmRepository", () => {
         expect(context.tasks.some((item) => item.title.includes("다른"))).toBe(false);
     });
     it("records one scoped agent execution trace idempotently", async () => {
+        await sql `delete from public.agent_instances where user_id=${userId}`;
         const selected = (await repository.listProjects(userId)).find((item) => item.id === projectId);
         const context = await repository.loadProjectContext(userId, selected, "2026-09-06", "Asia/Seoul", new Date("2026-09-06T03:00:00Z"));
         const recorder = new SupabaseProjectPmRunRecorder(sql);
@@ -143,7 +156,9 @@ describe("SupabaseProjectPmRepository", () => {
         });
         const rows = await sql `
       select
-        (select count(*)::int from public.agent_runs where user_id=${userId} and agent_instance_id=${instanceId}) run_count,
+        (select count(*)::int from public.agent_runs r join public.agent_instances i on i.id=r.agent_instance_id
+          join public.agent_templates t on t.id=i.agent_template_id
+          where r.user_id=${userId} and t.template_key='project_pm') run_count,
         (select count(*)::int from public.context_packages where user_id=${userId} and source_refs->>'triggerId'=${input.triggerId}) package_count,
         (select count(*)::int from public.artifacts where user_id=${userId} and artifact_type='project_pm_response') artifact_count,
         exists(select 1 from public.context_packages where user_id=${userId} and scope_id=${scopeId}
@@ -152,6 +167,15 @@ describe("SupabaseProjectPmRepository", () => {
           and source_refs->>'correlationId'=${input.correlationId}) correlated_runs
     `;
         expect(rows[0]).toEqual({ run_count: 1, package_count: 1, artifact_count: 1, scope_matches: true, correlated_runs: 2 });
+        const bootstrapped = await sql `
+      select t.template_key,i.home_scope_id,count(*)::int count from public.agent_instances i
+      join public.agent_templates t on t.id=i.agent_template_id and t.user_id=i.user_id
+      where i.user_id=${userId} and i.status='active' group by t.template_key,i.home_scope_id order by t.template_key
+    `;
+        expect(bootstrapped).toEqual([
+            { template_key: "chief", home_scope_id: globalScopeId, count: 1 },
+            { template_key: "project_pm", home_scope_id: scopeId, count: 1 }
+        ]);
     });
 });
 //# sourceMappingURL=supabase-project-pm-repository.integration.test.js.map
