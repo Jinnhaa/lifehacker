@@ -7,12 +7,15 @@ import {
   FocusWorkflowService,
   DynamicReplanningService,
   MorningWorkflowService,
+  ProjectPmService,
   PrincipleApprovalService,
   SupabaseFocusRepository,
   SupabaseDayCloseRepository,
   SupabaseDecisionLearningRepository,
   SupabaseMorningRepository,
   SupabasePatternLearningRepository,
+  SupabaseProjectPmRepository,
+  SupabaseProjectPmRunRecorder,
   SupabasePrincipleApprovalRepository,
   SupabaseReplanRepository,
   SupabaseTaskRepository,
@@ -76,6 +79,11 @@ const chiefService = new ChiefAgentService({
   runRecorder: new SupabaseChiefRunRecorder(sql),
   clock
 });
+const projectPmService = new ProjectPmService({
+  repository: new SupabaseProjectPmRepository(sql),
+  runRecorder: new SupabaseProjectPmRunRecorder(sql),
+  clock
+});
 const adapter = new DiscordMessageAdapter(
   config.allowedDiscordUserId,
   new SupabaseDiscordUserResolver(sql),
@@ -87,7 +95,8 @@ const adapter = new DiscordMessageAdapter(
   dayCloseServiceWithWake,
   wakeService,
   principleApproval,
-  chiefService
+  chiefService,
+  projectPmService
 );
 const client = new Client({
   intents: [GatewayIntentBits.DirectMessages],
