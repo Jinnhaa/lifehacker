@@ -4,6 +4,7 @@ export * from "./rules/duration.js";
 export * from "./rules/recurring-activity.js";
 export * from "./rules/replan.js";
 export * from "./agent-execution/supabase-agent-run-recorder.js";
+export * from "./agent-execution/agent-bootstrap.js";
 export * from "./chief/chief.js";
 export * from "./chief/chief-service.js";
 export * from "./chief/supabase-chief-context-reader.js";

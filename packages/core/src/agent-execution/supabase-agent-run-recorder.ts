@@ -1,10 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { UserId } from "@amber/shared";
 import type { JSONValue, Sql } from "postgres";
+import { AgentBootstrapService, type BuiltInAgentType } from "./agent-bootstrap.js";
 
 export interface AgentExecutionTraceInput {
   readonly userId: UserId;
-  readonly agentTemplateKey: string;
+  readonly agentTemplateKey: BuiltInAgentType;
   readonly artifactType: string;
   readonly triggerId: string;
   readonly source: string;
@@ -21,7 +22,11 @@ export interface AgentExecutionTraceInput {
 const hash = (value: unknown): string => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
 export class SupabaseAgentRunRecorder {
-  constructor(private readonly sql: Sql) {}
+  private readonly bootstrap: AgentBootstrapService;
+
+  constructor(private readonly sql: Sql) {
+    this.bootstrap = new AgentBootstrapService(sql);
+  }
 
   async findCompleted(userId: UserId, agentTemplateKey: string, artifactType: string, triggerId: string): Promise<string | null> {
     const rows = await this.sql<{ content_text: string }[]>`
@@ -38,6 +43,12 @@ export class SupabaseAgentRunRecorder {
   }
 
   async recordCompleted(input: AgentExecutionTraceInput): Promise<void> {
+    const instance = await this.bootstrap.ensureAgentInstance(
+      input.userId,
+      input.agentTemplateKey,
+      input.requiredScopeId
+    );
+    if (!instance) return;
     await this.sql.begin(async (tx) => {
       await tx`select pg_advisory_xact_lock(hashtextextended(${`${input.userId}:${input.agentTemplateKey}:${input.triggerId}`},0))`;
       const existing = await tx<{ present: boolean }[]>`
@@ -51,27 +62,17 @@ export class SupabaseAgentRunRecorder {
         ) present
       `;
       if (existing[0]?.present) return;
-      const scopeId = input.requiredScopeId ?? null;
-      const instances = await tx<{ id: string; template_version: string; home_scope_id: string }[]>`
-        select i.id,i.template_version,i.home_scope_id from public.agent_instances i
-        join public.agent_templates t on t.id=i.agent_template_id and t.user_id=i.user_id
-        where i.user_id=${input.userId} and i.status='active' and t.template_key=${input.agentTemplateKey} and t.active=true
-          and (${scopeId}::uuid is null or i.home_scope_id=${scopeId}::uuid)
-        order by i.created_at desc limit 1
-      `;
-      const instance = instances[0];
-      if (!instance) return;
       const correlationId = input.correlationId ?? randomUUID();
       const packages = await tx<{ id: string }[]>`
         insert into public.context_packages(user_id,scope_id,payload,source_refs,policy_version)
-        values(${input.userId},${instance.home_scope_id},${tx.json(input.contextPayload as unknown as JSONValue)},
+        values(${input.userId},${instance.homeScopeId},${tx.json(input.contextPayload as unknown as JSONValue)},
           ${tx.json({ triggerId: input.triggerId, source: input.source, correlationId, contextHash: hash(input.contextPayload) })},
           ${input.policyVersion}) returning id
       `;
       const runs = await tx<{ id: string }[]>`
         insert into public.agent_runs(user_id,agent_instance_id,context_package_id,template_version,policy_version,status,
           max_turns,max_tool_calls,started_at,ended_at)
-        values(${input.userId},${instance.id},${packages[0]!.id},${instance.template_version},${input.policyVersion},'completed',1,0,
+        values(${input.userId},${instance.id},${packages[0]!.id},${instance.templateVersion},${input.policyVersion},'completed',1,0,
           ${input.startedAt},${input.completedAt}) returning id
       `;
       await tx`
