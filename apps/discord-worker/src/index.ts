@@ -22,6 +22,8 @@ import {
   SupabaseWakeRepository,
   SupabaseChiefContextReader,
   SupabaseChiefRunRecorder,
+  DefaultWorkstyleResolver,
+  SupabaseWorkstyleProfileReader,
   TaskService,
   WakeWorkflowService
 } from "@amber/core";
@@ -74,16 +76,19 @@ const dayCloseServiceWithWake = new DayCloseService({
   repository: new SupabaseDayCloseRepository(sql), clock, wakeFollowUp: wakeService, decisionLearning,
   principleFollowUp: principleApproval
 });
+const workstyleResolver = new DefaultWorkstyleResolver(new SupabaseWorkstyleProfileReader(sql));
 const projectPmService = new ProjectPmService({
   repository: new SupabaseProjectPmRepository(sql),
   runRecorder: new SupabaseProjectPmRunRecorder(sql),
-  clock
+  clock,
+  workstyleResolver
 });
 const chiefService = new ChiefAgentService({
   contextReader: new SupabaseChiefContextReader(sql, morningRepository),
   runRecorder: new SupabaseChiefRunRecorder(sql),
   projectPm: projectPmService,
-  clock
+  clock,
+  workstyleResolver
 });
 const adapter = new DiscordMessageAdapter(
   config.allowedDiscordUserId,

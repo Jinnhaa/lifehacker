@@ -47,12 +47,12 @@ const message = (text, requestedUserId = userId) => ({
     messageId: "discord:pm-1",
     receivedAt: now
 });
-const serviceWith = (projects, loaded = context()) => {
+const serviceWith = (projects, loaded = context(), workstyleResolver) => {
     const repository = {
         listProjects: vi.fn(async () => projects),
         loadProjectContext: vi.fn(async () => loaded)
     };
-    return { service: new ProjectPmService({ repository, clock: new FixedClock(now) }), repository };
+    return { service: new ProjectPmService({ repository, clock: new FixedClock(now), ...(workstyleResolver ? { workstyleResolver } : {}) }), repository };
 };
 describe("ProjectPmService", () => {
     it.each(["LogFolio 현황 봐줘", "NEXTiME 뭐 남았어?", "LogFolio 프로젝트 상태 알려줘", "LogFolio에서 지금 뭐 해야 돼?"])("recognizes the project request %s", (text) => expect(isProjectPmRequest(text)).toBe(true));
@@ -70,6 +70,15 @@ describe("ProjectPmService", () => {
             nextAction: { title: "발표 스크립트 수정", remainingMinutes: 30 },
             blockers: ["TAM 수치 검증"]
         });
+    });
+    it("applies Project PM Workstyle while preserving report facts", async () => {
+        const resolver = { resolve: vi.fn(async () => ({
+                agentType: "project_pm", instructions: ["이유 제시"], directives: { include_reasoning: true },
+                profileRevisions: [{ id: "pm-1", revision: 1, scopeType: "agent" }], currentInstruction: null
+            })) };
+        const result = await serviceWith([project()], context(), resolver).service.handleProjectPmMessage(message("LogFolio 현황 봐줘"));
+        expect(result.reply).toContain("근거\n진행 중인 일, 승인된 계획, 마감 순서로 다음 행동을 정했어.");
+        expect(result.report?.nextAction).toMatchObject({ title: "발표 스크립트 수정", remainingMinutes: 30 });
     });
     it("asks for an exact name when the project is ambiguous or absent", async () => {
         const similar = [project(), project({ id: "project-2", title: "LogFolio Mobile" })];

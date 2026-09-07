@@ -1,5 +1,6 @@
 import { isDueWithin, isOverdue } from "../rules/deadline.js";
 import type { Task } from "../task/task.js";
+import { DefaultWorkstyleResolver, type ResolvedWorkstyle } from "../workstyle/workstyle.js";
 import type {
   ProjectPmContext,
   ProjectPmMessage,
@@ -90,7 +91,13 @@ const formatTask = (task: Task): string => {
   return minutes !== null ? `${task.nextAction ?? task.title} · 예상 ${minutes}분` : task.nextAction ?? task.title;
 };
 
-const formatStatus = (context: ProjectPmContext): { reply: string; report: ProjectPmReport } => {
+const includesReasoning = (workstyle: ResolvedWorkstyle): boolean => {
+  if (workstyle.currentInstruction && /(근거|이유).*(생략|빼|없이)/.test(workstyle.currentInstruction)) return false;
+  if (workstyle.currentInstruction && /(근거|이유).*(포함|설명|알려)/.test(workstyle.currentInstruction)) return true;
+  return workstyle.directives.include_reasoning === true;
+};
+
+const formatStatus = (context: ProjectPmContext, workstyle: ResolvedWorkstyle): { reply: string; report: ProjectPmReport } => {
   const open = context.tasks.filter((task) => task.status !== "DONE");
   const done = context.tasks.filter((task) => task.status === "DONE");
   const inProgress = context.tasks.filter((task) => task.status === "IN_PROGRESS");
@@ -127,6 +134,7 @@ const formatStatus = (context: ProjectPmContext): { reply: string; report: Proje
   if (nearest) lines.push(`가장 가까운 마감: ${nearest.title} · ${dateLabel(deadline(nearest)!, context.timeZone)}`);
   lines.push("", "지금 할 일", selected ? formatTask(selected) : "지금 바로 진행할 수 있는 일은 없어.");
   if (blocked.length > 0) lines.push("", "막힌 일", ...blocked.slice(0, 3).map((task) => task.title));
+  if (includesReasoning(workstyle) && selected) lines.push("", "근거", "진행 중인 일, 승인된 계획, 마감 순서로 다음 행동을 정했어.");
   return { reply: lines.join("\n"), report };
 };
 
@@ -143,7 +151,8 @@ export class ProjectPmService implements ProjectPmMessageHandler {
       requestKind: request.kind,
       triggerId: message.messageId,
       source: "discord",
-      receivedAt: message.receivedAt
+      receivedAt: message.receivedAt,
+      ...(message.currentInstruction ? { currentInstruction: message.currentInstruction } : {})
     });
   }
 
@@ -158,13 +167,16 @@ export class ProjectPmService implements ProjectPmMessageHandler {
     if (matches.length > 1) return { handled: true, reply: "이름이 비슷한 프로젝트가 여러 개야. 정확한 이름을 알려줘." };
 
     const startedAt = this.dependencies.clock.now();
+    const workstyle = await (this.dependencies.workstyleResolver ?? new DefaultWorkstyleResolver()).resolve({
+      userId: request.userId, agentType: "project_pm", ...(request.currentInstruction ? { currentInstruction: request.currentInstruction } : {})
+    });
     const context = await this.dependencies.repository.loadProjectContext(
       request.userId, matches[0]!, localDate(request.receivedAt, request.timeZone), request.timeZone, startedAt
     );
     if (context.userId !== request.userId || context.project.userId !== request.userId) {
       throw new Error("Project PM context owner mismatch");
     }
-    const result = formatStatus(context);
+    const result = formatStatus(context, workstyle);
     try {
       await this.dependencies.runRecorder?.recordCompleted({
         context,
@@ -175,7 +187,8 @@ export class ProjectPmService implements ProjectPmMessageHandler {
         nextTaskId: result.report.nextAction?.taskId ?? null,
         ...(request.correlationId ? { correlationId: request.correlationId } : {}),
         startedAt,
-        completedAt: this.dependencies.clock.now()
+        completedAt: this.dependencies.clock.now(),
+        workstyle
       });
     } catch {
       // Execution trace is best-effort and must not block a read-only project report.

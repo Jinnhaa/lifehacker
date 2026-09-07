@@ -2,6 +2,7 @@ import type { Clock, UserId } from "@amber/shared";
 import type { DerivedCurrentAction } from "../execution/current-action.js";
 import type { MorningObservation } from "../morning/morning.js";
 import type { ProjectPmMessageResult, ProjectPmReport, ProjectPmReportRequest } from "../project-pm/project-pm.js";
+import type { ResolvedWorkstyle, WorkstyleResolver } from "../workstyle/workstyle.js";
 
 export type ChiefRequestKind = "status" | "next_action" | "project_delegation";
 
@@ -47,6 +48,7 @@ export interface ChiefRunRecorder {
     readonly source: string;
     readonly reply: string;
     readonly usedPrincipleIds: readonly string[];
+    readonly workstyle: ResolvedWorkstyle;
     readonly startedAt: Date;
     readonly completedAt: Date;
   }): Promise<void>;
@@ -59,6 +61,7 @@ export interface ChiefRunRecorder {
     readonly reply: string;
     readonly startedAt: Date;
     readonly completedAt: Date;
+    readonly workstyle?: ResolvedWorkstyle;
   }): Promise<void>;
 }
 
@@ -72,6 +75,7 @@ export interface ChiefMessage {
   readonly text: string;
   readonly messageId: string;
   readonly receivedAt: Date;
+  readonly currentInstruction?: string;
 }
 
 export interface ChiefMessageResult {
@@ -88,4 +92,5 @@ export interface ChiefServiceDependencies {
   readonly clock: Clock;
   readonly runRecorder?: ChiefRunRecorder;
   readonly projectPm?: ProjectPmDelegator;
+  readonly workstyleResolver?: WorkstyleResolver;
 }

@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(23);
+select plan(27);
 
 insert into auth.users(id,email,created_at,updated_at) values
 ('20000000-0000-0000-0000-000000000001','owner-a@example.test',now(),now()),
@@ -90,6 +90,15 @@ insert into public.tool_grants(user_id,agent_instance_id,tool_definition_id,scop
 ('20000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000002','31000000-0000-0000-0000-000000000001','21000000-0000-0000-0000-000000000001','allow','never',now()),
 ('20000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000002','31000000-0000-0000-0000-000000000001','21000000-0000-0000-0000-000000000001','deny','always',now());
 select is(public.effective_tool_permission('30000000-0000-0000-0000-000000000002','31000000-0000-0000-0000-000000000001','21000000-0000-0000-0000-000000000001'),'deny','deny ToolGrant wins');
+
+insert into public.workstyle_profiles(user_id,scope_type,revision,instructions,directives)
+values('20000000-0000-0000-0000-000000000001','global',1,array['conclusion first'],'{"concise":true}');
+insert into public.workstyle_profiles(user_id,scope_type,agent_type,revision,instructions,directives)
+values('20000000-0000-0000-0000-000000000001','agent','project_pm',1,array['problem first'],'{"problem_first":true}');
+select is((select count(*)::integer from public.workstyle_profiles where user_id='20000000-0000-0000-0000-000000000001'),2,'global and agent Workstyle profiles are stored independently');
+select throws_ok($$insert into public.workstyle_profiles(user_id,scope_type,agent_type,revision) values('20000000-0000-0000-0000-000000000001','global','chief',2)$$,'23514',null,'global Workstyle cannot have an agent type');
+select throws_ok($$insert into public.workstyle_profiles(user_id,scope_type,agent_type,revision) values('20000000-0000-0000-0000-000000000001','agent','chief',1),('20000000-0000-0000-0000-000000000001','agent','chief',2)$$,'23505',null,'only one active Workstyle exists per user and agent');
+select is((select count(*)::integer from public.workstyle_profiles where user_id='10000000-0000-4000-8000-000000000001'),4,'Amber Local Workstyle seed exists after reset');
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub','20000000-0000-0000-0000-000000000001',true);

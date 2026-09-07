@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Task } from "../task/task.js";
 import type { ProjectPmContext, ProjectPmRepository, ProjectWorkContext } from "./project-pm.js";
 import { isProjectPmRequest, ProjectPmService } from "./project-pm-service.js";
+import type { ResolvedWorkstyle, WorkstyleResolver } from "../workstyle/workstyle.js";
 
 const userId = "20000000-0000-4000-8000-000000000001" as UserId;
 const otherUserId = "20000000-0000-4000-8000-000000000002" as UserId;
@@ -54,12 +55,12 @@ const message = (text: string, requestedUserId = userId) => ({
   receivedAt: now
 });
 
-const serviceWith = (projects: readonly ProjectWorkContext[], loaded = context()) => {
+const serviceWith = (projects: readonly ProjectWorkContext[], loaded = context(), workstyleResolver?: WorkstyleResolver) => {
   const repository: ProjectPmRepository = {
     listProjects: vi.fn(async () => projects),
     loadProjectContext: vi.fn(async () => loaded)
   };
-  return { service: new ProjectPmService({ repository, clock: new FixedClock(now) }), repository };
+  return { service: new ProjectPmService({ repository, clock: new FixedClock(now), ...(workstyleResolver ? { workstyleResolver } : {}) }), repository };
 };
 
 describe("ProjectPmService", () => {
@@ -82,6 +83,16 @@ describe("ProjectPmService", () => {
       nextAction: { title: "발표 스크립트 수정", remainingMinutes: 30 },
       blockers: ["TAM 수치 검증"]
     });
+  });
+
+  it("applies Project PM Workstyle while preserving report facts", async () => {
+    const resolver: WorkstyleResolver = { resolve: vi.fn(async (): Promise<ResolvedWorkstyle> => ({
+      agentType: "project_pm", instructions: ["이유 제시"], directives: { include_reasoning: true },
+      profileRevisions: [{ id: "pm-1", revision: 1, scopeType: "agent" }], currentInstruction: null
+    })) };
+    const result = await serviceWith([project()], context(), resolver).service.handleProjectPmMessage(message("LogFolio 현황 봐줘"));
+    expect(result.reply).toContain("근거\n진행 중인 일, 승인된 계획, 마감 순서로 다음 행동을 정했어.");
+    expect(result.report?.nextAction).toMatchObject({ title: "발표 스크립트 수정", remainingMinutes: 30 });
   });
 
   it("asks for an exact name when the project is ambiguous or absent", async () => {

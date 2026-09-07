@@ -114,6 +114,7 @@ export class SupabaseProjectPmRunRecorder {
             policyVersion: "project-pm-v0.1",
             startedAt: input.startedAt,
             completedAt: input.completedAt,
+            workstyleProfileRevisions: input.workstyle?.profileRevisions ?? [],
             ...(input.correlationId ? { correlationId: input.correlationId } : {}),
             requiredScopeId: input.context.project.scopeId
         });

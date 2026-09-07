@@ -89,7 +89,8 @@ export class SupabaseChiefRunRecorder implements ChiefRunRecorder {
       reply: input.reply,
       policyVersion: "chief-v0.1",
       startedAt: input.startedAt,
-      completedAt: input.completedAt
+      completedAt: input.completedAt,
+      workstyleProfileRevisions: input.workstyle?.profileRevisions ?? []
     });
   }
 
@@ -113,6 +114,7 @@ export class SupabaseChiefRunRecorder implements ChiefRunRecorder {
       policyVersion: "chief-v0.1",
       startedAt: input.startedAt,
       completedAt: input.completedAt,
+      workstyleProfileRevisions: input.workstyle?.profileRevisions ?? [],
       correlationId: input.correlationId
     });
   }

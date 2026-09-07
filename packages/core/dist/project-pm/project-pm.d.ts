@@ -1,5 +1,6 @@
 import type { Clock, UserId } from "@amber/shared";
 import type { Task } from "../task/task.js";
+import type { ResolvedWorkstyle, WorkstyleResolver } from "../workstyle/workstyle.js";
 export type ProjectPmRequestKind = "status" | "next_action";
 export interface ProjectWorkContext {
     readonly id: string;
@@ -70,6 +71,7 @@ export interface ProjectPmRunRecorder {
         readonly correlationId?: string;
         readonly startedAt: Date;
         readonly completedAt: Date;
+        readonly workstyle?: ResolvedWorkstyle;
     }): Promise<void>;
 }
 export interface ProjectPmMessage {
@@ -78,6 +80,7 @@ export interface ProjectPmMessage {
     readonly text: string;
     readonly messageId: string;
     readonly receivedAt: Date;
+    readonly currentInstruction?: string;
 }
 export interface ProjectPmMessageResult {
     readonly handled: boolean;
@@ -119,6 +122,7 @@ export interface ProjectPmReportRequest {
     readonly source: string;
     readonly receivedAt: Date;
     readonly correlationId?: string;
+    readonly currentInstruction?: string;
 }
 export interface ProjectPmMessageHandler {
     handleProjectPmMessage(message: ProjectPmMessage): Promise<ProjectPmMessageResult>;
@@ -127,5 +131,6 @@ export interface ProjectPmServiceDependencies {
     readonly repository: ProjectPmRepository;
     readonly clock: Clock;
     readonly runRecorder?: ProjectPmRunRecorder;
+    readonly workstyleResolver?: WorkstyleResolver;
 }
 //# sourceMappingURL=project-pm.d.ts.map
