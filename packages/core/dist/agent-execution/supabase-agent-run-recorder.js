@@ -43,7 +43,8 @@ export class SupabaseAgentRunRecorder {
             const packages = await tx `
         insert into public.context_packages(user_id,scope_id,payload,source_refs,policy_version)
         values(${input.userId},${instance.homeScopeId},${tx.json(input.contextPayload)},
-          ${tx.json({ triggerId: input.triggerId, source: input.source, correlationId, contextHash: hash(input.contextPayload) })},
+          ${tx.json({ triggerId: input.triggerId, source: input.source, correlationId, contextHash: hash(input.contextPayload),
+                workstyleProfileRevisions: input.workstyleProfileRevisions ?? [] })},
           ${input.policyVersion}) returning id
       `;
             const runs = await tx `

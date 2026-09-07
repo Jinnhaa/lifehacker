@@ -1,4 +1,5 @@
 import { isDueWithin, isOverdue } from "../rules/deadline.js";
+import { DefaultWorkstyleResolver } from "../workstyle/workstyle.js";
 const REQUEST_PATTERNS = [
     { pattern: /^(.+?)\s+현황\s*봐줘[?.!]?$/, kind: "status" },
     { pattern: /^(.+?)\s+뭐\s*남았어[?.!]?$/, kind: "status" },
@@ -67,7 +68,14 @@ const formatTask = (task) => {
     const minutes = estimateRemaining(task);
     return minutes !== null ? `${task.nextAction ?? task.title} · 예상 ${minutes}분` : task.nextAction ?? task.title;
 };
-const formatStatus = (context) => {
+const includesReasoning = (workstyle) => {
+    if (workstyle.currentInstruction && /(근거|이유).*(생략|빼|없이)/.test(workstyle.currentInstruction))
+        return false;
+    if (workstyle.currentInstruction && /(근거|이유).*(포함|설명|알려)/.test(workstyle.currentInstruction))
+        return true;
+    return workstyle.directives.include_reasoning === true;
+};
+const formatStatus = (context, workstyle) => {
     const open = context.tasks.filter((task) => task.status !== "DONE");
     const done = context.tasks.filter((task) => task.status === "DONE");
     const inProgress = context.tasks.filter((task) => task.status === "IN_PROGRESS");
@@ -106,6 +114,8 @@ const formatStatus = (context) => {
     lines.push("", "지금 할 일", selected ? formatTask(selected) : "지금 바로 진행할 수 있는 일은 없어.");
     if (blocked.length > 0)
         lines.push("", "막힌 일", ...blocked.slice(0, 3).map((task) => task.title));
+    if (includesReasoning(workstyle) && selected)
+        lines.push("", "근거", "진행 중인 일, 승인된 계획, 마감 순서로 다음 행동을 정했어.");
     return { reply: lines.join("\n"), report };
 };
 export class ProjectPmService {
@@ -124,7 +134,8 @@ export class ProjectPmService {
             requestKind: request.kind,
             triggerId: message.messageId,
             source: "discord",
-            receivedAt: message.receivedAt
+            receivedAt: message.receivedAt,
+            ...(message.currentInstruction ? { currentInstruction: message.currentInstruction } : {})
         });
     }
     async getProjectReport(request) {
@@ -140,11 +151,14 @@ export class ProjectPmService {
         if (matches.length > 1)
             return { handled: true, reply: "이름이 비슷한 프로젝트가 여러 개야. 정확한 이름을 알려줘." };
         const startedAt = this.dependencies.clock.now();
+        const workstyle = await (this.dependencies.workstyleResolver ?? new DefaultWorkstyleResolver()).resolve({
+            userId: request.userId, agentType: "project_pm", ...(request.currentInstruction ? { currentInstruction: request.currentInstruction } : {})
+        });
         const context = await this.dependencies.repository.loadProjectContext(request.userId, matches[0], localDate(request.receivedAt, request.timeZone), request.timeZone, startedAt);
         if (context.userId !== request.userId || context.project.userId !== request.userId) {
             throw new Error("Project PM context owner mismatch");
         }
-        const result = formatStatus(context);
+        const result = formatStatus(context, workstyle);
         try {
             await this.dependencies.runRecorder?.recordCompleted({
                 context,
@@ -155,7 +169,8 @@ export class ProjectPmService {
                 nextTaskId: result.report.nextAction?.taskId ?? null,
                 ...(request.correlationId ? { correlationId: request.correlationId } : {}),
                 startedAt,
-                completedAt: this.dependencies.clock.now()
+                completedAt: this.dependencies.clock.now(),
+                workstyle
             });
         }
         catch {

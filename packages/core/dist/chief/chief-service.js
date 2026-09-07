@@ -2,6 +2,7 @@ import { getDaysUntilDeadline, isDueWithin, isOverdue } from "../rules/deadline.
 import { calculateRecurringActivityRisk } from "../rules/recurring-activity.js";
 import { applyApprovedPrinciples } from "../principle-application/principle-application.js";
 import { parseProjectPmRequest } from "../project-pm/project-pm-service.js";
+import { DefaultWorkstyleResolver } from "../workstyle/workstyle.js";
 const STATUS_REQUESTS = new Set(["오늘 상황 봐줘", "현황 알려줘"]);
 const NEXT_ACTION_REQUESTS = new Set(["오늘 뭐 해야 돼?", "오늘 뭐 해야 돼", "지금 뭐 해야 해?", "지금 뭐 해야 해", "뭐부터 할까?", "뭐부터 할까"]);
 const requestKind = (text) => {
@@ -87,7 +88,14 @@ const projectDateLabel = (value, timeZone) => {
     const field = (type) => parts.find((part) => part.type === type)?.value ?? "";
     return `${field("month")}/${field("day")}`;
 };
-const formatDelegatedProject = (report, timeZone) => {
+const includesReasoning = (workstyle) => {
+    if (workstyle.currentInstruction && /(근거|이유).*(생략|빼|없이)/.test(workstyle.currentInstruction))
+        return false;
+    if (workstyle.currentInstruction && /(근거|이유).*(포함|설명|알려)/.test(workstyle.currentInstruction))
+        return true;
+    return workstyle.directives.include_reasoning === true;
+};
+const formatDelegatedProject = (report, timeZone, workstyle) => {
     const lines = [
         `${report.project.title} PM에게 확인했어.`, "",
         `남은 일 ${report.status.open}개 · 진행 중 ${report.status.inProgress}개`
@@ -100,6 +108,9 @@ const formatDelegatedProject = (report, timeZone) => {
         : "지금 바로 진행할 수 있는 일은 없어.");
     if (report.blockers.length > 0)
         lines.push(`${report.blockers.slice(0, 3).join(", ")}은 아직 막혀 있어.`);
+    if (includesReasoning(workstyle) && report.nextAction) {
+        lines.push("", "근거", "현재 진행 상태와 가장 가까운 마감을 기준으로 바로 실행할 일을 골랐어.");
+    }
     if (report.warnings.length > 0)
         lines.push("", "주의", ...report.warnings);
     return lines.join("\n");
@@ -127,7 +138,7 @@ const urgentWarning = (context) => {
     const time = new Intl.DateTimeFormat("ko-KR", { timeZone: context.timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(deadline);
     return `${task.title}이 오늘 ${time} 마감이야.`;
 };
-const buildReply = (context, kind) => {
+const buildReply = (context, kind, workstyle) => {
     const overdue = context.observation.tasks.filter((task) => isOverdue(taskDeadline(task), context.observedAt));
     const dueSoon = context.observation.tasks.filter((task) => !isOverdue(taskDeadline(task), context.observedAt)
         && isDueWithin(taskDeadline(task), 3, context.observedAt, context.timeZone));
@@ -144,6 +155,8 @@ const buildReply = (context, kind) => {
             lines.push("", "주의", warning);
         if (principleExplanation)
             lines.push("", principleExplanation);
+        if (includesReasoning(workstyle) && !principleExplanation && selected)
+            lines.push("", "근거", "현재 실행 상태와 마감·중요도를 기준으로 골랐어.");
         return { reply: lines.join("\n"), usedPrincipleIds };
     }
     const fixedCount = context.observation.constraints.filter((constraint) => constraint.blocksCapacity).length;
@@ -163,6 +176,8 @@ const buildReply = (context, kind) => {
         lines.push("", "주의", warning);
     if (principleExplanation)
         lines.push("", principleExplanation);
+    if (includesReasoning(workstyle) && !principleExplanation && selected)
+        lines.push("", "근거", "현재 실행 상태와 마감·중요도를 기준으로 골랐어.");
     return { reply: lines.join("\n"), usedPrincipleIds };
 };
 export class ChiefAgentService {
@@ -181,10 +196,13 @@ export class ChiefAgentService {
         if (previous)
             return { handled: true, reply: previous.reply };
         const startedAt = this.dependencies.clock.now();
+        const workstyle = await (this.dependencies.workstyleResolver ?? new DefaultWorkstyleResolver()).resolve({
+            userId: message.userId, agentType: "chief", ...(message.currentInstruction ? { currentInstruction: message.currentInstruction } : {})
+        });
         const context = await this.dependencies.contextReader.loadChiefContext(message.userId, localDate(message.receivedAt, message.timeZone), message.timeZone, startedAt);
         if (context.userId !== message.userId)
             throw new Error("Chief context owner mismatch");
-        const result = buildReply(context, kind);
+        const result = buildReply(context, kind, workstyle);
         try {
             await this.dependencies.runRecorder?.recordCompleted({
                 context,
@@ -193,6 +211,7 @@ export class ChiefAgentService {
                 source: "discord",
                 reply: result.reply,
                 usedPrincipleIds: result.usedPrincipleIds,
+                workstyle,
                 startedAt,
                 completedAt: this.dependencies.clock.now()
             });
@@ -207,6 +226,9 @@ export class ChiefAgentService {
         if (previous)
             return { handled: true, reply: previous.reply };
         const startedAt = this.dependencies.clock.now();
+        const workstyle = await (this.dependencies.workstyleResolver ?? new DefaultWorkstyleResolver()).resolve({
+            userId: message.userId, agentType: "chief", ...(message.currentInstruction ? { currentInstruction: message.currentInstruction } : {})
+        });
         const correlationId = `chief-delegation:${message.messageId}`;
         try {
             const result = await this.dependencies.projectPm.getProjectReport({
@@ -217,11 +239,12 @@ export class ChiefAgentService {
                 triggerId: `${message.messageId}:project-pm`,
                 source: "chief_delegation",
                 receivedAt: message.receivedAt,
-                correlationId
+                correlationId,
+                ...(message.currentInstruction ? { currentInstruction: message.currentInstruction } : {})
             });
             if (!result.report)
                 return { handled: true, reply: result.reply ?? "어느 프로젝트를 확인할지 정확한 이름을 알려줘." };
-            const reply = formatDelegatedProject(result.report, message.timeZone);
+            const reply = formatDelegatedProject(result.report, message.timeZone, workstyle);
             try {
                 await this.dependencies.runRecorder?.recordDelegationCompleted?.({
                     userId: message.userId,
@@ -231,7 +254,8 @@ export class ChiefAgentService {
                     report: result.report,
                     reply,
                     startedAt,
-                    completedAt: this.dependencies.clock.now()
+                    completedAt: this.dependencies.clock.now(),
+                    workstyle
                 });
             }
             catch {

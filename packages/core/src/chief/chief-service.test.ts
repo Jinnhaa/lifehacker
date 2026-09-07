@@ -6,6 +6,7 @@ import type { ChiefContext, ChiefContextReader, ChiefRunRecorder } from "./chief
 import type { ProjectPmDelegator } from "./chief.js";
 import type { ProjectPmReport } from "../project-pm/project-pm.js";
 import { ChiefAgentService, isChiefRequest } from "./chief-service.js";
+import type { ResolvedWorkstyle, WorkstyleResolver } from "../workstyle/workstyle.js";
 
 const userId = "20000000-0000-4000-8000-000000000001" as UserId;
 const otherUserId = "20000000-0000-4000-8000-000000000002" as UserId;
@@ -73,14 +74,15 @@ const message = (text: string, id = "discord:message-1", requestedUserId = userI
   receivedAt: now
 });
 
-const serviceWith = (loaded: ChiefContext, recorder?: ChiefRunRecorder, projectPm?: ProjectPmDelegator) => {
+const serviceWith = (loaded: ChiefContext, recorder?: ChiefRunRecorder, projectPm?: ProjectPmDelegator, workstyleResolver?: WorkstyleResolver) => {
   const reader: ChiefContextReader = { loadChiefContext: vi.fn(async () => loaded) };
   return {
     service: new ChiefAgentService({
       contextReader: reader,
       clock: new FixedClock(now),
       ...(recorder ? { runRecorder: recorder } : {}),
-      ...(projectPm ? { projectPm } : {})
+      ...(projectPm ? { projectPm } : {}),
+      ...(workstyleResolver ? { workstyleResolver } : {})
     }),
     reader
   };
@@ -170,6 +172,29 @@ describe("ChiefAgentService", () => {
     expect(result.reply).toContain("막힌 일 1개");
     expect(result.reply).toContain("오늘 일정 조정됨");
     expect(result.reply).not.toContain("score");
+  });
+
+  it("applies Workstyle to explanation without changing the selected action", async () => {
+    const resolver: WorkstyleResolver = { resolve: vi.fn(async (): Promise<ResolvedWorkstyle> => ({
+      agentType: "chief", instructions: ["근거 제시"], directives: { include_reasoning: true },
+      profileRevisions: [{ id: "global-1", revision: 1, scopeType: "global" }], currentInstruction: null
+    })) };
+    const result = await serviceWith(context(), undefined, undefined, resolver).service.handleChiefMessage(message("뭐부터 할까?"));
+    expect(result.reply).toContain("지금 할 일\n운영체제 과제 · 예상 45분");
+    expect(result.reply).toContain("근거\n현재 실행 상태와 마감·중요도를 기준으로 골랐어.");
+  });
+
+  it("lets the current explicit instruction override stored response style", async () => {
+    const resolver: WorkstyleResolver = { resolve: vi.fn(async (input): Promise<ResolvedWorkstyle> => ({
+      agentType: "chief", instructions: [input.currentInstruction ?? "", "근거 제시"], directives: { include_reasoning: true },
+      profileRevisions: [{ id: "global-1", revision: 1, scopeType: "global" }],
+      currentInstruction: input.currentInstruction ?? null
+    })) };
+    const result = await serviceWith(context(), undefined, undefined, resolver).service.handleChiefMessage({
+      ...message("뭐부터 할까?"), currentInstruction: "근거는 생략해"
+    });
+    expect(result.reply).not.toContain("근거\n");
+    expect(result.reply).toContain("지금 할 일\n운영체제 과제 · 예상 45분");
   });
 
   it("keeps general Chief requests on the direct path", async () => {

@@ -15,6 +15,11 @@ export interface AgentExecutionTraceInput {
     readonly completedAt: Date;
     readonly correlationId?: string;
     readonly requiredScopeId?: string;
+    readonly workstyleProfileRevisions?: readonly {
+        readonly id: string;
+        readonly revision: number;
+        readonly scopeType: string;
+    }[];
 }
 export declare class SupabaseAgentRunRecorder {
     private readonly sql;

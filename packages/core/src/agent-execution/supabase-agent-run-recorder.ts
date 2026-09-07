@@ -17,6 +17,7 @@ export interface AgentExecutionTraceInput {
   readonly completedAt: Date;
   readonly correlationId?: string;
   readonly requiredScopeId?: string;
+  readonly workstyleProfileRevisions?: readonly { readonly id: string; readonly revision: number; readonly scopeType: string }[];
 }
 
 const hash = (value: unknown): string => createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -66,7 +67,8 @@ export class SupabaseAgentRunRecorder {
       const packages = await tx<{ id: string }[]>`
         insert into public.context_packages(user_id,scope_id,payload,source_refs,policy_version)
         values(${input.userId},${instance.homeScopeId},${tx.json(input.contextPayload as unknown as JSONValue)},
-          ${tx.json({ triggerId: input.triggerId, source: input.source, correlationId, contextHash: hash(input.contextPayload) })},
+          ${tx.json({ triggerId: input.triggerId, source: input.source, correlationId, contextHash: hash(input.contextPayload),
+            workstyleProfileRevisions: input.workstyleProfileRevisions ?? [] })},
           ${input.policyVersion}) returning id
       `;
       const runs = await tx<{ id: string }[]>`

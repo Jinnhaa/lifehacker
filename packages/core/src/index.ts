@@ -46,3 +46,5 @@ export * from "./task/task.js";
 export * from "./wake/wake.js";
 export * from "./wake/wake-service.js";
 export * from "./wake/supabase-wake-repository.js";
+export * from "./workstyle/workstyle.js";
+export * from "./workstyle/supabase-workstyle-profile-reader.js";
