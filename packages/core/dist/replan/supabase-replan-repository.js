@@ -211,7 +211,6 @@ export class SupabaseReplanRepository {
       `;
             const planId = planRows[0].id;
             await this.insertItems(tx, trigger.userId, previous.planDate, planId, draft);
-            await tx `update public.daily_plans set status='superseded' where id=${previous.planId} and user_id=${trigger.userId} and status='approved'`;
             const checkpoint = {
                 planDate: previous.planDate, timeZone: previous.timeZone, planId, triggerId: trigger.id,
                 impact: decision.impact, impactReasons: decision.reasons
@@ -221,6 +220,10 @@ export class SupabaseReplanRepository {
           completed_at=${decision.impact === "SMALL_CHANGE" ? now : null} where id=${workflowId} and user_id=${trigger.userId}
       `;
             if (decision.impact === "SMALL_CHANGE") {
+                await tx `
+          update public.daily_plans set status='superseded'
+          where id=${previous.planId} and user_id=${trigger.userId} and status='approved'
+        `;
                 await tx `
           update public.daily_plans set status='approved',approval_source='rules_engine',approval_reason='small_change',approved_at=${now}
           where id=${planId} and user_id=${trigger.userId}
