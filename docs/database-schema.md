@@ -76,7 +76,7 @@ auth.users
       ├─ decisions ─ decision_feedback
       │   └─ learning_cases ─ learning_case_events / outcomes
       │       └─ patterns ─ pattern_evidence ─ principles
-      ├─ preferences / memories
+      ├─ preferences / memories / workstyle_profiles
       ├─ workflow_runs ─ approval_requests
       ├─ scheduled_jobs / notifications / outbox_events
       └─ Agent Platform
@@ -103,7 +103,7 @@ auth.users
 - domain_events
 - inbox_items, parsed_entities, domain_commands, external_references
 - decisions, decision_feedback, learning_cases, learning_case_events, outcomes
-- patterns, pattern_evidence, principles, preferences, memories
+- patterns, pattern_evidence, principles, preferences, memories, workstyle_profiles
 - workflow_runs, approval_requests, scheduled_jobs, notifications
 - ai_executions
 
@@ -575,6 +575,8 @@ PK `(pattern_id, learning_case_id)`. direction=supports/contradicts.
 
 Pattern에서 Principle로 승격할 때 사용자 승인이 필수.
 
+현재 구현의 Principle lifecycle은 proposal 시 `confirmation_status=pending`, `status=candidate`이며 승인 시 `approved/active`, 거절 시 `rejected/rejected`, 수정으로 대체될 때 기존 row는 `revised/superseded`가 된다.
+
 ## preferences
 `id, user_id, scope_id?, preference_key, value jsonb, origin, created_by, confirmation_status, source_reference jsonb?, valid_from, valid_until?, created_at`.
 
@@ -587,6 +589,18 @@ memory_type=fact/decision/project/experience/growth/strategy.
 retention_class=permanent/compressible/short.
 
 Principle은 memories에 중복 저장하지 않는다.
+
+## workstyle_profiles
+`id, user_id, scope_type, agent_type?, revision, instructions text[], directives jsonb, active, created_at, updated_at`.
+
+- `scope_type=global`이면 `agent_type`은 null이고, `scope_type=agent`이면 `agent_type`은 필수다.
+- `agent_type=chief/project_pm/research/development`.
+- `revision > 0`, `directives`는 JSON object다.
+- unique `(id, user_id)`.
+- active global은 사용자당 최대 1개다: partial unique `(user_id) where active and scope_type=global`.
+- active agent profile은 사용자와 agent type당 최대 1개다: partial unique `(user_id, agent_type) where active and scope_type=agent`.
+- revision은 `(user_id, scope_type, coalesce(agent_type, ''), revision)` 기준으로 unique하며 기존 revision을 보존한다.
+- RLS를 활성화하고 authenticated 사용자는 `auth.uid()=user_id`인 row만 조회·변경할 수 있다.
 
 ---
 

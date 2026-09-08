@@ -18,7 +18,7 @@ Goal Domain        Personalization Domain
 Goal               Preference
 Objective          Pattern
 RecurringActivity  Principle
-                   InterventionPattern
+                   WorkstyleProfile
         │              ▲
         ▼              │
 Work Domain ────── Decision / Evidence
@@ -485,34 +485,34 @@ Clone 학습의 한 사례를 FK 수준에서 연결하는 canonical record다.
 - `decision_feedback_id?`
 - `context_snapshot`
 - `recommendation_snapshot?`
-- `status`: open / outcome_pending / completed / discarded
-- `created_at`, `completed_at?`
+- `case_type`: decision / planning / intervention / estimate / routine
+- `status`
+- `created_at`, `closed_at?`
 
 사용자 correction을 학습하는 LearningCase는 `decision_id`와 `decision_feedback_id`가 모두 필수다. AI 추천을 그대로 따른 사례는 Decision만 연결할 수 있고, 반복활동 실행처럼 순수 관찰 기반 사례는 둘 다 null일 수 있다. `decision_feedback_id`만 단독으로 둘 수 없으며, 값이 있으면 해당 DecisionFeedback의 `decision_id`는 LearningCase의 `decision_id`와 같아야 한다.
 
-### LearningCaseActionEvent
+### LearningCaseEvent
 
-실제 사용자 행동은 별도 추측 필드가 아니라 append-only DomainEvent와 연결한다.
+학습 사례의 context, action, outcome 근거를 append-only DomainEvent와 연결한다.
 
 - `learning_case_id`
 - `domain_event_id`
-- `action_role`: chosen_action / execution / completion / interruption / other
+- `event_role`: context / action / outcome
 
-Unique: `(learning_case_id, domain_event_id, action_role)`
+Primary key: `(learning_case_id, domain_event_id, event_role)`
 
 ### Outcome
 
 LearningCase의 실제 결과를 저장한다.
 
-- `id`, `learning_case_id`
+- `id`, `user_id`, `learning_case_id`
 - `outcome_type`
-- `value`
+- `summary?`, `success?`, `score?`, `payload`
 - `observed_at`
 - `source_event_id?`
-- `provenance`
 - `created_at`
 
-`source_event_id`가 있으면 결과를 관찰하게 한 DomainEvent를 가리킨다. 집계 결과처럼 단일 Event가 없으면 `value`와 provenance로 근거를 보존한다.
+`source_event_id`가 있으면 결과를 관찰하게 한 DomainEvent를 가리킨다. 집계 결과처럼 단일 Event가 없으면 `payload`에 관찰 결과를 보존한다.
 
 개인화 학습 기본 관계:
 
@@ -520,7 +520,7 @@ LearningCase의 실제 결과를 저장한다.
 Decision
 → DecisionFeedback
 → LearningCase
-→ LearningCaseActionEvent → DomainEvent
+→ LearningCaseEvent → DomainEvent
 → Outcome
 → PatternEvidence
 → Pattern
@@ -544,13 +544,14 @@ Memory와 Clone은 분리한다.
 - project
 - experience
 - growth
+- strategy
 
 ### Preference
 
 사용자가 직접 설정하거나 명확하게 확인된 선호.
 
 - `id`, `user_id`
-- `key`, `value`, `scope?`
+- `preference_key`, `value`, `scope_id?`
 - `origin`, `created_by`, `confirmation_status`
 - `valid_from?`, `valid_until?`
 - `source_reference?`
@@ -569,14 +570,14 @@ Memory와 Clone은 분리한다.
 - `observed_behavior`
 - `confidence`
 - `evidence_count`
-- `status`: candidate / active / rejected / retired
+- `status`: candidate / active / dismissed / expired
 - `evaluator_version`
 
 ### PatternEvidence
 
 Pattern이 어떤 LearningCase를 근거로 만들어졌는지 연결.
 
-- `id`, `pattern_id`, `learning_case_id`
+- `pattern_id`, `learning_case_id`
 - `direction`: supports / contradicts
 - `weight`
 - `observed_at`
@@ -595,10 +596,12 @@ Principle 승격은 사용자 승인이 필요하다.
 
 - `id`, `user_id`, `source_pattern_id?`
 - `statement`, `scope?`
-- `origin`, `created_by`, `confirmation_status`: confirmed
+- `origin`, `created_by`
+- `confirmation_status`: pending / approved / rejected / revised
+- `status`: candidate / active / rejected / superseded
 - `valid_from?`, `valid_until?`
 - `source_reference?`
-- `created_at`, `retired_at?`
+- `approved_at?`, `created_at`
 
 Principle은 사용자 직접 입력 또는 Pattern Candidate의 사용자 승인으로만 생성한다.
 
@@ -612,11 +615,11 @@ Preference, Principle, StrategicDirective에서 사용자 직접 입력과 AI �
 - `source_reference?`: 근거 Pattern, Decision, 입력 또는 Event reference
 - `valid_from?`, `valid_until?`: 시간 범위가 있는 경우에만 사용
 
-활성 Principle은 `confirmed`여야 한다. StrategicDirective와 AI 제안 Preference도 적용 전에 `confirmed`여야 한다. 사용자 직접 입력은 `not_required` 또는 즉시 `confirmed`로 기록할 수 있다.
+현재 구현에서 활성 Principle은 `confirmation_status=approved`이면서 `status=active`여야 한다. StrategicDirective와 AI 제안 Preference도 각 canonical 승인 정책을 통과한 뒤 적용한다.
 
-### InterventionPattern
+### Intervention learning
 
-어떤 막힘/상황에서 어떤 개입이 실제로 효과적이었는지.
+독립 entity가 아니라 `LearningCase.case_type = intervention`으로 시작하는 derived concept다.
 
 예:
 
@@ -626,6 +629,24 @@ perfectionism
 → 7분 내 재시작
 → completion=true
 ```
+
+`LearningCase(case_type=intervention) → LearningCaseEvent → Outcome → PatternEvidence → Pattern → 필요 시 Principle`
+
+### WorkstyleProfile
+
+사용자와 Agent에게 실제 적용되는 revisioned Workstyle configuration이다.
+
+- `id`, `user_id`
+- `scope_type`: global / agent
+- `agent_type?`: chief / project_pm / research / development
+- `revision`
+- `instructions`, `directives`
+- `active`
+- `created_at`, `updated_at`
+
+global scope에는 `agent_type`이 없고 agent scope에는 반드시 존재한다. 사용자당 active global은 최대 1개이며 사용자와 agent type 조합당 active profile도 최대 1개다. scope별 revision history를 보존한다.
+
+Preference는 사용자가 확인한 개별 선호, Pattern은 반복 행동에서 관찰한 경향, WorkstyleProfile은 실제 Agent 수행에 적용하는 instruction configuration이다.
 
 ---
 
@@ -935,7 +956,7 @@ MCP를 사용할 경우 server 단위 connection/config.
 
 ### Clone
 Canonical chain:
-`Decision → DecisionFeedback → LearningCase → LearningCaseActionEvent/Outcome → PatternEvidence → Pattern → Principle`
+`Decision → DecisionFeedback → LearningCase → LearningCaseEvent/Outcome → PatternEvidence → Pattern → Principle`
 
 - `DecisionReason` 별도 entity 없음.
 - Pattern Candidate는 별도 entity가 아니라 `Pattern.status = candidate`.

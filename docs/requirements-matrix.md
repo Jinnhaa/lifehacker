@@ -88,7 +88,8 @@
 | Pattern Candidate | Pattern | `status=candidate`, 별도 entity 없음 | Learning | 한 사례로 Principle 자동 생성 금지 |
 | Principle 승인 | Principle, ApprovalRequest | 사용자 승인 후에만 활성 | Learning/Approval | 미승인 Principle 적용 금지 |
 | Observed vs Desired | Pattern, Principle, StrategicDirective | Desired가 observed 행동보다 우선 | Personalization/Planning | 나쁜 습관 자동 복제 금지 |
-| Intervention learning | LearningCase, InterventionPattern | 막힘·개입·재시작·완료 결과 연결 | Recovery/Learning | restart latency와 outcome 조회 |
+| Intervention learning | LearningCase(`case_type=intervention`), LearningCaseEvent, Outcome, Pattern | 막힘·개입·재시작·완료 결과를 기존 learning chain으로 연결 | Recovery/Learning | restart latency와 outcome 조회 |
+| Workstyle 적용 | WorkstyleProfile | active global + agent profile의 revisioned instruction configuration 적용 | Agent Context Resolve | scope별 active profile 최대 1개와 적용 revision 추적 |
 | Memory category별 권한 | Memory, Principle, provenance | Fact/Decision/Experience/Principle별 authority | Learning/Review | category별 자동 저장 허용 범위 검증 |
 | retention/compression | Memory, DomainEvent, source_reference | 상세 로그 압축 시 중요 근거 보존 | Review | 압축 후 원본 reference 추적 |
 

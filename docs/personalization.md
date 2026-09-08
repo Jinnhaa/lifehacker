@@ -34,7 +34,7 @@ What user approves as a rule
 → Principle
 
 What intervention works
-→ InterventionPattern
+→ LearningCase(case_type=intervention) → Outcome → Pattern
 ```
 
 ---
@@ -98,11 +98,11 @@ Context Snapshot에는 필요한 structured features만 저장한다.
 ```text
 Evidence
 ↓
-Candidate
+Pattern.status=candidate
 ↓
 confidence/evidence accumulation
 ↓
-Pattern detected
+Pattern.status=active / dismissed / expired
 ↓
 User confirmation when rule-like
 ↓
@@ -139,7 +139,7 @@ Pattern은 반드시 evidence를 가진다.
 
 ```text
 DomainEvent
-→ LearningCaseActionEvent / LearningCase Outcome
+→ LearningCaseEvent(event_role=context/action/outcome) / Outcome
 → LearningCase
 → PatternEvidence
 ```
@@ -205,7 +205,16 @@ Pattern이 반복되어도 시스템은 다음과 같이 확인한다.
 
 ## 11. Intervention Learning
 
-Blocked 상태에서 어떤 개입이 효과 있었는지 학습한다.
+Blocked 상태에서 어떤 개입이 효과 있었는지 독립 저장 entity 없이 기존 learning chain으로 학습한다.
+
+```text
+LearningCase(case_type=intervention)
+→ LearningCaseEvent
+→ Outcome
+→ PatternEvidence
+→ Pattern
+→ 필요 시 Principle
+```
 
 예:
 
@@ -331,7 +340,10 @@ Clone 학습의 한 사례는 `LearningCase`로 묶는다.
 
 `Context Snapshot → Recommendation → Decision/DecisionFeedback → Actual Action Events → Outcome`
 
+Actual Action Events는 `LearningCaseEvent`로 DomainEvent에 연결하며 `event_role`은 `context / action / outcome`이다.
+
 PatternEvidence는 LearningCase를 지지/반박 evidence로 사용한다.
 
 `DecisionReason`은 사용하지 않고 `DecisionFeedback.user_reason`으로 통일한다.
 Pattern Candidate는 별도 entity가 아니라 `Pattern.status=candidate`를 사용한다.
+Pattern status는 `candidate / active / dismissed / expired`를 사용한다.
