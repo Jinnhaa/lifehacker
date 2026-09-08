@@ -1,7 +1,7 @@
 # Amber HQ — V1 Scope
 
 **Target:** 1주 안에 실제 생활에서 사용 시작  
-**Current phase:** Core functionality first, UI is not the priority  
+**Current phase:** Core/Foundation/runtime/integration 기반 이후 Home Command Center vertical slice
 **Primary user:** single-user personal system  
 **Repository:** `lifehacker`
 
@@ -597,18 +597,17 @@ Project Agent 실제 생성과 Agent 협업은 Core가 안정된 뒤 구현한�
 
 ## 10. V1 UI 범위
 
-UI는 기능 검증의 선행조건이 아니다.
+Core/Foundation/runtime/integration 기반을 바탕으로 Home Command Center vertical slice를 구현한다. UI는 기존 Core Loop를 대체하거나 새로운 business logic을 소유하지 않는다.
 
-최소 UI가 필요하다면 기능적 확인만 지원한다.
+Home V1의 핵심은 다음과 같다.
 
-예:
+- Current Action
+- Today Flow
+- Focus entry
+- 핵심 Goal 최대 3개
+- 사용자 행동·판단과 관련된 Agent Office status
 
-- Task 상태 확인
-- 현재 Task
-- 체크리스트
-- Manual Task 입력
-
-화려한 Dashboard, Agent office, 성장 visualization은 V1 Core 이후다.
+고급 analytics, 관리형 dashboard, Agent 자유 대화, 내부 실행 log visualization은 V1 핵심 범위가 아니다.
 
 ---
 

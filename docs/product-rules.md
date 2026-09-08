@@ -603,6 +603,23 @@ Amber HQ는 기본적으로 사용자에게 지금 해야 할 것 하나를 가�
 
 ---
 
+## 19A. Home Command Center
+
+Home은 시스템 전체 상태판이 아니다.
+
+정보 우선순위는 다음과 같다.
+
+1. Current Action
+2. Today Flow
+3. 핵심 Goal
+4. Agent status
+
+Goal은 기본 최대 3개만 주요 노출한다. Agent Office는 내부 활동 자체가 아니라 사용자의 판단이나 행동과 관련된 상태만 보여준다.
+
+Home 자체가 새로운 인지부하가 되면 실패다.
+
+---
+
 ## 20. Focus Mode
 
 Focus 시작 전에는 반드시 전체 작업 방향을 한 번 보여준다.
