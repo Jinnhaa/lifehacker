@@ -16,6 +16,8 @@
     "db:test": "supabase test db",
     "db:types": "supabase gen types typescript --local > supabase/database.types.ts",
     "discord:dev": "pnpm --filter @amber/discord-worker dev",
+    "web:dev": "pnpm --filter @amber/web dev",
+    "web:build": "pnpm --filter @amber/web build",
     "calendar:auth": "pnpm --filter @amber/google-calendar auth",
     "calendar:sync": "pnpm --filter @amber/google-calendar sync",
     "calendar:icloud:sync": "pnpm --filter @amber/icloud-calendar sync"
