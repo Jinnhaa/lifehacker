@@ -67,7 +67,17 @@ AI 입력은 raw DB가 아니라 compact planning context.
 
 AI 출력은 structured plan proposal.
 
-사용자 승인 전에는 canonical DailyPlan이 아니다.
+계획 제안은 새 `DailyPlan` revision과 `PlanItem`으로 저장하되 승인 전 상태는 `pending_approval`이다. 승인된 revision만 실행 계획으로 사용하며 이전 revision과 supersession 관계를 보존한다.
+
+최초 계획이나 중요한 변경은 사용자 승인 후 `approved`가 된다. 단순하고 낮은 위험의 재배치는 정책에 따라 자동 승인할 수 있다.
+
+### Current Action
+
+Current Action은 별도 mutable pointer나 Home 전용 entity로 저장하지 않고 다음 순서로 파생한다.
+
+1. active `FocusSession`의 Task/Step
+2. 없으면 최신 approved `DailyPlan`의 첫 실행 가능한 미완료 `PlanItem`
+3. 없으면 Planner가 next action 필요 상태 반환
 
 ---
 
@@ -83,7 +93,9 @@ Task selected
 → complete / blocked / switch
 ```
 
-Step 이동은 code.
+실행 시간과 pause/resume은 별도 Timer가 아니라 `FocusSession`에 기록한다. pause는 Task 상태가 아니며 Step 이동은 code가 수행한다.
+
+Task 완료는 현재 Step을 순서대로 완료한 뒤 마지막 Step에서 Task를 `DONE`으로 전환한다. 막힘이나 전환으로 Focus를 멈추면 기존 FocusSession과 실제시간 history를 보존한다.
 
 ---
 
@@ -99,6 +111,8 @@ blocked
 → outcome event
 ```
 
+막힘으로 pause된 Focus는 개입 후 재개할 수 있다. 외부 자료나 사람을 기다려야 하면 Task를 `WAITING_FOR_USER` 또는 `BLOCKED`로 전환하고 Current Action을 다시 파생한다.
+
 ---
 
 ## 7. Dynamic Replan
@@ -112,6 +126,8 @@ actual state change
 ```
 
 모든 작은 시간차에 LLM을 호출하지 않는다.
+
+Replan은 기존 DailyPlan을 덮어쓰지 않고 새 revision을 만든다. 중요한 변경은 승인 대기 상태를 유지하며 거절되면 기존 approved plan을 실행 계획으로 유지한다. Task 완료·막힘·전환 등 trigger와 resulting revision은 DomainEvent로 추적한다.
 
 ---
 
@@ -127,6 +143,14 @@ trigger
 → wake target
 → close
 ```
+
+active Focus가 있으면 종료 여부를 한 번 확인하고, 확인 시 해당 FocusSession의 실제시간과 종료 이유를 보존한 뒤 Day Close를 계속한다. 최신 approved DailyPlan을 기준으로 완료·미완료·실제시간·blocked·switch를 집계하고 완료한 plan revision을 닫는다.
+
+Day Close 결과는 중요한 Decision을 다음 canonical learning chain으로 연결할 수 있다.
+
+`Decision → DecisionFeedback → LearningCase → LearningCaseEvent → Outcome → PatternEvidence → Pattern → 사용자 승인 시 Principle`
+
+Pattern Candidate는 별도 entity가 아니라 `Pattern.status=candidate`다. 학습 또는 Principle 제안 실패는 Day Close 완료를 되돌리지 않는다.
 
 ---
 
