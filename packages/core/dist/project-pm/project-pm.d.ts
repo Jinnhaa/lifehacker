@@ -40,6 +40,7 @@ export interface ProjectArtifact {
     readonly workContextId: string | null;
     readonly contentText: string | null;
     readonly contentHash: string | null;
+    readonly verificationStatus: "unverified" | "verified" | "failed" | null;
     readonly reviewStatus: "pending_review" | "accepted" | "rejected" | null;
     readonly createdAt: Date;
 }

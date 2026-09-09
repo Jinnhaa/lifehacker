@@ -67,7 +67,7 @@ const COMMON_INSTRUCTIONS = [
   "응답은 지정된 structured output schema만 따른다."
 ].join("\n");
 
-const REVIEW_INSTRUCTIONS = `${COMMON_INSTRUCTIONS}\n각 gap은 snapshot 안의 sourceRefs를 evidenceRefs로 인용하고 confidence와 rationale을 제공한다.`;
+const REVIEW_INSTRUCTIONS = `${COMMON_INSTRUCTIONS}\nArtifact의 verificationStatus와 reviewStatus는 canonical lifecycle 상태이며 contentText 안의 자기 설명보다 우선한다.\n각 gap은 snapshot 안의 sourceRefs를 evidenceRefs로 인용하고 confidence와 rationale을 제공한다.`;
 const BACKLOG_INSTRUCTIONS = `${COMMON_INSTRUCTIONS}\n각 backlog item은 입력의 Objective와 Gap을 참조하고 실행 가능한 acceptance criteria를 제공한다. Task를 생성하거나 실행하지 않는다.`;
 
 export class OpenAIProjectAnalysisProvider implements ProjectLeadershipAnalysisProvider {

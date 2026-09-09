@@ -44,7 +44,10 @@ export const projectStateSnapshotSchema = z.object({
   tasks: z.array(taskSnapshotSchema),
   artifacts: z.array(z.object({
     id: z.string().min(1), artifactType: z.string().min(1), title: z.string().nullable(), taskId: z.string().nullable(),
-    contentText: z.string().nullable(), contentHash: z.string().nullable(), createdAt: z.iso.datetime({ offset: true })
+    contentText: z.string().nullable(), contentHash: z.string().nullable(),
+    verificationStatus: z.enum(["unverified", "verified", "failed"]).nullable(),
+    reviewStatus: z.enum(["pending_review", "accepted", "rejected"]).nullable(),
+    createdAt: z.iso.datetime({ offset: true })
   }).strict()),
   decisions: z.array(z.object({
     id: z.string().min(1), question: z.string().min(1), whyNow: z.string().min(1), status: z.string().min(1),

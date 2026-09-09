@@ -86,7 +86,9 @@ export const projectProjectState = (context) => {
         })),
         artifacts: context.artifacts.filter((artifact) => artifact.reviewStatus === null || artifact.reviewStatus === "accepted").sort(byId).map((artifact) => ({
             id: artifact.id, artifactType: artifact.artifactType, title: artifact.title, taskId: artifact.taskId,
-            contentText: artifact.contentText, contentHash: artifact.contentHash, createdAt: artifact.createdAt.toISOString()
+            contentText: artifact.contentText, contentHash: artifact.contentHash,
+            verificationStatus: artifact.verificationStatus, reviewStatus: artifact.reviewStatus,
+            createdAt: artifact.createdAt.toISOString()
         })),
         decisions: [...context.decisions].sort(byId).map((decision) => ({
             ...decision, createdAt: decision.createdAt.toISOString(), resolvedAt: iso(decision.resolvedAt)

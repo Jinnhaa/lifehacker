@@ -35,7 +35,7 @@ export declare const projectLeadershipSkillRegistry: {
             title: string;
             description: string;
             suggestedPriority: "low" | "medium" | "high" | "critical";
-            suggestedOwner: "human" | "ai" | "hybrid";
+            suggestedOwner: "ai" | "human" | "hybrid";
             acceptanceCriteria: string[];
             dependencies: string[];
             roughSize: "xs" | "s" | "m" | "l" | "xl" | null;

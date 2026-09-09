@@ -31,7 +31,7 @@ const context = (): ProjectPmContext => ({
   goals: [{ id: "goal-1", title: "포트폴리오", status: "active" }],
   tasks: [task("task-open", "PLANNED"), task("task-blocked", "BLOCKED")],
   taskSteps: [{ id: "step-1", taskId: "task-open", position: 1, title: "검증", owner: "user", estimatedMinutes: 20, completionCriteria: "통과", status: "pending", skillKey: null }],
-  artifacts: [{ id: "artifact-source", artifactType: "spec", title: "명세", taskId: "task-open", workContextId: project.id, contentText: "초안", contentHash: "source-hash", reviewStatus: null, createdAt: now }],
+  artifacts: [{ id: "artifact-source", artifactType: "spec", title: "명세", taskId: "task-open", workContextId: project.id, contentText: "초안", contentHash: "source-hash", verificationStatus: null, reviewStatus: null, createdAt: now }],
   decisions: [{ id: "decision-1", question: "범위", whyNow: "출시", status: "resolved", createdAt: now, resolvedAt: now }],
   sourceReferences: [{ id: "external-1", source: "github", externalType: "repository", externalId: "logfolio", externalVersion: null, internalEntityType: "work_context", internalEntityId: project.id, syncStatus: "active", contentHash: null, lastSeenAt: now }],
   activeFocus: null, approvedPlanTasks: [],
@@ -84,7 +84,7 @@ describe("project state projection", () => {
     const base = context();
     const first = projectProjectState({ ...base, artifacts: [...base.artifacts, {
       id: "artifact-rejected", artifactType: "document_draft", title: "Rejected", taskId: "task-open",
-      workContextId: project.id, contentText: "discarded", contentHash: "rejected-hash", reviewStatus: "rejected", createdAt: now
+      workContextId: project.id, contentText: "discarded", contentHash: "rejected-hash", verificationStatus: "verified", reviewStatus: "rejected", createdAt: now
     }] });
     const second = projectProjectState(context());
     expect(first).toEqual(second);

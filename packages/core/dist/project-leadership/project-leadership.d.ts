@@ -81,6 +81,16 @@ export declare const projectStateSnapshotSchema: z.ZodObject<{
         taskId: z.ZodNullable<z.ZodString>;
         contentText: z.ZodNullable<z.ZodString>;
         contentHash: z.ZodNullable<z.ZodString>;
+        verificationStatus: z.ZodNullable<z.ZodEnum<{
+            unverified: "unverified";
+            verified: "verified";
+            failed: "failed";
+        }>>;
+        reviewStatus: z.ZodNullable<z.ZodEnum<{
+            pending_review: "pending_review";
+            accepted: "accepted";
+            rejected: "rejected";
+        }>>;
         createdAt: z.ZodISODateTime;
     }, z.core.$strict>>;
     decisions: z.ZodArray<z.ZodObject<{
