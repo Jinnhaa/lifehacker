@@ -255,7 +255,8 @@ Pause는 Task state가 아니라 FocusSession state로 표현한다.
 - `owner`: user / ai
 - `estimated_minutes?`
 - `completion_criteria?`
-- `status`: pending / in_progress / completed / skipped
+- `skill_key?`: AI step의 명시적 versioned Skill assignment
+- `status`: pending / dependency_waiting / in_progress / waiting_for_review / blocked / completed / skipped
 
 ### EstimateRevision
 
@@ -707,8 +708,11 @@ home_scope_id=...
 - `template_version`
 - `policy_version`
 - `workflow_run_id?`
+- `task_step_id?`, `skill_key?`, `skill_version?`
+- `attempt_number?`, `execution_key?`, `idempotency_key?`
 - `input_context_ref`
 - `status`
+- `failure_code?`, `failure_reason?`
 - `max_turns`, `max_tool_calls`, `timeout_seconds`
 - `cost_budget`
 - `started_at`
@@ -785,7 +789,8 @@ Agent, AIExecution 또는 ToolCall이 만든 재사용 가능한 결과다.
 - `artifact_type`, `storage_ref`, `content_hash?`
 - `agent_run_id?`, `ai_execution_id?`, `tool_call_id?`
 - `task_id?`, `work_context_id?`
-- `provenance`, `status`
+- `task_step_id?`, `schema_version?`
+- `provenance`, `verification_status?`, `review_status?`
 - `created_at`
 
 최소 하나의 producer reference를 가져야 한다. Task/WorkContext 연결은 산출물의 업무 맥락이 있을 때만 사용한다.

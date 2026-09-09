@@ -34,6 +34,7 @@ export interface ProjectTaskStep {
   readonly estimatedMinutes: number | null;
   readonly completionCriteria: string | null;
   readonly status: string;
+  readonly skillKey: string | null;
 }
 
 export interface ProjectArtifact {

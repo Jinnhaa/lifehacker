@@ -84,8 +84,8 @@ export class SupabaseProjectPmRepository implements ProjectPmRepository {
           )
         ) order by t.created_at,t.id
       `,
-      this.sql<{ id: string; task_id: string; position: number; title: string; owner: "user" | "ai"; estimated_minutes: number | null; completion_criteria: string | null; status: string }[]>`
-        select s.id,s.task_id,s.position,s.title,s.owner,s.estimated_minutes,s.completion_criteria,s.status
+      this.sql<{ id: string; task_id: string; position: number; title: string; owner: "user" | "ai"; estimated_minutes: number | null; completion_criteria: string | null; status: string; skill_key: string | null }[]>`
+        select s.id,s.task_id,s.position,s.title,s.owner,s.estimated_minutes,s.completion_criteria,s.status,s.skill_key
         from public.task_steps s join public.tasks t on t.id=s.task_id and t.user_id=s.user_id
         left join public.objectives o on o.id=t.objective_id and o.user_id=t.user_id
         where s.user_id=${userId} and (t.work_context_id=${project.id} or (t.work_context_id is null and o.work_context_id=${project.id}))
@@ -97,7 +97,8 @@ export class SupabaseProjectPmRepository implements ProjectPmRepository {
         left join public.tasks t on t.id=a.task_id and t.user_id=a.user_id
         left join public.objectives o on o.id=t.objective_id and o.user_id=t.user_id
         where a.user_id=${userId}
-          and a.artifact_type not in ('project_state_snapshot','gap_analysis','backlog_proposal') and (
+          and a.artifact_type not in ('project_state_snapshot','gap_analysis','backlog_proposal')
+          and (a.review_status is null or a.review_status='accepted') and (
           a.work_context_id=${project.id} or t.work_context_id=${project.id} or (t.work_context_id is null and o.work_context_id=${project.id})
         ) order by a.created_at,a.id
       `,
@@ -167,7 +168,8 @@ export class SupabaseProjectPmRepository implements ProjectPmRepository {
       tasks: tasks.map(mapTask),
       taskSteps: taskSteps.map((item): ProjectTaskStep => ({
         id: item.id, taskId: item.task_id, position: item.position, title: item.title, owner: item.owner,
-        estimatedMinutes: item.estimated_minutes, completionCriteria: item.completion_criteria, status: item.status
+        estimatedMinutes: item.estimated_minutes, completionCriteria: item.completion_criteria, status: item.status,
+        skillKey: item.skill_key
       })),
       artifacts: artifacts.map((item): ProjectArtifact => ({
         id: item.id, artifactType: item.artifact_type, title: item.title, taskId: item.task_id,

@@ -1,6 +1,12 @@
 import { userIdSchema } from "@amber/shared";
 import { z } from "zod";
 import {
+  documentDraftInputSchema,
+  documentDraftResultSchema,
+  type DocumentDraftInput,
+  type DocumentDraftResult
+} from "../agent-execution/ai-task-execution.js";
+import {
   backlogRefinementResultSchema,
   gapAnalysisArtifactSchema,
   gapAnalysisResultSchema,
@@ -12,7 +18,7 @@ import {
 } from "./project-leadership.js";
 
 export interface SkillDefinition<Input, Output> {
-  readonly key: "project-state-review" | "backlog-refinement";
+  readonly key: "project-state-review" | "backlog-refinement" | "document-draft";
   readonly version: "1";
   readonly inputSchema: z.ZodType<Input>;
   readonly outputSchema: z.ZodType<Output>;
@@ -66,7 +72,29 @@ export const backlogRefinementSkill: SkillDefinition<BacklogRefinementInput, Bac
   }
 };
 
+const criteria = (value: string | null): readonly string[] => value?.split("\n").map((item) => item.trim()).filter(Boolean) ?? [];
+
+export const documentDraftSkill: SkillDefinition<DocumentDraftInput, DocumentDraftResult> = {
+  key: "document-draft",
+  version: "1",
+  inputSchema: documentDraftInputSchema,
+  outputSchema: documentDraftResultSchema,
+  allowedCapabilities: ["project.read", "artifact.read", "decision.read"],
+  completionCriteria: ["구조화된 초안이 비어 있지 않다", "TaskStep 완료 기준을 명시적으로 다룬다", "ContextPackage source만 인용한다"],
+  verify(input, output) {
+    const allowedSources = new Set(input.sourceRefs);
+    const requiredCriteria = criteria(input.taskStep.completionCriteria ?? input.task.completionCriteria);
+    return [
+      ...requiredCriteria.filter((item) => !output.addressedCriteria.includes(item))
+        .map((item) => `document draft does not address completion criterion: ${item}`),
+      ...output.sourceRefs.filter((item) => !allowedSources.has(item))
+        .map((item) => `document draft references source outside ContextPackage: ${item}`)
+    ];
+  }
+};
+
 export const projectLeadershipSkillRegistry = {
   [projectStateReviewSkill.key]: projectStateReviewSkill,
-  [backlogRefinementSkill.key]: backlogRefinementSkill
+  [backlogRefinementSkill.key]: backlogRefinementSkill,
+  [documentDraftSkill.key]: documentDraftSkill
 } as const;

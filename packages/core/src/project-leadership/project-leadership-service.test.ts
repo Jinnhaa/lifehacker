@@ -30,7 +30,7 @@ const context = (): ProjectPmContext => ({
   objectives: [{ id: "objective-1", title: "출시", goalId: "goal-1", targetDate: "2026-09-20", successCriteria: "핵심 흐름 검증", importance: 5, status: "active" }],
   goals: [{ id: "goal-1", title: "포트폴리오", status: "active" }],
   tasks: [task("task-open", "PLANNED"), task("task-blocked", "BLOCKED")],
-  taskSteps: [{ id: "step-1", taskId: "task-open", position: 1, title: "검증", owner: "user", estimatedMinutes: 20, completionCriteria: "통과", status: "pending" }],
+  taskSteps: [{ id: "step-1", taskId: "task-open", position: 1, title: "검증", owner: "user", estimatedMinutes: 20, completionCriteria: "통과", status: "pending", skillKey: null }],
   artifacts: [{ id: "artifact-source", artifactType: "spec", title: "명세", taskId: "task-open", workContextId: project.id, contentText: "초안", contentHash: "source-hash", createdAt: now }],
   decisions: [{ id: "decision-1", question: "범위", whyNow: "출시", status: "resolved", createdAt: now, resolvedAt: now }],
   sourceReferences: [{ id: "external-1", source: "github", externalType: "repository", externalId: "logfolio", externalVersion: null, internalEntityType: "work_context", internalEntityId: project.id, syncStatus: "active", contentHash: null, lastSeenAt: now }],

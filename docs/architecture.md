@@ -1284,3 +1284,4 @@ UI 구현은 이 순서의 Core 기능을 대체하지 않는다.
 - AgentRun / AIExecution / ToolCall / Artifact를 분리.
 - Project leadership의 현재 상태, gap, 승인 전 backlog는 별도 mutable table 대신 versioned typed Artifact로 보존한다.
 - Project observation workflow는 `WorkflowRun → ContextPackage → project_state_snapshot → gap_analysis → backlog_proposal` provenance chain을 유지한다.
+- AI TaskStep 실행은 `WorkflowRun → ContextPackage → AgentRun attempt → AIExecution → verified Artifact(pending_review)` chain을 유지하며 사용자 검토 전 Task를 완료하지 않는다.

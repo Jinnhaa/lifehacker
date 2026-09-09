@@ -1,5 +1,6 @@
 import { userIdSchema } from "@amber/shared";
 import { z } from "zod";
+import { documentDraftInputSchema, documentDraftResultSchema } from "../agent-execution/ai-task-execution.js";
 import { backlogRefinementResultSchema, gapAnalysisArtifactSchema, gapAnalysisResultSchema, projectStateSnapshotSchema } from "./project-leadership.js";
 const projectStateReviewInputSchema = z.object({
     userId: userIdSchema, workflowRunId: z.string().min(1), snapshot: projectStateSnapshotSchema
@@ -43,8 +44,28 @@ export const backlogRefinementSkill = {
         ]);
     }
 };
+const criteria = (value) => value?.split("\n").map((item) => item.trim()).filter(Boolean) ?? [];
+export const documentDraftSkill = {
+    key: "document-draft",
+    version: "1",
+    inputSchema: documentDraftInputSchema,
+    outputSchema: documentDraftResultSchema,
+    allowedCapabilities: ["project.read", "artifact.read", "decision.read"],
+    completionCriteria: ["구조화된 초안이 비어 있지 않다", "TaskStep 완료 기준을 명시적으로 다룬다", "ContextPackage source만 인용한다"],
+    verify(input, output) {
+        const allowedSources = new Set(input.sourceRefs);
+        const requiredCriteria = criteria(input.taskStep.completionCriteria ?? input.task.completionCriteria);
+        return [
+            ...requiredCriteria.filter((item) => !output.addressedCriteria.includes(item))
+                .map((item) => `document draft does not address completion criterion: ${item}`),
+            ...output.sourceRefs.filter((item) => !allowedSources.has(item))
+                .map((item) => `document draft references source outside ContextPackage: ${item}`)
+        ];
+    }
+};
 export const projectLeadershipSkillRegistry = {
     [projectStateReviewSkill.key]: projectStateReviewSkill,
-    [backlogRefinementSkill.key]: backlogRefinementSkill
+    [backlogRefinementSkill.key]: backlogRefinementSkill,
+    [documentDraftSkill.key]: documentDraftSkill
 };
 //# sourceMappingURL=skill-registry.js.map

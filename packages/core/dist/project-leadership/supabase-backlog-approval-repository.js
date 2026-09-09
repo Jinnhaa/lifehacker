@@ -210,9 +210,11 @@ export class SupabaseBacklogApprovalRepository {
                 for (const [index, step] of steps.entries()) {
                     const stepId = stableUuid(`backlog-step:${decision.proposalArtifactId}:${item.key}:${index + 1}`);
                     await tx `
-            insert into public.task_steps(id,user_id,task_id,position,title,owner,estimated_minutes,completion_criteria,status)
+            insert into public.task_steps(id,user_id,task_id,position,title,owner,estimated_minutes,completion_criteria,status,skill_key)
             values(${stepId},${decision.userId},${taskId},${index + 1},${step.title},${step.owner},
-              ${steps.length === 1 ? minutes : null},${item.acceptanceCriteria.join("\n")},'pending')
+              ${steps.length === 1 ? minutes : null},${item.acceptanceCriteria.join("\n")},
+              ${index === 0 && item.dependencies.length > 0 ? "dependency_waiting" : "pending"},
+              ${step.owner === "ai" ? "document-draft" : null})
             on conflict(id) do nothing
           `;
                     await tx `

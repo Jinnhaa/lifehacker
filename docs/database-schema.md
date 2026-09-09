@@ -872,6 +872,8 @@ semantic retrieval이 실제 bottleneck이 된 뒤 pgvector를 검토한다.
 
 Schema Source of Truth는 Dashboard click가 아니라 Git migration이다.
 
+P0-3의 `0013_ai_task_execution.sql`은 새 Execution entity를 만들지 않고 기존 TaskStep, ContextPackage, AgentRun, Artifact를 확장한다. AI step의 Skill assignment, 실행 시도 번호와 idempotency, 실패 원인, producer/source trace, verifier 통과와 review 대기 상태를 저장한다.
+
 ```text
 migration 작성
 → local db reset

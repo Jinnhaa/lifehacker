@@ -482,6 +482,8 @@ Skill은 Agent의 역할이나 권한과 분리된 반복 업무 계약이다. P
 - completion criteria
 - deterministic verifier
 
-현재 등록된 Skill은 `project-state-review`와 `backlog-refinement`다. 두 Skill은 project scope의 ContextPackage만 사용하고 Task를 생성하거나 실행하지 않는다.
+현재 등록된 Skill은 `project-state-review`, `backlog-refinement`, `document-draft`다. `document-draft`는 AI-owned TaskStep에 명시적으로 배정되며 project scope의 읽기 전용 ContextPackage에서 검증 가능한 Artifact를 만든다. AgentTemplate은 역할과 scope를, Skill은 입력·출력·verifier 계약을 계속 소유한다.
 
 Backlog approval 이후 routing은 deterministic Core logic이다. `TaskStep.owner=user`는 human executable, `owner=ai`는 AI executable 후보가 되며 선행 step이나 proposal dependency가 남아 있으면 dependency waiting으로 분류한다. 이 분류 자체는 AgentRun 또는 tool execution을 시작하지 않는다.
+
+AI TaskStep 실행은 Project PM AgentInstance의 home scope와 ContextPackage scope가 일치할 때만 시작한다. 이번 단계의 AgentRun은 `max_tool_calls=0`이며 ToolGrant를 우회하는 외부 read/write를 수행하지 않는다. 실행 시도마다 Skill/version, TaskStep, context, idempotency와 실패 원인을 기록한다.

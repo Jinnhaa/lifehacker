@@ -360,3 +360,24 @@ backlog_proposal
 - batch materialization, Decision/Feedback, DomainEvent, approval 완료는 한 transaction에서 처리한다.
 - 동일 proposal item의 Task와 TaskStep ID는 proposal Artifact ID와 stable item key에서 결정해 재처리를 idempotent하게 만든다.
 - 이 단계는 DailyPlan 연결과 AgentRun 실행을 수행하지 않는다.
+
+## 23. AI TaskStep Execution
+
+```text
+AI-owned executable TaskStep
+→ project-scoped ContextPackage
+→ versioned Skill
+→ AgentRun attempt
+→ structured AIExecution
+→ deterministic verifier
+→ verified Artifact(pending_review)
+→ Task WAITING_FOR_USER
+```
+
+- materialization이 AI step에 `document-draft` Skill을 명시적으로 배정하며 LLM이 Skill을 선택하지 않는다.
+- `taskStepId + skill key/version + context hash`로 동일 성공 실행을 재사용한다.
+- 모델 호출, schema validation, Skill verifier, Artifact 저장이 모두 끝나야 attempt가 성공한다.
+- 재시도는 최대 2회이고 각 시도를 별도 AgentRun으로 보존한다. 최종 실패는 TaskStep과 Task를 blocked 상태로 둔다.
+- ContextPackage는 Project scope의 WorkContext, Objective, Task, TaskStep, accepted Artifact, Decision과 source ref만 포함한다.
+- P0-3은 read-only model execution만 허용하며 ToolCall과 외부 write를 수행하지 않는다.
+- Artifact는 `verified + pending_review`이며 accept/reject와 Project state 반영은 후속 workflow의 책임이다.
