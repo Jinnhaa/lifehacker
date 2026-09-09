@@ -5,7 +5,9 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { SupabaseChiefRunRecorder } from "../chief/supabase-chief-context-reader.js";
 import { AgentBootstrapService } from "../agent-execution/agent-bootstrap.js";
 import { ProjectLeadershipService } from "../project-leadership/project-leadership-service.js";
+import { BacklogApprovalService } from "../project-leadership/backlog-approval-service.js";
 import { SupabaseProjectLeadershipRepository } from "../project-leadership/supabase-project-leadership-repository.js";
+import { SupabaseBacklogApprovalRepository } from "../project-leadership/supabase-backlog-approval-repository.js";
 import { SupabaseProjectPmRepository, SupabaseProjectPmRunRecorder } from "./supabase-project-pm-repository.js";
 
 const connectionString = process.env.TEST_DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
@@ -247,12 +249,12 @@ describe("SupabaseProjectPmRepository", () => {
         unknowns: ["GitHub source revision unknown"]
       })),
       refineBacklog: vi.fn(async () => ({
-        items: [{
-          key: "define-criteria", sourceGapKey: "missing-criteria", objectiveId, title: "출시 기준 정의",
-          description: "검토 가능한 출시 기준을 만든다", suggestedPriority: "high" as const,
-          suggestedOwner: "hybrid" as const, acceptanceCriteria: ["기준이 문서화됨"], dependencies: [],
-          roughSize: "s" as const, evidenceRefs: ["gap:missing-criteria", `task:${taskId}`], risk: null
-        }],
+        items: [
+          { key: "human-item", sourceGapKey: "missing-criteria", objectiveId, title: "사용자 확인", description: "사용자가 기준을 확인한다", suggestedPriority: "medium" as const, suggestedOwner: "human" as const, acceptanceCriteria: ["확인 완료"], dependencies: [], roughSize: "s" as const, evidenceRefs: ["gap:missing-criteria", `task:${taskId}`], risk: null },
+          { key: "ai-item", sourceGapKey: "missing-criteria", objectiveId, title: "AI 초안", description: "AI가 초안을 준비한다", suggestedPriority: "high" as const, suggestedOwner: "human" as const, acceptanceCriteria: ["초안 존재"], dependencies: [], roughSize: "m" as const, evidenceRefs: ["gap:missing-criteria"], risk: null },
+          { key: "hybrid-item", sourceGapKey: "missing-criteria", objectiveId, title: "혼합 검토", description: "AI 초안 후 사용자가 검토한다", suggestedPriority: "high" as const, suggestedOwner: "hybrid" as const, acceptanceCriteria: ["검토 완료"], dependencies: [], roughSize: "m" as const, evidenceRefs: ["gap:missing-criteria"], risk: null },
+          { key: "excluded-item", sourceGapKey: "missing-criteria", objectiveId, title: "제외할 일", description: "이번 범위에서 제외한다", suggestedPriority: "low" as const, suggestedOwner: "human" as const, acceptanceCriteria: ["제외 판단"], dependencies: [], roughSize: "xs" as const, evidenceRefs: ["gap:missing-criteria"], risk: null }
+        ],
         unknowns: []
       }))
     };
@@ -298,5 +300,96 @@ describe("SupabaseProjectPmRepository", () => {
         and artifact_type in ('project_state_snapshot','gap_analysis','backlog_proposal')
     `;
     expect(otherArtifacts[0]?.count).toBe(0);
+
+    const approvalService = new BacklogApprovalService({
+      repository: new SupabaseBacklogApprovalRepository(sql), projectRepository: repository,
+      clock: new FixedClock(new Date("2026-09-09T04:00:00.000Z"))
+    });
+    const approval = await approvalService.requestApproval({
+      userId, proposalArtifactId: first.backlogProposal.id, proposalHash: first.backlogProposal.contentHash,
+      idempotencyKey: `backlog-approval:${first.backlogProposal.id}`
+    });
+    const beforeDecision = await sql<{ tasks: number; steps: number }[]>`
+      select (select count(*)::int from public.tasks where user_id=${userId}) tasks,
+        (select count(*)::int from public.task_steps where user_id=${userId}) steps
+    `;
+    expect(beforeDecision).toEqual(after.map(({ tasks, steps }) => ({ tasks, steps })));
+    const decision = {
+      userId,
+      approvalRequestId: approval.id,
+      proposalArtifactId: first.backlogProposal.id,
+      proposalHash: first.backlogProposal.contentHash,
+      acceptedItems: [
+        { proposalItemKey: "human-item", priorityOverride: "critical" as const },
+        { proposalItemKey: "ai-item", ownerOverride: "ai" as const },
+        { proposalItemKey: "hybrid-item" }
+      ],
+      excludedItems: [{ proposalItemKey: "excluded-item", reason: "현재 범위 밖" }],
+      userReason: "출시에 필요한 세 항목만 먼저 처리"
+    };
+    const materialized = await approvalService.decide(decision, "Asia/Seoul");
+    const duplicate = await approvalService.decide(decision, "Asia/Seoul");
+    expect(duplicate.duplicate).toBe(true);
+    expect(duplicate.tasks).toEqual(materialized.tasks);
+    expect(materialized.excludedItemKeys).toEqual(["excluded-item"]);
+    expect(materialized.tasks.map((item) => item.proposalItemKey).sort()).toEqual(["ai-item", "human-item", "hybrid-item"]);
+    expect(materialized.tasks.find((item) => item.proposalItemKey === "human-item")).toMatchObject({
+      importance: 5, steps: [{ owner: "user", route: "human_executable" }]
+    });
+    expect(materialized.tasks.find((item) => item.proposalItemKey === "ai-item")?.steps).toEqual([
+      expect.objectContaining({ owner: "ai", route: "ai_executable" })
+    ]);
+    expect(materialized.tasks.find((item) => item.proposalItemKey === "hybrid-item")?.steps).toEqual([
+      expect.objectContaining({ position: 1, owner: "ai", route: "ai_executable" }),
+      expect.objectContaining({ position: 2, owner: "user", route: "dependency_waiting" })
+    ]);
+    const excluded = await sql<{ count: number }[]>`
+      select count(*)::int count from public.tasks where user_id=${userId} and title='제외할 일'
+    `;
+    expect(excluded[0]?.count).toBe(0);
+    const trace = await sql<{ approval_status: string; decision_reason: string; task_events: number; step_events: number; causal_events: number }[]>`
+      select a.status approval_status,f.user_reason decision_reason,
+        (select count(*)::int from public.domain_events e where e.user_id=a.user_id and e.workflow_run_id=a.workflow_run_id and e.event_type='task_created') task_events,
+        (select count(*)::int from public.domain_events e where e.user_id=a.user_id and e.workflow_run_id=a.workflow_run_id and e.event_type='task_step_created') step_events,
+        (select count(*)::int from public.domain_events e where e.user_id=a.user_id and e.workflow_run_id=a.workflow_run_id and e.causation_id is not null) causal_events
+      from public.approval_requests a join public.decision_feedback f on f.decision_id=a.decision_id and f.user_id=a.user_id
+      where a.id=${approval.id} and a.user_id=${userId}
+    `;
+    expect(trace[0]).toEqual({ approval_status: "approved", decision_reason: decision.userReason, task_events: 3, step_events: 4, causal_events: 8 });
+
+    const laterLeadership = new ProjectLeadershipService({
+      projectRepository: repository,
+      workflowRepository: new SupabaseProjectLeadershipRepository(sql),
+      analysisProvider,
+      clock: new FixedClock(new Date("2026-09-09T05:00:00.000Z"))
+    });
+    const later = await laterLeadership.run({
+      userId, workContextId: projectId, timeZone: "Asia/Seoul", idempotencyKey: `project-leadership:${projectId}:stale-case`
+    });
+    const staleApproval = await approvalService.requestApproval({
+      userId, proposalArtifactId: later.backlogProposal.id, proposalHash: later.backlogProposal.contentHash,
+      idempotencyKey: `backlog-approval:${later.backlogProposal.id}`
+    });
+    const taskCountBeforeStale = await sql<{ count: number }[]>`
+      select count(*)::int count from public.tasks where user_id=${userId}
+    `;
+    await sql`update public.tasks set title='발표 수정됨',updated_at=now() where id=${taskId} and user_id=${userId}`;
+    await expect(approvalService.decide({
+      userId,
+      approvalRequestId: staleApproval.id,
+      proposalArtifactId: later.backlogProposal.id,
+      proposalHash: later.backlogProposal.contentHash,
+      acceptedItems: later.backlogProposal.content.items.map((item) => ({ proposalItemKey: item.key })),
+      excludedItems: []
+    }, "Asia/Seoul")).rejects.toMatchObject({ code: "CONFLICT" });
+    const staleState = await sql<{ status: string; task_count: number }[]>`
+      select a.status,(select count(*)::int from public.tasks where user_id=${userId}) task_count
+      from public.approval_requests a where a.id=${staleApproval.id} and a.user_id=${userId}
+    `;
+    expect(staleState[0]).toEqual({ status: "expired", task_count: taskCountBeforeStale[0]!.count });
+    const otherProjectState = await sql<{ count: number; title: string }[]>`
+      select count(*)::int count,min(title) title from public.tasks where user_id=${userId} and work_context_id=${otherProjectId}
+    `;
+    expect(otherProjectState[0]).toEqual({ count: 1, title: "다른 프로젝트 일" });
   });
 });

@@ -483,3 +483,5 @@ Skill은 Agent의 역할이나 권한과 분리된 반복 업무 계약이다. P
 - deterministic verifier
 
 현재 등록된 Skill은 `project-state-review`와 `backlog-refinement`다. 두 Skill은 project scope의 ContextPackage만 사용하고 Task를 생성하거나 실행하지 않는다.
+
+Backlog approval 이후 routing은 deterministic Core logic이다. `TaskStep.owner=user`는 human executable, `owner=ai`는 AI executable 후보가 되며 선행 step이나 proposal dependency가 남아 있으면 dependency waiting으로 분류한다. 이 분류 자체는 AgentRun 또는 tool execution을 시작하지 않는다.

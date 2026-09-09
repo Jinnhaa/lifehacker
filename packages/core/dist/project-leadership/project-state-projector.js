@@ -16,6 +16,14 @@ export const stableJson = (value) => {
     return JSON.stringify(normalize(value));
 };
 export const contentHash = (value) => createHash("sha256").update(stableJson(value)).digest("hex");
+export const projectStateFingerprint = (snapshot) => contentHash({
+    ...snapshot,
+    generatedAt: undefined,
+    sourceRefs: snapshot.sourceRefs.map((source) => ({
+        ...source,
+        observedAt: source.kind === "external_reference" ? source.observedAt : undefined
+    }))
+});
 const externalFreshness = (reference) => {
     if (reference.syncStatus === "stale" || reference.syncStatus === "conflict")
         return "stale";

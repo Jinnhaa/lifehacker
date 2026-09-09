@@ -342,3 +342,21 @@ OBSERVE
 각 checkpoint는 `ContextPackage`와 이전 Artifact ID를 보존한다. 결과는 차례로 `project_state_snapshot`, `gap_analysis`, `backlog_proposal` Artifact가 된다. 동일 idempotency key의 완료된 run은 기존 결과를 반환한다.
 
 이 단계는 ApprovalRequest, Task/TaskStep materialization, routing, AgentRun, Artifact review, project state apply를 수행하지 않는다.
+
+## 22. Backlog Approval and Routing
+
+```text
+backlog_proposal
+→ batch ApprovalRequest
+→ typed user decision
+→ accepted items materialize
+→ Task / TaskStep
+→ human_executable / ai_executable / dependency_waiting
+```
+
+- ApprovalRequest는 proposal Artifact ID와 content hash에 결합한다.
+- 모든 proposal item은 accept 또는 exclude로 명시하며 priority와 owner를 item별로 override할 수 있다.
+- source snapshot과 현재 project projection의 fingerprint가 다르면 approval을 expired 처리하고 아무 Task도 만들지 않는다.
+- batch materialization, Decision/Feedback, DomainEvent, approval 완료는 한 transaction에서 처리한다.
+- 동일 proposal item의 Task와 TaskStep ID는 proposal Artifact ID와 stable item key에서 결정해 재처리를 idempotent하게 만든다.
+- 이 단계는 DailyPlan 연결과 AgentRun 실행을 수행하지 않는다.

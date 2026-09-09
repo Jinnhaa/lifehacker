@@ -939,6 +939,9 @@ project_state_snapshot → gap_analysis → backlog_proposal
 - gap은 확정된 업무가 아니며 evidence, confidence, unknown을 유지한다.
 - backlog proposal은 승인 전 후보이므로 Task를 생성하거나 변경하지 않는다.
 - Task의 effective WorkContext는 direct `Task.work_context_id`를 우선하고, null이면 `Objective.work_context_id`에서 유도한다.
+- backlog proposal 승인 결과는 기존 `Decision`과 `DecisionFeedback`에 보존한다.
+- 승인된 proposal item만 `Task` 결과 단위와 `TaskStep` 실행 단위로 materialize한다.
+- human/AI 소유권은 Task가 아니라 `TaskStep.owner=user|ai`로 표현한다. hybrid item은 AI 초안 step 뒤에 user review step을 둔다.
 
 ### Input mutation
 `InboxItem → ParsedEntity → DomainCommand → DomainEvent`
