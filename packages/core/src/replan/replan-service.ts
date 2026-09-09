@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
-import type { UserId } from "@amber/shared";
+import { DomainError, type UserId } from "@amber/shared";
 import type { MorningObservation, MorningPlan, MorningWorkflowRun } from "../morning/morning.js";
 import { shouldReplanForTrigger } from "../rules/replan.js";
 import { classifyReplanImpact } from "./replan-impact.js";
 import { buildReplanDraft, resolveReplanWorkUntil } from "./replan-planner.js";
+import { interpretChiefReplanRequest } from "./chief-replan-request.js";
 import type {
   ReplanMessage,
   ReplanMessageHandler,
@@ -50,7 +51,8 @@ const stateHash = (trigger: ReplanTrigger, state: ReplanPlanState, observation: 
     routines: observation.recurringActivities.map((value) => [value.id, value.completedCount]),
     directives: observation.strategicDirectives.map((value) => value.id),
     activeTaskId: state.activeTaskId,
-    workUntil: state.workUntil.toISOString()
+    workUntil: state.workUntil.toISOString(),
+    adjustment: trigger.adjustment ?? null
   }))
   .digest("hex");
 
@@ -118,7 +120,8 @@ export class DynamicReplanningService implements ReplanMessageHandler {
         ? await this.recordImportantDecision(message, workflow, "reject") : null;
       return { handled: true, reply: followUp ? `${baseReply}\n\n${followUp}` : baseReply };
     }
-    if (text !== "다시 짜줘" && text !== "오늘 일정 다시 짜줘") return { handled: false };
+    const adjustment = interpretChiefReplanRequest(text);
+    if (!adjustment) return { handled: false };
     const pending = await this.repository.findPendingApproval(message.userId, planDate);
     if (pending) {
       const existing = await this.repository.findByTrigger(message.userId, pending.triggerId);
@@ -130,7 +133,7 @@ export class DynamicReplanningService implements ReplanMessageHandler {
     if (!await this.repository.loadPlanState(message.userId, planDate)) {
       return { handled: true, reply: "승인된 오늘 계획이 없어. 먼저 오늘 계획을 만들어줘." };
     }
-    const trigger = await this.repository.createManualTrigger(message.userId, this.clock.now(), message.messageId);
+    const trigger = await this.repository.createManualTrigger(message.userId, this.clock.now(), message.messageId, adjustment);
     const reply = await this.processTrigger(trigger, message.timeZone, message.receivedAt);
     return { handled: true, reply: reply ?? "승인된 오늘 계획이 없어. 먼저 오늘 계획을 만들어줘." };
   }
@@ -175,9 +178,21 @@ export class DynamicReplanningService implements ReplanMessageHandler {
     if (!previous) return null;
     const now = this.clock.now();
     const observation = await this.observationReader.loadObservation(trigger.userId, planDate, timeZone, now);
+    const prioritizedTask = trigger.adjustment?.kind === "prioritize_task" ? trigger.adjustment : null;
+    if (prioritizedTask && !observation.tasks.some((task) =>
+      task.title.toLocaleLowerCase().includes(prioritizedTask.taskQuery.toLocaleLowerCase())
+    )) {
+      throw new DomainError("INVALID_INPUT", `우선 배치할 작업을 찾지 못했습니다: ${prioritizedTask.taskQuery}`);
+    }
     const current = { ...previous, workUntil: resolveReplanWorkUntil(observation, previous) };
-    const draft = buildReplanDraft({ observation, previous: current, now });
-    const decision = classifyReplanImpact(current, draft, observation, localWeekday(now, timeZone));
+    const draft = buildReplanDraft({
+      observation, previous: current, now,
+      ...(trigger.adjustment ? { adjustment: trigger.adjustment } : {})
+    });
+    const classified = classifyReplanImpact(current, draft, observation, localWeekday(now, timeZone));
+    const decision = trigger.adjustment && trigger.adjustment.kind !== "rebalance"
+      ? { impact: "IMPORTANT_CHANGE" as const, reasons: [...new Set([`user_${trigger.adjustment.kind}`, ...classified.reasons])] }
+      : classified;
     const result = await this.repository.createRevision(trigger, stateHash(trigger, current, observation), current, draft, decision, now);
     if (result.workflow.impact === "SMALL_CHANGE") {
       const action = await this.repository.deriveCurrentAction(trigger.userId, previous.planDate);

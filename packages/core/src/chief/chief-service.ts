@@ -154,6 +154,7 @@ const currentActionSelection = (context: ChiefContext): { title: string; estimat
     const task = context.observation.tasks.find((item) => item.id === action.taskId);
     return { title: action.title, estimatedMinutes: task?.estimatedUserMinutes ?? task?.estimatedMinutes ?? null };
   }
+  if (action.kind === "rest") return { title: action.title, estimatedMinutes: null };
   const activity = context.observation.recurringActivities.find((item) => item.occurrenceId === action.activityOccurrenceId);
   return { title: action.title, estimatedMinutes: activity?.expectedMinutes ?? null };
 };

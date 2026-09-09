@@ -48,6 +48,7 @@ export * from "./project-leadership/supabase-backlog-approval-repository.js";
 export * from "./project-leadership/supabase-project-leadership-repository.js";
 export * from "./project-leadership/work-routing.js";
 export * from "./replan/replan.js";
+export * from "./replan/chief-replan-request.js";
 export * from "./replan/replan-impact.js";
 export * from "./replan/replan-planner.js";
 export * from "./replan/replan-service.js";
