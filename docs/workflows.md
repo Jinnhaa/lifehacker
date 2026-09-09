@@ -351,3 +351,20 @@ Approval 대기 시 WorkflowRun checkpoint를 저장하고 process는 종료 가
 `Inbox → ParsedEntity → DomainCommand → ExternalReference → DomainEvent`
 
 create/update/delete/stale/conflict를 동일 contract로 처리한다.
+
+
+## 21. Approval Base Preservation — 2026-09-09
+
+중요 Replan은 기존 approved plan을 유지한 채 pending_approval revision을 생성한다.
+승인 시 기반 plan을 잠그고 아직 approved인지 확인한 뒤 같은 transaction에서
+기존 plan을 superseded, 새 plan을 approved로 바꾼다. 기반이 이미 바뀌거나 닫혔다면
+오래된 dynamic replan 승인으로 최신 계획을 교체하지 않는다.
+거절은 해당 proposal/approval/workflow만 종료하며 과거 superseded plan을 복원하지 않는다.
+최초 Morning의 미승인 초안 수정은 이전 초안이 superseded여도 승인 계획이 없으면 승인 가능하다.
+
+## 22. Project and Specialist Workflow Boundary
+
+목표 흐름은 Project 근거 → gap → Objective/Task 제안 → 중요한 scope 승인 → Daily Planning → 실행 근거 → review다.
+현재 Project PM은 조회 단계까지만 구현되어 있다. School/Discovery는 같은 WorkflowRun checkpoint,
+승인 및 Artifact producer 경계를 활용할 후속 capability이며 실행 가능한 workflow가 이미 있다는 뜻은 아니다.
+다음 구현은 한 가지 조사/초안 작업의 요청 → AgentRun → 검증 Artifact → 사용자 검토 → 업무 결과 연결부터 닫는다.

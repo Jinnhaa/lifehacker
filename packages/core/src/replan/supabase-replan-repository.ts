@@ -309,9 +309,6 @@ export class SupabaseReplanRepository implements ReplanRepository {
       `;
       const previousPlanId = plans[0]?.supersedes_plan_id ?? null;
       await tx`update public.daily_plans set status='superseded' where id=${current.planId} and user_id=${current.userId} and status='pending_approval'`;
-      if (previousPlanId) {
-        await tx`update public.daily_plans set status='approved' where id=${previousPlanId} and user_id=${current.userId} and status='superseded'`;
-      }
       await tx`
         update public.approval_requests set status='rejected',responded_at=${now},responded_by='user',response_payload=${tx.json({ messageId })}
         where user_id=${current.userId} and workflow_run_id=${current.id} and status='pending'
@@ -326,7 +323,7 @@ export class SupabaseReplanRepository implements ReplanRepository {
         insert into public.domain_events(
           user_id,event_type,aggregate_type,aggregate_id,actor_type,occurred_at,correlation_id,workflow_run_id,idempotency_key,payload_version,payload
         ) values(${current.userId},'plan_rejected','daily_plan',${current.planId},'user',${now},${current.correlationId},${current.id},
-          ${`replan-plan-rejected:${current.id}`},1,${tx.json({ restored_plan_id: previousPlanId })})
+          ${`replan-plan-rejected:${current.id}`},1,${tx.json({ proposal_base_plan_id: previousPlanId })})
         on conflict(user_id,idempotency_key) do nothing
       `;
       return { duplicate: false };

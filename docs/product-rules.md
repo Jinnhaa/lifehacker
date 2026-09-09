@@ -992,3 +992,17 @@ AI Gateway는 최소한 다음을 기록할 수 있어야 한다.
 8. 실제 생활에서 계속 쓸 수 있는가?
 
 대부분에 `아니오`라면 Amber HQ의 핵심 기능으로 만들지 않는다.
+
+
+## 34. Personal and Project Closed Loops — 2026-09-09
+
+제품 완료 기준은 Understand → Decide → Execute → Learn이다.
+Daily loop와 Project leadership loop가 함께 이어져야 하며 사용자가 매일 모든 업무를 다시 입력하는 구조를 완료로 보지 않는다.
+프로젝트 목표/근거 → gap → milestone/backlog → Daily Planning → 실행 결과 → review/next iteration을 연결한다.
+
+UI 전체는 Goal/Objective, Project, Schedule/Constraints, Planning, Automation 정책,
+Personalization을 사용자가 조회·수정할 수 있는 Control Plane이다. Home의 범위 제한과 별개다.
+연결되지 않은 미리보기는 실제 완료·승인·저장이 이루어진 것으로 오인되지 않게 표시한다.
+
+기존 Task의 계획 반영 정책은 domain-model의 Planning Work Projection을 따른다.
+실제 Agent 실행과 상태 보고를 구분하고 결과물과 provenance가 없는 일을 완료로 간주하지 않는다.

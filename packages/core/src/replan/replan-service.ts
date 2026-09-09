@@ -45,6 +45,9 @@ const reasonText = (reason: ReplanTrigger["reason"]): string => ({
 const stateHash = (trigger: ReplanTrigger, state: ReplanPlanState, observation: MorningObservation): string => createHash("sha256")
   .update(JSON.stringify({
     reason: trigger.reason,
+    workContexts: observation.workContexts ?? [],
+    objectives: observation.objectives ?? [],
+    goals: observation.goals ?? [],
     tasks: observation.tasks.map((task) => [task.id, task.status, task.actualMinutes, task.updatedAt.toISOString()]),
     constraints: observation.constraints.map((value) => [value.id, value.start.toISOString(), value.end.toISOString(), value.blocksCapacity]),
     routines: observation.recurringActivities.map((value) => [value.id, value.completedCount]),

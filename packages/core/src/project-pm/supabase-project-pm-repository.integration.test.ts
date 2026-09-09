@@ -56,7 +56,7 @@ beforeAll(async () => {
   `;
   await sql`
     insert into public.tasks(id,user_id,work_context_id,objective_id,title,execution_mode,estimated_minutes,importance,status) values
-      (${taskId},${userId},${projectId},${objectiveId},'발표 수정','standard',45,5,'IN_PROGRESS'),
+      (${taskId},${userId},null,${objectiveId},'발표 수정','standard',45,5,'IN_PROGRESS'),
       (${otherTaskId},${userId},${otherProjectId},null,'다른 프로젝트 일','standard',30,4,'PLANNED'),
       (${foreignTaskId},${otherUserId},${foreignProjectId},null,'다른 사용자 일','standard',30,4,'PLANNED')
   `;

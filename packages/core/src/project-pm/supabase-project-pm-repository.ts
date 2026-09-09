@@ -71,25 +71,30 @@ export class SupabaseProjectPmRepository implements ProjectPmRepository {
         select distinct g.id,g.title,g.status from public.goals g join public.objectives o on o.goal_id=g.id and o.user_id=g.user_id
         where g.user_id=${userId} and o.work_context_id=${project.id} order by g.title
       `,
-      this.sql<TaskRow[]>`select * from public.tasks where user_id=${userId} and work_context_id=${project.id} order by created_at`,
+      this.sql<TaskRow[]>`
+        select t.* from public.tasks t left join public.objectives o on o.id=t.objective_id and o.user_id=t.user_id
+        where t.user_id=${userId} and coalesce(t.work_context_id,o.work_context_id)=${project.id} order by t.created_at
+      `,
       this.sql<{ session_id: string; task_id: string; title: string; started_at: Date }[]>`
         select f.id session_id,f.task_id,t.title,f.started_at from public.focus_sessions f
         join public.tasks t on t.id=f.task_id and t.user_id=f.user_id
-        where f.user_id=${userId} and f.status='active' and t.work_context_id=${project.id}
+        left join public.objectives o on o.id=t.objective_id and o.user_id=t.user_id
+        where f.user_id=${userId} and f.status='active' and coalesce(t.work_context_id,o.work_context_id)=${project.id}
         order by f.started_at desc limit 1
       `,
       this.sql<{ task_id: string; position: number }[]>`
         select i.task_id,i.position from public.daily_plans p join public.plan_items i on i.daily_plan_id=p.id and i.user_id=p.user_id
         join public.tasks t on t.id=i.task_id and t.user_id=i.user_id
+        left join public.objectives o on o.id=t.objective_id and o.user_id=t.user_id
         where p.user_id=${userId} and p.plan_date=${planDate} and p.status='approved'
-          and i.item_type='task' and t.work_context_id=${project.id} and i.status not in ('completed','cancelled','skipped')
+          and i.item_type='task' and coalesce(t.work_context_id,o.work_context_id)=${project.id} and i.status not in ('completed','cancelled','skipped')
         order by p.revision_no desc,i.position
       `,
       this.sql<{ id: string; event_type: string; aggregate_type: string; aggregate_id: string; occurred_at: Date }[]>`
         select id,event_type,aggregate_type,aggregate_id,occurred_at from public.domain_events e
         where e.user_id=${userId} and (
           e.aggregate_id=${project.id}
-          or e.aggregate_id in (select id from public.tasks where user_id=${userId} and work_context_id=${project.id})
+          or e.aggregate_id in (select t.id from public.tasks t left join public.objectives o on o.id=t.objective_id and o.user_id=t.user_id where t.user_id=${userId} and coalesce(t.work_context_id,o.work_context_id)=${project.id})
           or e.aggregate_id in (select id from public.objectives where user_id=${userId} and work_context_id=${project.id})
         ) order by occurred_at desc,recorded_at desc limit 20
       `

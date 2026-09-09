@@ -326,7 +326,7 @@ DailyPlan은 **immutable revision**으로 관리한다.
 - `id`, `user_id`
 - `plan_date`, `timezone`
 - `revision_no`
-- `status`: proposed / approved / rejected / superseded / closed
+- `status`: draft / pending_approval / approved / superseded / closed
 - `supersedes_plan_id?`
 - `approval_source?`: user / policy
 - `approval_reason?`
@@ -994,3 +994,26 @@ scheduled/suppressed/sent/delivered/acknowledged/failed/cancelled lifecycle과 d
 
 ### Calendar identity
 FixedExternalEvent와 AmberManagedWorkBlock을 provenance로 구분해 capacity 이중 차감을 막는다.
+
+
+## 18. Planning Work Projection — 2026-09-09
+
+Morning/Replan은 Task 원본을 변경하지 않고 다음을 파생한다.
+
+- effective WorkContext = Task.work_context_id ?? Objective.work_context_id.
+- 연결된 Objective, WorkContext 또는 Goal이 active가 아니면 새 계획 후보에서 제외한다.
+- effective deadline = Task의 official/internal deadline 및 Objective.target_date의 가장 이른 시각.
+  target_date는 사용자 timezone의 해당 날짜 23:59:59로 계산한다.
+- effective importance = Task/Objective/Goal 중요도의 최댓값. 영구 priority 값으로 저장하지 않는다.
+- StrategicDirective의 기존 ID 지정 우선 처리에 Task뿐 아니라 Objective/WorkContext/Goal ID도 포함한다.
+  priority_order 배열 전체의 순서 비교나 자연어 전략 해석을 구현한 것은 아니다.
+- 사용한 Goal/Objective/WorkContext 사실을 DailyPlan.input_snapshot에 보존한다.
+- Replan의 중요 Task 제거·deadline risk 판정도 동일 projection을 사용한다.
+- Project PM은 effective WorkContext를 기준으로 Task/Focus/PlanItem/Task event를 읽는다.
+
+Objective는 V1 milestone의 기존 표현이며 Task는 실행 가능한 backlog의 기존 표현이다.
+Task 완료는 연결된 프로젝트의 실행 근거를 바꾸지만 Objective 달성/프로젝트 출시를 자동 확정하지 않는다.
+독립 sprint entity나 임의 ProjectState JSON을 선행 추가하지 않는다.
+
+물리 DB에는 DailyPlan.rejected 상태가 없다. 제안 거절 시 proposal은 superseded로 종료하고
+ApprovalRequest.rejected 및 plan_rejected event로 거절 이유와 결과를 구분한다.

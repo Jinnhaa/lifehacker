@@ -347,3 +347,15 @@ PatternEvidence는 LearningCase를 지지/반박 evidence로 사용한다.
 `DecisionReason`은 사용하지 않고 `DecisionFeedback.user_reason`으로 통일한다.
 Pattern Candidate는 별도 entity가 아니라 `Pattern.status=candidate`를 사용한다.
 Pattern status는 `candidate / active / dismissed / expired`를 사용한다.
+
+
+## 19. Product Audit Implementation Boundary — 2026-09-09
+
+현재 DecisionLearning의 입력은 Morning override, 중요한 Replan, Focus switch이며 Day Close에서
+일일 결과를 연결한다. 승인된 deadline_over_routine 원칙은 실제 Morning/Replan/Chief 선택에 적용된다.
+따라서 단순 profile 저장소는 아니지만 PM 판단·가치관·trade-off를 일반적으로 학습하는 구현도 아니다.
+
+후속 Project workflow는 Context/Problem/Evidence → Decision/DecisionFeedback.user_reason →
+LearningCaseEvent(action) → Outcome(result) → Learning을 기존 chain으로 연결해야 한다.
+하루의 모든 결과를 개별 프로젝트 결정의 인과 결과라고 간주하지 않는다.
+Career/Portfolio 조회는 원 근거와 Why를 보존하고 사실과 회고 해석을 구분한다.

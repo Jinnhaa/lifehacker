@@ -175,3 +175,24 @@ describe("Supabase dynamic replanning", () => {
     expect(plans).toEqual([{ revision_no: 1, status: "approved" }, { revision_no: 2, status: "pending_approval" }]);
   });
 });
+
+
+it("does not approve or restore an obsolete base after another revision wins", async () => {
+  // The expired-user fixture has a still-pending revision based on revision 1.
+  const pending = await repository.findPendingApproval(expiredUser, "2026-09-04");
+  expect(pending).not.toBeNull();
+  const newerId = randomUUID();
+  await sql`update public.daily_plans set status='superseded' where user_id=${expiredUser} and status='approved'`;
+  await sql`
+    insert into public.daily_plans(id,user_id,plan_date,timezone,revision_no,status,supersedes_plan_id,input_snapshot,created_by,approved_at)
+    values(${newerId},${expiredUser},'2026-09-04','Asia/Seoul',3,'approved',${expiredPlan},'{}','test',${now})
+  `;
+  await sql`update public.approval_requests set status='pending' where user_id=${expiredUser} and status='expired'`;
+  await expect(service.handleReplanMessage({ userId: expiredUser, timeZone: "Asia/Seoul", text: "승인",
+    messageId: "stale-base-approval", receivedAt: now })).rejects.toThrow("Approval base plan is stale");
+  await repository.reject(pending!, now, "stale-base-reject");
+  const approved = await sql<{ id: string }[]>`select id from public.daily_plans where user_id=${expiredUser} and status='approved'`;
+  expect(approved).toEqual([{ id: newerId }]);
+  const base = await sql<{ status: string }[]>`select status from public.daily_plans where id=${expiredPlan}`;
+  expect(base[0]?.status).toBe("superseded");
+});

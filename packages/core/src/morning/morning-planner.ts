@@ -1,3 +1,4 @@
+import { resolvePlanningWork } from "./planning-work.js";
 import { calculateRecurringActivityRisk, type RecurringActivityRisk } from "../rules/recurring-activity.js";
 import { getDaysUntilDeadline } from "../rules/deadline.js";
 import { applyApprovedPrinciples } from "../principle-application/principle-application.js";
@@ -71,13 +72,14 @@ const buildCandidates = (observation: MorningObservation, now: Date, localWeekda
   const directiveOrders = observation.strategicDirectives.map((value) => value.priorityOrder);
   const tasks: Candidate[] = observation.tasks.flatMap((task) => {
     if (task.status === "DONE" || task.status === "BLOCKED" || task.status === "WAITING_FOR_USER") return [];
+    const work = resolvePlanningWork(task, observation);
+    if (!work.eligible) return [];
     const minutes = Math.max((task.estimatedUserMinutes ?? task.estimatedMinutes ?? 0) - task.actualMinutes, 0);
     if (minutes === 0) return [];
-    const deadlines = [task.officialDeadline, task.internalDeadline].filter((value): value is Date => value !== null);
-    const deadline = deadlines.length > 0 ? new Date(Math.min(...deadlines.map((value) => value.getTime()))) : null;
+    const deadline = work.deadline;
     const days = getDaysUntilDeadline(deadline, now, observation.timeZone);
     const deadlineRank = days !== null && days < 0 ? 0 : days === 0 ? 1 : days !== null && days <= 3 ? 3 : 5;
-    const directed = directiveOrders.some((order) => containsId(order, task.id));
+    const directed = directiveOrders.some((order) => work.directiveTargetIds.some((id) => containsId(order, id)));
     return [{
       type: "task" as const,
       id: task.id,
@@ -85,7 +87,7 @@ const buildCandidates = (observation: MorningObservation, now: Date, localWeekda
       minutes,
       minimumMinutes: Math.min(minutes, 30),
       rank: directed ? Math.max(0, deadlineRank - 1) : deadlineRank,
-      importance: task.importance,
+      importance: work.importance,
       deadline
     }];
   });
@@ -202,6 +204,9 @@ export const createMorningPlan = (input: CreateMorningPlanInput): MorningPlanDra
     highlights,
     inputSnapshot: {
       observedAt: input.now.toISOString(),
+      workContexts: input.observation.workContexts ?? [],
+      objectives: input.observation.objectives ?? [],
+      goals: input.observation.goals ?? [],
       planningBufferMinutes: input.observation.planningBufferMinutes,
       constraintIds: input.observation.constraints.map((value) => value.id),
       taskIds: input.observation.tasks.map((value) => value.id),

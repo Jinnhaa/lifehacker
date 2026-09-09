@@ -23,7 +23,7 @@
 | Requirement | Data / Domain | Rule / Policy | Workflow | Minimum Test |
 |---|---|---|---|---|
 | `일어남` Trigger | WorkflowRun, DomainEvent | wake acknowledgment 후 Morning 시작 | Wake/Morning | Wake retry 종료 후 Morning 생성 |
-| Calendar 조회 | ExternalReference | fixed schedule은 Google Calendar가 canonical | Morning | 지정 범위 일정이 planning input에 포함됨 |
+| Calendar 조회 | ExternalReference | fixed schedule은 iCloud Calendar primary, Google Calendar optional read-only | Morning | 지정 범위 일정이 planning input에 포함됨 |
 | Morning 추가상황 입력 | InboxItem, ParsedEntity | 시스템이 알 수 없는 정보만 요청 | Morning/Input | 불필요한 재질문 없음 |
 | 추가상황 → Constraint | Constraint, provenance | daily context를 유효기간 있는 Constraint로 normalize | Morning | work-until·condition 반영 |
 | Daily Capacity 계산 | Availability, Constraint, ExternalReference | deterministic only | Morning/Planning | fixed event와 constraint 제외 계산 |
@@ -161,3 +161,14 @@
 | Project PM Agent | AgentInstance, Scope | onboarding 후 기본 생성, toggle 허용 | Registration | project home scope로 생성 |
 | Project 종료/archive | WorkContext, AgentInstance | 종료 후 context와 Agent archive | Project Lifecycle | active planning에서 제외 |
 | Decision/Result/Learning 보존 | Decision, Outcome, Memory | 종료 시 핵심 기록 압축·보존 | Project Close | Situation→Result→Learning 조회 |
+
+
+## Product Closed-loop Gaps — 2026-09-09
+
+| Capability | Current status | 다음 acceptance boundary |
+|---|---|---|
+| Goal/Project work → Planning | 기존 연결 Task의 상태/마감/중요도 반영 | Task 없는 목표의 업무 발견·제안·승인 |
+| Project execution → project review | effective WorkContext 조회 및 Task event 연결 | gap/backlog proposal → next iteration |
+| AI work → Artifact | schema만 준비, 생성 실행 미구현 | 권한 검사·실행·실패·재시도·결과 연결 |
+| Decision Why → Project/Career reuse | 일일 학습 chain 구현, PM 경로 미구현 | 결정별 근거·행동·결과 및 scope 조회 |
+| UI → durable Core state | 미리보기만 구현 | 인증→Core mutation→reload 후 상태 유지 |

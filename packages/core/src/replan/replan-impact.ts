@@ -1,3 +1,4 @@
+import { resolvePlanningWork } from "../morning/planning-work.js";
 import { calculateRecurringActivityRisk } from "../rules/recurring-activity.js";
 import type { MorningObservation, MorningPlanDraft } from "../morning/morning.js";
 import type { ReplanDecision, ReplanPlanState } from "./replan.js";
@@ -24,11 +25,14 @@ export const classifyReplanImpact = (
   if (previous.activeTaskId && !taskIds.has(previous.activeTaskId)) reasons.push("active_focus_task_removed");
 
   for (const item of previous.items) {
+    const task = observation.tasks.find((value) => value.id === item.taskId);
+    const work = task ? resolvePlanningWork(task, observation) : null;
+    const importance = Math.max(item.taskImportance ?? 0, work?.importance ?? 0);
+    const deadline = work?.deadline ?? item.taskDeadline;
     if (
       item.itemType === "task"
       && item.taskId
-      && item.taskImportance !== null
-      && item.taskImportance >= 4
+      && importance >= 4
       && item.taskStatus !== "DONE"
       && item.taskStatus !== "BLOCKED"
       && item.status !== "switched"
@@ -37,13 +41,13 @@ export const classifyReplanImpact = (
     if (
       item.itemType === "task"
       && item.taskId
-      && item.taskDeadline
-      && item.taskDeadline <= previous.workUntil
+      && deadline
+      && deadline <= previous.workUntil
       && item.taskStatus !== "DONE"
       && item.taskStatus !== "BLOCKED"
     ) {
       const ends = draft.items.filter((draftItem) => draftItem.taskId === item.taskId).map((draftItem) => draftItem.end.getTime());
-      if (ends.length === 0 || Math.max(...ends) > item.taskDeadline.getTime()) reasons.push("deadline_risk_increased");
+      if (ends.length === 0 || Math.max(...ends) > deadline.getTime()) reasons.push("deadline_risk_increased");
     }
   }
 

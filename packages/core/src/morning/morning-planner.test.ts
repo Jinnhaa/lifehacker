@@ -87,3 +87,36 @@ describe("createMorningPlan", () => {
     expect(plan.items.every((item) => item.end <= new Date("2026-09-04T00:30:00.000Z") || item.start >= new Date("2026-09-04T01:00:00.000Z"))).toBe(true);
   });
 });
+
+
+describe("Goal and Project planning inputs", () => {
+  const now = new Date("2026-09-04T00:00:00Z");
+  const planFor = (extra: Partial<MorningObservation>) => createMorningPlan({
+    observation: observation({ constraints: [], recurringActivities: [], planningBufferMinutes: 0, ...extra }),
+    now, workUntil: new Date("2026-09-04T01:00:00Z"), privateIntervals: [], localWeekday: 5
+  });
+  const objective = { id: "objective", workContextId: "project", goalId: "goal", targetDate: "2026-09-04", importance: 4, status: "active" };
+  const linkedTask = task({ objectiveId: "objective", officialDeadline: null, estimatedMinutes: 60, importance: 1 });
+
+  it("uses a milestone target date in the user timezone without mutating the task", () => {
+    const plan = planFor({ tasks: [linkedTask, task({ id: "other" as TaskId, officialDeadline: null, importance: 5 })],
+      objectives: [objective], workContexts: [{ id: "project", status: "active" }], goals: [{ id: "goal", importance: 5, status: "active" }] });
+    expect(plan.items[0]?.taskId).toBe(linkedTask.id);
+    expect(plan.highlights).toContain(`${linkedTask.title}: 마감 우선`);
+    expect(plan.inputSnapshot.objectives).toEqual([objective]);
+    expect(linkedTask.officialDeadline).toBeNull();
+  });
+
+  it.each(["project", "objective", "goal"])("excludes inactive %s work", (inactive) => {
+    const plan = planFor({ tasks: [linkedTask], objectives: [{ ...objective, status: inactive === "objective" ? "achieved" : "active" }],
+      workContexts: [{ id: "project", status: inactive === "project" ? "archived" : "active" }],
+      goals: [{ id: "goal", importance: 5, status: inactive === "goal" ? "archived" : "active" }] });
+    expect(plan.items).toEqual([]);
+  });
+
+  it.each(["project", "objective", "goal"])("applies a directive targeting the task's %s", (id) => {
+    const plan = planFor({ tasks: [linkedTask, task({ id: "other" as TaskId, officialDeadline: null, importance: 5 })],
+      objectives: [{ ...objective, targetDate: null }], strategicDirectives: [{ id: "directive", directive: "우선 진행", priorityOrder: [id] }] });
+    expect(plan.items[0]?.taskId).toBe(linkedTask.id);
+  });
+});

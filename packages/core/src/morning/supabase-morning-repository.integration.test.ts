@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { FixedClock, type UserId } from "@amber/shared";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createMorningPlan } from "./morning-planner.js";
 import { MorningWorkflowService } from "./morning-service.js";
 import { SupabaseMorningRepository } from "./supabase-morning-repository.js";
 
@@ -111,4 +112,25 @@ describe("SupabaseMorningRepository workflow", () => {
     });
     expect(await repository.findTodayWorkflow(userB, "2026-09-04")).toBeNull();
   });
+});
+
+
+it("loads persisted Goal/Objective/Project into planning and excludes an archived project", async () => {
+  const projectId = randomUUID(); const objectiveId = randomUUID(); const goalId = randomUUID();
+  await sql`insert into public.work_contexts(id,user_id,kind,title,status,agent_mode)
+    values(${projectId},${userB},'project','출시 프로젝트','active','disabled')`;
+  await sql`insert into public.goals(id,user_id,title,importance,status,origin)
+    values(${goalId},${userB},'장기 목표',5,'active','user')`;
+  await sql`insert into public.objectives(id,user_id,goal_id,work_context_id,title,target_date,importance,status,origin)
+    values(${objectiveId},${userB},${goalId},${projectId},'출시 milestone','2026-09-04',4,'active','user')`;
+  await sql`update public.tasks set objective_id=${objectiveId},official_deadline=null where id=${taskB}`;
+  const read = () => repository.loadObservation(userB, "2026-09-04", "Asia/Seoul");
+  const plan = (data: Awaited<ReturnType<typeof read>>) => createMorningPlan({ observation: data,
+    now: clock.now(), workUntil: new Date("2026-09-04T01:00:00Z"), privateIntervals: [], localWeekday: 5 });
+  const active = await read();
+  expect(active.objectives).toContainEqual(expect.objectContaining({ id: objectiveId, workContextId: projectId, targetDate: "2026-09-04" }));
+  expect(active.tasks.map((task) => task.id)).toEqual([taskB]);
+  expect(plan(active).items[0]?.taskId).toBe(taskB);
+  await sql`update public.work_contexts set status='archived' where id=${projectId}`;
+  expect(plan(await read()).items).toEqual([]);
 });

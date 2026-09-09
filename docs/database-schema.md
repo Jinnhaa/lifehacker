@@ -931,3 +931,18 @@ Database
 ```
 
 이 순서의 이유는 Agent에게 Tool을 주기 전에 **Agent가 안전하게 읽고 바꿀 세계의 상태**부터 만들어야 하기 때문이다.
+
+
+# 30. Product Audit Clarifications — 2026-09-09
+
+이번 수정은 새 schema/migration이 없다. 기존 goals/objectives/work_contexts/tasks 관계를
+Morning Planning과 Project PM 조회에서 소비한다. 파생 중요도와 Objective 마감은 Task에 덮어쓰지 않는다.
+계획 입력 사실은 기존 daily_plans.input_snapshot을 사용한다.
+
+DailyPlan 상태는 draft/pending_approval/approved/superseded/closed다. 거절 결과는
+approval_requests.status=rejected와 domain_events.event_type=plan_rejected에 기록한다.
+승인 기반의 유효성 검사는 repository transaction에서 수행하며 approval_is_resumable 함수만으로
+현재 계획 기반의 유효성이 보장되는 것은 아니다.
+
+Agent/Tool/Workflow 테이블의 존재는 실행 dispatcher 또는 외부 write 승인 enforcement의 구현을 뜻하지 않는다.
+Decision/Learning의 FK chain은 존재하지만 Project scope별 판단 수집·결과 연결·Career 조회는 후속 작업이다.

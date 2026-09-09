@@ -145,7 +145,7 @@ export class SupabaseMorningRepository implements MorningRepository {
     `;
     const setting = settings[0] ?? { planning_buffer_minutes: 0, planning_policy: {}, week_starts_on: 1 };
     const week = weekRange(planDate, setting.week_starts_on);
-    const [taskRows, constraintRows, activityRows, directiveRows, carryoverRows, principles] = await Promise.all([
+    const [taskRows, constraintRows, activityRows, directiveRows, carryoverRows, principles, workContexts, objectives, goals] = await Promise.all([
       this.sql<Record<string, unknown>[]>`select * from public.tasks where user_id=${userId} and status<>'DONE' order by created_at`,
       this.sql<{ id: string; constraint_type: string; value: unknown; hardness: string; valid_from: Date; valid_until: Date | null; origin: string }[]>`
         select id,constraint_type,value,hardness,valid_from,valid_until,origin from public.constraints
@@ -171,7 +171,17 @@ export class SupabaseMorningRepository implements MorningRepository {
         where user_id=${userId} and workflow_type='day_close' and status='completed'
           and (checkpoint_state->>'date')::date<${planDate} order by (checkpoint_state->>'date')::date desc limit 1
       `,
-      new SupabasePrincipleReader(this.sql).loadActiveApproved(userId)
+      new SupabasePrincipleReader(this.sql).loadActiveApproved(userId),
+      this.sql<{ id: string; status: string }[]>`
+        select id,status from public.work_contexts where user_id=${userId}
+      `,
+      this.sql<{ id: string; workContextId: string | null; goalId: string | null; targetDate: string | null; importance: number; status: string }[]>`
+        select id,work_context_id as "workContextId",goal_id as "goalId",target_date::text as "targetDate",importance,status
+        from public.objectives where user_id=${userId}
+      `,
+      this.sql<{ id: string; importance: number; status: string }[]>`
+        select id,importance,status from public.goals where user_id=${userId}
+      `
     ]);
     const constraints: MorningConstraint[] = constraintRows.map((row) => {
       const value = asRecord(row.value);
@@ -185,6 +195,7 @@ export class SupabaseMorningRepository implements MorningRepository {
     const carryover = carryoverRows[0] ? asRecord(carryoverRows[0].result) : null;
     return {
       timeZone,
+      workContexts, objectives, goals,
       planningBufferMinutes: setting.planning_buffer_minutes,
       planningPolicy: asRecord(setting.planning_policy),
       constraints,
@@ -332,6 +343,24 @@ export class SupabaseMorningRepository implements MorningRepository {
       }
       const planId = current.checkpoint.planId;
       if (!planId || current.currentStep !== "awaiting_approval") throw new Error("Morning workflow is not awaiting approval");
+      // Serialize approval against replanning from the same base plan. A proposal
+      // cannot replace a newer approved revision after its base has changed.
+      const proposalRows = await tx<{ supersedes_plan_id: string | null }[]>`
+        select supersedes_plan_id from public.daily_plans where id=${planId} and user_id=${run.userId}
+      `;
+      const basePlanId = proposalRows[0]?.supersedes_plan_id;
+      if (basePlanId) {
+        const bases = await tx<{ status: string }[]>`
+          select status from public.daily_plans where id=${basePlanId} and user_id=${run.userId} for update
+        `;
+        if (bases[0]?.status !== "approved") {
+          const newerApproved = await tx<{ id: string }[]>`
+            select id from public.daily_plans where user_id=${run.userId}
+              and plan_date=${current.checkpoint.planDate} and status='approved'
+          `;
+          if (newerApproved.length > 0 || current.checkpoint.triggerId) throw new Error("Approval base plan is stale");
+        }
+      }
       const approvals = await tx<{ id: string; action_hash: string; checkpoint_version: number; status: string }[]>`
         select id,action_hash,checkpoint_version,status from public.approval_requests
         where user_id=${run.userId} and workflow_run_id=${run.id} and action_ref=${planId} order by created_at desc limit 1 for update

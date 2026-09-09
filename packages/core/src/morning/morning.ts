@@ -61,7 +61,30 @@ export interface MorningStrategicDirective {
   readonly priorityOrder: unknown;
 }
 
+export interface PlanningWorkContext {
+  readonly id: string;
+  readonly status: string;
+}
+
+export interface PlanningObjective {
+  readonly id: string;
+  readonly workContextId: string | null;
+  readonly goalId: string | null;
+  readonly targetDate: string | null;
+  readonly importance: number;
+  readonly status: string;
+}
+
+export interface PlanningGoal {
+  readonly id: string;
+  readonly importance: number;
+  readonly status: string;
+}
+
 export interface MorningObservation {
+  readonly workContexts?: readonly PlanningWorkContext[];
+  readonly objectives?: readonly PlanningObjective[];
+  readonly goals?: readonly PlanningGoal[];
   readonly timeZone: string;
   readonly planningBufferMinutes: number;
   readonly planningPolicy: Readonly<Record<string, unknown>>;

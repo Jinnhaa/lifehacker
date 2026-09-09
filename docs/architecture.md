@@ -2,7 +2,7 @@
 
 **Status:** V1 baseline  
 **Primary goal:** 1주 안에 실제 생활에서 사용 가능한 개인용 Chief of Staff core 구축  
-**Scope of this document:** UI를 제외한 backend/domain/automation architecture
+**Scope of this document:** backend/domain/automation 및 UI Control Plane 경계
 
 ---
 
@@ -1282,3 +1282,32 @@ UI 구현은 이 순서의 Core 기능을 대체하지 않는다.
 - Workflow approval은 checkpoint version + precondition + idempotent resume.
 - Agent isolation은 Scope/AgentScopeGrant/ToolGrant.
 - AgentRun / AIExecution / ToolCall / Artifact를 분리.
+
+
+## 45. Product Operating Architecture — 2026-09-09
+
+Amber HQ의 제품 범위는 Personal AI Operating System이다. Understand → Decide → Execute → Learn을
+Daily Execution Loop와 Project Leadership Loop 양쪽에서 닫아야 한다. 기존 Daily Core 구현만으로
+제품 전체가 완성되었다고 판단하지 않는다.
+
+- Personal loop: Goal/Objective + Project/Course work + Calendar/Constraints → Planning → 승인 → Focus/Recovery → Day Close → Learning.
+- Project loop: WorkContext의 목표/현재 근거 → Gap → Objective(milestone) → Task(backlog) → Daily Execution → Review → 다음 iteration.
+- Objective/Task/WorkContext를 재사용한다. 별도 ProjectTask, DashboardTask 또는 프로젝트별 상태 머신을 만들지 않는다.
+- TaskStep.owner는 업무 분담, AgentRun은 실제 실행, AIExecution은 model call, Artifact는 결과물이다. AI owner 표시나 상태 보고만으로 실행 완료를 주장하지 않는다.
+- UI는 Home 실행 진입점과 Goal/Project/Schedule/Automation/Personalization 관리 화면을 포함하는 Control Plane이다.
+  Home의 작은 화면 범위는 제품 전체 관리 권한을 축소하는 규칙이 아니다. mutation은 인증된 서버 경계 → Core → DB/event를 통과한다.
+
+현재 구현 경계:
+
+| 영역 | 실제 구현 | 아직 닫히지 않은 연결 |
+|---|---|---|
+| Daily Core | Discord → Morning/Focus/Replan/Day Close/Wake | Goal/Project에서 자동 업무 발견·주간 workload 생성 |
+| Planning | 기존 Task의 Goal/Objective/WorkContext 상태·중요도·Objective 마감 반영 | Task가 없는 Goal의 실행 업무 생성, dependency 및 전략 순서 전체 처리 |
+| Project PM | scoped Task/Objective/Goal/Focus/event 조회 | 근거 수집 → gap → backlog 제안 → 승인 → iteration review |
+| Agent | Chief/PM 읽기 서비스와 실행 기록, Input model adapter | 생성 작업 dispatch, ToolGrant 강제 실행, 실패/재시도/승인 resume |
+| Learning | 일일 판단 피드백 → LearningCase → Pattern → 승인 Principle의 제한적 Planning 적용 | 프로젝트 Decision/Why/Result 조회 및 PM 판단·Career 재사용 |
+| Web | 예시 데이터 기반 미리보기 | 인증, Core 조회·mutation, reload 후 durable 상태 복원 |
+
+Foundation 문서의 schema 존재 또는 freeze 표시는 구현 완료 증거가 아니다.
+물리 필드/상태는 database-schema와 migrations, 관계·정책은 domain-model/product-rules,
+실행 계약은 workflows/agent-contract를 함께 확인한다. 감사 기록은 canonical 설계를 대체하지 않는다.

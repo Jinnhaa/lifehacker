@@ -469,3 +469,13 @@ Agent isolation은 prompt가 아니라 data/repository/tool layer에서 강제�
 - AIExecution: model call
 - ToolCall: capability invocation
 - Artifact: produced reusable result
+
+
+## 24. Execution Capability Status — 2026-09-09
+
+현재 built-in Chief/Project PM은 읽기 전용 coordination과 trace를 제공한다.
+TaskStep.owner=ai, AgentInstance 또는 AgentRun 기록만으로 실제 조사/문서 생성이 구현된 것은 아니다.
+다음 생성 capability는 기존 AgentRun/AIExecution/ToolCall/Artifact를 사용하고
+ToolGrant/risk policy 확인 → 승인 checkpoint → 실제 실행 → durable 결과/실패 → idempotent retry를 검증해야 한다.
+기존 읽기 전용 서비스의 best-effort trace 패턴을 외부 side effect 실행 경로에 복사하지 않는다.
+Auto, AI Proposal + Approval, User Decision은 이 문서의 승인 정책으로 구분하며 UI 상태로 우회하지 않는다.

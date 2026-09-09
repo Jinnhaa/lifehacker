@@ -104,3 +104,15 @@ describe("Dynamic replanning deterministic planner", () => {
     });
   });
 });
+
+
+it("requires approval when a Goal-important milestone task is removed", () => {
+  const linked: MorningObservation = { ...observation, recurringActivities: [],
+    tasks: [{ ...first, objectiveId: "milestone" }],
+    objectives: [{ id: "milestone", workContextId: null, goalId: "goal", targetDate: "2026-09-04", importance: 3, status: "active" }],
+    goals: [{ id: "goal", importance: 5, status: "active" }] };
+  const draft = buildReplanDraft({ observation: linked, previous, now });
+  const decision = classifyReplanImpact(previous, { ...draft, items: [] }, linked, 5);
+  expect(decision.impact).toBe("IMPORTANT_CHANGE");
+  expect(decision.reasons).toContain("important_task_removed");
+});
