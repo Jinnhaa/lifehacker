@@ -26,7 +26,12 @@ export class AiTaskExecutionService {
     readonly clock: Clock;
   }) {}
 
-  async dispatch(input: { readonly userId: UserId; readonly taskStepId: string; readonly timeZone: string }): Promise<AiTaskExecutionResult> {
+  async dispatch(input: {
+    readonly userId: UserId;
+    readonly taskStepId: string;
+    readonly timeZone: string;
+    readonly revisionRequest?: { readonly revisionOfArtifactId: string; readonly decisionId: string; readonly instruction: string; readonly originalContentText: string; readonly originalContentHash: string };
+  }): Promise<AiTaskExecutionResult> {
     const target = await this.dependencies.repository.loadTarget(input.userId, input.taskStepId);
     if (!target) throw new DomainError("INVALID_INPUT", "TaskStep is not available for AI execution");
     if (target.owner !== "ai") throw new DomainError("INVALID_INPUT", "Human-owned TaskStep cannot be executed by AI");
@@ -57,7 +62,7 @@ export class AiTaskExecutionService {
       throw new DomainError("CONFLICT", "TaskStep dependencies are unresolved");
     }
 
-    const executionContext = createExecutionContext(context, target.taskStepId);
+    const executionContext = createExecutionContext(context, target.taskStepId, input.revisionRequest);
     const contextHash = stableHash(executionContext);
     const executionKey = stableHash({ taskStepId: target.taskStepId, skillKey: documentDraftSkill.key, skillVersion: documentDraftSkill.version, contextHash });
     const successful = await this.dependencies.repository.findSuccessful(input.userId, executionKey);
@@ -81,7 +86,9 @@ export class AiTaskExecutionService {
         const verificationErrors = documentDraftSkill.verify(skillInput, output);
         if (verificationErrors.length > 0) throw new DomainError("PARSE_INVALID", "Document draft verification failed", { verificationErrors });
         const artifactId = await this.dependencies.repository.completeAttempt({
-          target, attempt, executionKey, result: output, sourceRefs: output.sourceRefs, now: this.dependencies.clock.now()
+          target, attempt, executionKey, result: output, sourceRefs: output.sourceRefs,
+          ...(input.revisionRequest ? { revisionOfArtifactId: input.revisionRequest.revisionOfArtifactId } : {}),
+          now: this.dependencies.clock.now()
         });
         return { status: "waiting_for_review", agentRunId: attempt.agentRunId, artifactId, attemptNumber: attempt.attemptNumber };
       } catch (error) {

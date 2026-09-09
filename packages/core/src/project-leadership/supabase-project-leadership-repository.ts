@@ -42,7 +42,8 @@ export class SupabaseProjectLeadershipRepository implements ProjectLeadershipRep
           user_id,workflow_type,status,current_step,checkpoint_state,checkpoint_version,idempotency_key,correlation_id,started_at,updated_at
         ) values(
           ${input.userId},${PROJECT_LEADERSHIP_WORKFLOW_TYPE},'running','OBSERVE',
-          ${tx.json({ workContextId: input.workContextId })},0,${input.idempotencyKey},gen_random_uuid(),${input.now},${input.now}
+          ${tx.json({ workContextId: input.workContextId, causedByEventId: input.causationId ?? null })},0,${input.idempotencyKey},
+          coalesce(${input.correlationId ?? null}::uuid,gen_random_uuid()),${input.now},${input.now}
         ) returning id
       `;
       const packages = await tx<{ id: string }[]>`

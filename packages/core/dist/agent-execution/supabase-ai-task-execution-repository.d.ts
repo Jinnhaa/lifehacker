@@ -31,6 +31,7 @@ export declare class SupabaseAiTaskExecutionRepository implements AiTaskExecutio
         readonly executionKey: string;
         readonly result: DocumentDraftResult;
         readonly sourceRefs: readonly string[];
+        readonly revisionOfArtifactId?: string;
         readonly now: Date;
     }): Promise<string>;
     failAttempt(input: {

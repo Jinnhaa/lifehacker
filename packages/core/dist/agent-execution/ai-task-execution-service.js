@@ -46,7 +46,7 @@ export class AiTaskExecutionService {
         if (context.taskSteps.some((item) => item.taskId === step.taskId && item.position < step.position && !["completed", "skipped"].includes(item.status))) {
             throw new DomainError("CONFLICT", "TaskStep dependencies are unresolved");
         }
-        const executionContext = createExecutionContext(context, target.taskStepId);
+        const executionContext = createExecutionContext(context, target.taskStepId, input.revisionRequest);
         const contextHash = stableHash(executionContext);
         const executionKey = stableHash({ taskStepId: target.taskStepId, skillKey: documentDraftSkill.key, skillVersion: documentDraftSkill.version, contextHash });
         const successful = await this.dependencies.repository.findSuccessful(input.userId, executionKey);
@@ -75,7 +75,9 @@ export class AiTaskExecutionService {
                 if (verificationErrors.length > 0)
                     throw new DomainError("PARSE_INVALID", "Document draft verification failed", { verificationErrors });
                 const artifactId = await this.dependencies.repository.completeAttempt({
-                    target, attempt, executionKey, result: output, sourceRefs: output.sourceRefs, now: this.dependencies.clock.now()
+                    target, attempt, executionKey, result: output, sourceRefs: output.sourceRefs,
+                    ...(input.revisionRequest ? { revisionOfArtifactId: input.revisionRequest.revisionOfArtifactId } : {}),
+                    now: this.dependencies.clock.now()
                 });
                 return { status: "waiting_for_review", agentRunId: attempt.agentRunId, artifactId, attemptNumber: attempt.attemptNumber };
             }

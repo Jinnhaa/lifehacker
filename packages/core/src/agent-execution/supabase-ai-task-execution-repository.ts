@@ -115,7 +115,7 @@ export class SupabaseAiTaskExecutionRepository implements AiTaskExecutionReposit
     });
   }
 
-  async completeAttempt(input: { readonly target: AiTaskExecutionTarget; readonly attempt: AiExecutionAttempt; readonly executionKey: string; readonly result: DocumentDraftResult; readonly sourceRefs: readonly string[]; readonly now: Date }): Promise<string> {
+  async completeAttempt(input: { readonly target: AiTaskExecutionTarget; readonly attempt: AiExecutionAttempt; readonly executionKey: string; readonly result: DocumentDraftResult; readonly sourceRefs: readonly string[]; readonly revisionOfArtifactId?: string; readonly now: Date }): Promise<string> {
     return this.sql.begin(async (tx) => {
       const updated = await tx<{ id: string }[]>`
         update public.agent_runs set status='completed',ended_at=${input.now} where id=${input.attempt.agentRunId}
@@ -129,10 +129,10 @@ export class SupabaseAiTaskExecutionRepository implements AiTaskExecutionReposit
       const content = { schemaVersion: "1", skillKey: "document-draft", taskStepId: input.target.taskStepId, ...input.result };
       const artifacts = await tx<{ id: string }[]>`
         insert into public.artifacts(user_id,artifact_type,title,task_id,task_step_id,work_context_id,source_ai_execution_id,
-          source_agent_run_id,schema_version,verification_status,review_status,content_text,content_hash,source_refs)
+          source_agent_run_id,revision_of_artifact_id,schema_version,verification_status,review_status,content_text,content_hash,source_refs)
         values(${input.target.userId},'document_draft',${input.result.title},${input.target.taskId},${input.target.taskStepId},${input.target.workContextId},
           (select id from public.ai_executions where user_id=${input.target.userId} and agent_run_id=${input.attempt.agentRunId} and status='completed' order by completed_at desc limit 1),
-          ${input.attempt.agentRunId},'1','verified','pending_review',${JSON.stringify(content)},${hash(content)},${tx.json(input.sourceRefs)}) returning id
+          ${input.attempt.agentRunId},${input.revisionOfArtifactId ?? null},'1','verified','pending_review',${JSON.stringify(content)},${hash(content)},${tx.json(input.sourceRefs)}) returning id
       `;
       await tx`update public.task_steps set status='waiting_for_review',updated_at=${input.now} where id=${input.target.taskStepId} and user_id=${input.target.userId}`;
       await tx`update public.tasks set status='WAITING_FOR_USER',updated_at=${input.now} where id=${input.target.taskId} and user_id=${input.target.userId} and status='IN_PROGRESS'`;

@@ -57,7 +57,7 @@ export class SupabaseProjectPmRepository {
         order by s.task_id,s.position
       `,
             this.sql `
-        select distinct a.id,a.artifact_type,a.title,a.task_id,a.work_context_id,a.content_text,a.content_hash,a.created_at
+        select distinct a.id,a.artifact_type,a.title,a.task_id,a.work_context_id,a.content_text,a.content_hash,a.review_status,a.created_at
         from public.artifacts a
         left join public.tasks t on t.id=a.task_id and t.user_id=a.user_id
         left join public.objectives o on o.id=t.objective_id and o.user_id=t.user_id
@@ -138,7 +138,8 @@ export class SupabaseProjectPmRepository {
             })),
             artifacts: artifacts.map((item) => ({
                 id: item.id, artifactType: item.artifact_type, title: item.title, taskId: item.task_id,
-                workContextId: item.work_context_id, contentText: item.content_text, contentHash: item.content_hash, createdAt: item.created_at
+                workContextId: item.work_context_id, contentText: item.content_text, contentHash: item.content_hash,
+                reviewStatus: item.review_status, createdAt: item.created_at
             })),
             decisions: decisions.map((item) => ({
                 id: item.id, question: item.question, whyNow: item.why_now, status: item.status,

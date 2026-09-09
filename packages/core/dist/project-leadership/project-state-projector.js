@@ -45,7 +45,8 @@ export const projectProjectState = (context) => {
         ...objectives.map((item) => internalSource("objective", item.id)),
         ...context.tasks.map((item) => internalSource("task", item.id)),
         ...context.taskSteps.map((item) => internalSource("task_step", item.id)),
-        ...context.artifacts.map((item) => internalSource("artifact", item.id, item.contentHash)),
+        ...context.artifacts.filter((item) => item.reviewStatus === null || item.reviewStatus === "accepted")
+            .map((item) => internalSource("artifact", item.id, item.contentHash)),
         ...context.decisions.map((item) => internalSource("decision", item.id)),
         ...context.recentEvents.map((item) => internalSource("domain_event", item.id)),
         ...context.sourceReferences.map((item) => ({
@@ -83,7 +84,7 @@ export const projectProjectState = (context) => {
                 estimatedMinutes: step.estimatedMinutes, completionCriteria: step.completionCriteria, status: step.status
             }))
         })),
-        artifacts: [...context.artifacts].sort(byId).map((artifact) => ({
+        artifacts: context.artifacts.filter((artifact) => artifact.reviewStatus === null || artifact.reviewStatus === "accepted").sort(byId).map((artifact) => ({
             id: artifact.id, artifactType: artifact.artifactType, title: artifact.title, taskId: artifact.taskId,
             contentText: artifact.contentText, contentHash: artifact.contentHash, createdAt: artifact.createdAt.toISOString()
         })),

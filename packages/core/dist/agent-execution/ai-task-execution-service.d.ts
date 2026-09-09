@@ -13,6 +13,13 @@ export declare class AiTaskExecutionService {
         readonly userId: UserId;
         readonly taskStepId: string;
         readonly timeZone: string;
+        readonly revisionRequest?: {
+            readonly revisionOfArtifactId: string;
+            readonly decisionId: string;
+            readonly instruction: string;
+            readonly originalContentText: string;
+            readonly originalContentHash: string;
+        };
     }): Promise<AiTaskExecutionResult>;
 }
 //# sourceMappingURL=ai-task-execution-service.d.ts.map

@@ -10,6 +10,17 @@ export declare const documentDraftResultSchema: z.ZodObject<{
     uncertainties: z.ZodArray<z.ZodString>;
 }, z.core.$strict>;
 export type DocumentDraftResult = z.infer<typeof documentDraftResultSchema>;
+export declare const documentDraftArtifactContentSchema: z.ZodObject<{
+    title: z.ZodString;
+    summary: z.ZodString;
+    body: z.ZodString;
+    addressedCriteria: z.ZodArray<z.ZodString>;
+    sourceRefs: z.ZodArray<z.ZodString>;
+    uncertainties: z.ZodArray<z.ZodString>;
+    schemaVersion: z.ZodLiteral<"1">;
+    skillKey: z.ZodLiteral<"document-draft">;
+    taskStepId: z.ZodString;
+}, z.core.$strict>;
 export interface AiTaskExecutionTarget {
     readonly userId: UserId;
     readonly taskStepId: string;
@@ -62,6 +73,13 @@ export interface DocumentDraftInput {
     }[];
     readonly sourceRefs: readonly string[];
     readonly executionConstraints: readonly string[];
+    readonly revisionRequest?: {
+        readonly revisionOfArtifactId: string;
+        readonly decisionId: string;
+        readonly instruction: string;
+        readonly originalContentText: string;
+        readonly originalContentHash: string;
+    } | undefined;
 }
 export declare const documentDraftInputSchema: z.ZodType<DocumentDraftInput>;
 export interface AiTaskExecutor {
@@ -101,6 +119,7 @@ export interface AiTaskExecutionRepository {
         readonly executionKey: string;
         readonly result: DocumentDraftResult;
         readonly sourceRefs: readonly string[];
+        readonly revisionOfArtifactId?: string;
         readonly now: Date;
     }): Promise<string>;
     failAttempt(input: {
@@ -130,5 +149,5 @@ export type AiTaskExecutionResult = {
 } | {
     readonly status: "busy" | "blocked";
 };
-export declare const createExecutionContext: (context: ProjectPmContext, taskStepId: string) => Omit<DocumentDraftInput, "workflowRunId" | "agentRunId" | "contextPackageId">;
+export declare const createExecutionContext: (context: ProjectPmContext, taskStepId: string, revisionRequest?: DocumentDraftInput["revisionRequest"]) => Omit<DocumentDraftInput, "workflowRunId" | "agentRunId" | "contextPackageId">;
 //# sourceMappingURL=ai-task-execution.d.ts.map

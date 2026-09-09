@@ -310,6 +310,8 @@ export interface ProjectLeadershipRunRequest {
     readonly timeZone: string;
     readonly idempotencyKey: string;
     readonly constraints?: readonly string[];
+    readonly correlationId?: string;
+    readonly causationId?: string;
 }
 export interface ProjectLeadershipArtifactRecord<T> {
     readonly id: string;
@@ -340,6 +342,8 @@ export interface ProjectLeadershipRepository {
         readonly idempotencyKey: string;
         readonly contextPayload: Readonly<Record<string, unknown>>;
         readonly sourceRefs: readonly string[];
+        readonly correlationId?: string;
+        readonly causationId?: string;
         readonly now: Date;
     }): Promise<ProjectLeadershipWorkflowState>;
     saveSnapshot(userId: UserId, run: ProjectLeadershipWorkflowState, content: ProjectStateSnapshot, now: Date): Promise<ProjectLeadershipWorkflowState>;

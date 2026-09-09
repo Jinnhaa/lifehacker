@@ -91,8 +91,8 @@ export class SupabaseProjectPmRepository implements ProjectPmRepository {
         where s.user_id=${userId} and (t.work_context_id=${project.id} or (t.work_context_id is null and o.work_context_id=${project.id}))
         order by s.task_id,s.position
       `,
-      this.sql<{ id: string; artifact_type: string; title: string | null; task_id: string | null; work_context_id: string | null; content_text: string | null; content_hash: string | null; created_at: Date }[]>`
-        select distinct a.id,a.artifact_type,a.title,a.task_id,a.work_context_id,a.content_text,a.content_hash,a.created_at
+      this.sql<{ id: string; artifact_type: string; title: string | null; task_id: string | null; work_context_id: string | null; content_text: string | null; content_hash: string | null; review_status: "pending_review" | "accepted" | "rejected" | null; created_at: Date }[]>`
+        select distinct a.id,a.artifact_type,a.title,a.task_id,a.work_context_id,a.content_text,a.content_hash,a.review_status,a.created_at
         from public.artifacts a
         left join public.tasks t on t.id=a.task_id and t.user_id=a.user_id
         left join public.objectives o on o.id=t.objective_id and o.user_id=t.user_id
@@ -173,7 +173,8 @@ export class SupabaseProjectPmRepository implements ProjectPmRepository {
       })),
       artifacts: artifacts.map((item): ProjectArtifact => ({
         id: item.id, artifactType: item.artifact_type, title: item.title, taskId: item.task_id,
-        workContextId: item.work_context_id, contentText: item.content_text, contentHash: item.content_hash, createdAt: item.created_at
+        workContextId: item.work_context_id, contentText: item.content_text, contentHash: item.content_hash,
+        reviewStatus: item.review_status, createdAt: item.created_at
       })),
       decisions: decisions.map((item): ProjectDecision => ({
         id: item.id, question: item.question, whyNow: item.why_now, status: item.status,

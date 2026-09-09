@@ -487,3 +487,5 @@ Skill은 Agent의 역할이나 권한과 분리된 반복 업무 계약이다. P
 Backlog approval 이후 routing은 deterministic Core logic이다. `TaskStep.owner=user`는 human executable, `owner=ai`는 AI executable 후보가 되며 선행 step이나 proposal dependency가 남아 있으면 dependency waiting으로 분류한다. 이 분류 자체는 AgentRun 또는 tool execution을 시작하지 않는다.
 
 AI TaskStep 실행은 Project PM AgentInstance의 home scope와 ContextPackage scope가 일치할 때만 시작한다. 이번 단계의 AgentRun은 `max_tool_calls=0`이며 ToolGrant를 우회하는 외부 read/write를 수행하지 않는다. 실행 시도마다 Skill/version, TaskStep, context, idempotency와 실패 원인을 기록한다.
+
+Artifact review는 실행 전 ApprovalRequest와 분리한다. 사용자 revise는 동일 Skill을 새 ContextPackage와 AgentRun으로 다시 실행하며 원 Artifact, review Decision, revision instruction을 source로 보존한다. accept된 결과만 다음 Project Leadership iteration의 evidence가 된다.

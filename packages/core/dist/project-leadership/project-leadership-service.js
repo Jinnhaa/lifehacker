@@ -36,6 +36,8 @@ export class ProjectLeadershipService {
             idempotencyKey: request.idempotencyKey,
             contextPayload: projected,
             sourceRefs: projected.sourceRefs.map((item) => item.ref),
+            ...(request.correlationId ? { correlationId: request.correlationId } : {}),
+            ...(request.causationId ? { causationId: request.causationId } : {}),
             now: observedAt
         });
         if (workflow.status === "completed")

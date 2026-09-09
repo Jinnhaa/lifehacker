@@ -256,6 +256,7 @@ Pause는 Task state가 아니라 FocusSession state로 표현한다.
 - `estimated_minutes?`
 - `completion_criteria?`
 - `skill_key?`: AI step의 명시적 versioned Skill assignment
+- `review_of_step_id?`: Artifact review가 대신 완료할 명시적 user review step
 - `status`: pending / dependency_waiting / in_progress / waiting_for_review / blocked / completed / skipped
 
 ### EstimateRevision
@@ -790,10 +791,13 @@ Agent, AIExecution 또는 ToolCall이 만든 재사용 가능한 결과다.
 - `agent_run_id?`, `ai_execution_id?`, `tool_call_id?`
 - `task_id?`, `work_context_id?`
 - `task_step_id?`, `schema_version?`
-- `provenance`, `verification_status?`, `review_status?`
+- `revision_of_artifact_id?`
+- `provenance`, `verification_status?`, `review_status?`: pending_review / accepted / rejected
 - `created_at`
 
 최소 하나의 producer reference를 가져야 한다. Task/WorkContext 연결은 산출물의 업무 맥락이 있을 때만 사용한다.
+
+Artifact content는 immutable하다. Review는 별도 entity 없이 `review_status`, Decision, DecisionFeedback, DomainEvent로 기록한다. `revise`는 기존 Artifact를 rejected 처리하고 `revision_of_artifact_id`로 연결된 새 AgentRun/Artifact를 만든다.
 
 실행 관계:
 

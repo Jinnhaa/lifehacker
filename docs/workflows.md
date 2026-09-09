@@ -381,3 +381,21 @@ AI-owned executable TaskStep
 - ContextPackage는 Project scope의 WorkContext, Objective, Task, TaskStep, accepted Artifact, Decision과 source ref만 포함한다.
 - P0-3은 read-only model execution만 허용하며 ToolCall과 외부 write를 수행하지 않는다.
 - Artifact는 `verified + pending_review`이며 accept/reject와 Project state 반영은 후속 workflow의 책임이다.
+
+## 24. Artifact Review and Project Feedback
+
+```text
+pending_review Artifact
+→ accept | revise | reject
+→ Decision + DecisionFeedback + DomainEvent
+→ accepted canonical Task state
+→ Project Leadership iteration N+1
+```
+
+- Review command는 Artifact ID와 content hash에 결합하며 동일 idempotency key를 재사용하면 기존 판단을 반환한다.
+- accept는 verified content와 TaskStep completion criteria를 다시 검사한다. AI step과 명시적으로 연결된 hybrid review step을 완료하고, 모든 step이 끝난 경우 기존 Task state machine으로 Task를 DONE 처리한다.
+- reject는 Artifact를 rejected로 두고 TaskStep/Task를 blocked로 유지한다.
+- revise는 content를 수정하지 않는다. 기존 Artifact를 rejected로 두고 revision instruction을 ContextPackage에 포함한 새 execution identity와 `revision_of_artifact_id`를 사용한다. 실행 실패 retry 횟수와 사용자 revision은 별개다.
+- accepted 또는 legacy canonical Artifact만 Project projection에 포함한다. pending/rejected Artifact는 snapshot 근거에서 제외한다.
+- accept 후 기존 ProjectLeadershipService를 새 idempotent iteration으로 실행해 snapshot, gap analysis, backlog proposal을 다시 만든다. Task 완료만으로 gap을 닫지 않고 `project-state-review`가 갱신된 evidence를 재평가한다.
+- Objective와 Project 완료는 자동화하지 않는다.
