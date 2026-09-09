@@ -925,6 +925,21 @@ MCP를 사용할 경우 server 단위 connection/config.
 
 ## 18. Audit Resolution Contracts
 
+### Project leadership observation artifacts
+
+프로젝트 현재 상태는 별도 mutable entity가 아니라 `WorkContext`, `Goal`/`Objective`, `Task`/`TaskStep`, 기존 Artifact, Decision, DomainEvent, ExternalReference에서 계산한다.
+
+관찰 결과는 다음 typed Artifact chain으로 보존한다.
+
+```text
+project_state_snapshot → gap_analysis → backlog_proposal
+```
+
+- snapshot은 evidence-backed read model이며 canonical project state가 아니다.
+- gap은 확정된 업무가 아니며 evidence, confidence, unknown을 유지한다.
+- backlog proposal은 승인 전 후보이므로 Task를 생성하거나 변경하지 않는다.
+- Task의 effective WorkContext는 direct `Task.work_context_id`를 우선하고, null이면 `Objective.work_context_id`에서 유도한다.
+
 ### Input mutation
 `InboxItem → ParsedEntity → DomainCommand → DomainEvent`
 

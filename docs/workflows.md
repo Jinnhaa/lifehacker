@@ -327,3 +327,18 @@ Approval 대기 시 WorkflowRun checkpoint를 저장하고 process는 종료 가
 `Inbox → ParsedEntity → DomainCommand → ExternalReference → DomainEvent`
 
 create/update/delete/stale/conflict를 동일 contract로 처리한다.
+
+## 21. Project Leadership Observation
+
+P0 첫 단계는 기존 `WorkflowRun`으로 다음 read-only iteration을 수행한다.
+
+```text
+OBSERVE
+→ DETECT_GAPS
+→ PROPOSE_BACKLOG
+→ COMPLETE
+```
+
+각 checkpoint는 `ContextPackage`와 이전 Artifact ID를 보존한다. 결과는 차례로 `project_state_snapshot`, `gap_analysis`, `backlog_proposal` Artifact가 된다. 동일 idempotency key의 완료된 run은 기존 결과를 반환한다.
+
+이 단계는 ApprovalRequest, Task/TaskStep materialization, routing, AgentRun, Artifact review, project state apply를 수행하지 않는다.

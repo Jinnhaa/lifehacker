@@ -469,3 +469,17 @@ Agent isolation은 prompt가 아니라 data/repository/tool layer에서 강제�
 - AIExecution: model call
 - ToolCall: capability invocation
 - Artifact: produced reusable result
+
+## 24. Business Skill Contract
+
+Skill은 Agent의 역할이나 권한과 분리된 반복 업무 계약이다. P0에서는 DB entity 없이 versioned code registry로 정의한다.
+
+각 Skill은 다음을 가진다.
+
+- key와 version
+- typed input/output schema
+- 허용된 read capability
+- completion criteria
+- deterministic verifier
+
+현재 등록된 Skill은 `project-state-review`와 `backlog-refinement`다. 두 Skill은 project scope의 ContextPackage만 사용하고 Task를 생성하거나 실행하지 않는다.

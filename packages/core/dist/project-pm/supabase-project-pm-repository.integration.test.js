@@ -1,8 +1,11 @@
 import { randomUUID } from "node:crypto";
+import { FixedClock } from "@amber/shared";
 import postgres from "postgres";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { SupabaseChiefRunRecorder } from "../chief/supabase-chief-context-reader.js";
 import { AgentBootstrapService } from "../agent-execution/agent-bootstrap.js";
+import { ProjectLeadershipService } from "../project-leadership/project-leadership-service.js";
+import { SupabaseProjectLeadershipRepository } from "../project-leadership/supabase-project-leadership-repository.js";
 import { SupabaseProjectPmRepository, SupabaseProjectPmRunRecorder } from "./supabase-project-pm-repository.js";
 const connectionString = process.env.TEST_DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 const sql = postgres(connectionString, { max: 10 });
@@ -18,11 +21,18 @@ const otherScopeId = randomUUID();
 const foreignScopeId = randomUUID();
 const otherGlobalScopeId = randomUUID();
 const taskId = randomUUID();
+const objectiveTaskId = randomUUID();
 const otherTaskId = randomUUID();
 const foreignTaskId = randomUUID();
 const objectiveId = randomUUID();
 const goalId = randomUUID();
 const planId = randomUUID();
+const sourceArtifactId = randomUUID();
+const otherArtifactId = randomUUID();
+const projectDecisionId = randomUUID();
+const otherDecisionId = randomUUID();
+const projectReferenceId = randomUUID();
+const otherReferenceId = randomUUID();
 const repository = new SupabaseProjectPmRepository(sql);
 beforeAll(async () => {
     await sql `
@@ -54,8 +64,29 @@ beforeAll(async () => {
     await sql `
     insert into public.tasks(id,user_id,work_context_id,objective_id,title,execution_mode,estimated_minutes,importance,status) values
       (${taskId},${userId},${projectId},${objectiveId},'발표 수정','standard',45,5,'IN_PROGRESS'),
+      (${objectiveTaskId},${userId},null,${objectiveId},'Objective 경유 작업','standard',20,4,'PLANNED'),
       (${otherTaskId},${userId},${otherProjectId},null,'다른 프로젝트 일','standard',30,4,'PLANNED'),
       (${foreignTaskId},${otherUserId},${foreignProjectId},null,'다른 사용자 일','standard',30,4,'PLANNED')
+  `;
+    await sql `
+    insert into public.task_steps(user_id,task_id,position,title,owner,status) values
+      (${userId},${objectiveTaskId},1,'경유 작업 검증','user','pending')
+  `;
+    await sql `
+    insert into public.artifacts(id,user_id,artifact_type,title,work_context_id,content_text,content_hash) values
+      (${sourceArtifactId},${userId},'spec','LogFolio 명세',${projectId},'명세 내용','hash-project'),
+      (${otherArtifactId},${userId},'spec','NEXTiME 명세',${otherProjectId},'다른 내용','hash-other')
+  `;
+    await sql `
+    insert into public.decisions(id,user_id,question,why_now,options,ai_recommendation,impact,status,created_at) values
+      (${projectDecisionId},${userId},'LogFolio 범위','출시 준비','{}','{}',${sql.json({ context: { projectId } })},'resolved',now()),
+      (${otherDecisionId},${userId},'NEXTiME 범위','다른 프로젝트','{}','{}',${sql.json({ context: { projectId: otherProjectId } })},'resolved',now())
+  `;
+    await sql `
+    insert into public.external_references(id,user_id,source,external_type,external_id,external_version,ownership,content_hash,
+      internal_entity_type,internal_entity_id,sync_status,first_seen_at,last_seen_at) values
+      (${projectReferenceId},${userId},'github','repository','logfolio',null,'external',null,'work_context',${projectId},'active',now(),now()),
+      (${otherReferenceId},${userId},'github','repository','nextime','v1','external','other-hash','work_context',${otherProjectId},'active',now(),now())
   `;
     await sql `
     insert into public.daily_plans(id,user_id,plan_date,timezone,revision_no,status,created_by)
@@ -72,7 +103,10 @@ beforeAll(async () => {
   `;
     await sql `
     insert into public.domain_events(user_id,event_type,aggregate_type,aggregate_id,actor_type,occurred_at,correlation_id,payload_version,payload)
-    values(${userId},'task_started','task',${taskId},'user','2026-09-06T01:00:00Z',${randomUUID()},1,'{}')
+    values
+      (${userId},'task_started','task',${taskId},'user','2026-09-06T01:00:00Z',${randomUUID()},1,'{}'),
+      (${userId},'task_planned','task',${objectiveTaskId},'system','2026-09-06T00:30:00Z',${randomUUID()},1,'{}'),
+      (${userId},'task_planned','task',${otherTaskId},'system','2026-09-06T00:20:00Z',${randomUUID()},1,'{}')
   `;
 });
 afterAll(async () => {
@@ -110,12 +144,16 @@ describe("SupabaseProjectPmRepository", () => {
         expect(projects.map((item) => item.title)).toEqual(["LogFolio", "NEXTiME"]);
         const selected = projects.find((item) => item.id === projectId);
         const context = await repository.loadProjectContext(userId, selected, "2026-09-06", "Asia/Seoul", new Date("2026-09-06T03:00:00Z"));
-        expect(context.tasks.map((item) => item.title)).toEqual(["발표 수정"]);
+        expect(context.tasks.map((item) => item.title).sort()).toEqual(["Objective 경유 작업", "발표 수정"].sort());
         expect(context.objectives.map((item) => item.title)).toEqual(["출시"]);
         expect(context.goals.map((item) => item.title)).toEqual(["포트폴리오"]);
         expect(context.approvedPlanTasks.map((item) => item.taskId)).toEqual([taskId]);
         expect(context.activeFocus?.taskId).toBe(taskId);
-        expect(context.recentEvents.map((item) => item.aggregateId)).toEqual([taskId]);
+        expect(context.taskSteps.map((item) => item.taskId)).toEqual([objectiveTaskId]);
+        expect(context.artifacts.map((item) => item.id)).toEqual([sourceArtifactId]);
+        expect(context.decisions.map((item) => item.id)).toEqual([projectDecisionId]);
+        expect(context.sourceReferences.map((item) => item.id)).toEqual([projectReferenceId]);
+        expect(context.recentEvents.map((item) => item.aggregateId)).toEqual([taskId, objectiveTaskId]);
         expect(context.tasks.some((item) => item.title.includes("다른"))).toBe(false);
     });
     it("records one scoped agent execution trace idempotently", async () => {
@@ -176,6 +214,74 @@ describe("SupabaseProjectPmRepository", () => {
             { template_key: "chief", home_scope_id: globalScopeId, count: 1 },
             { template_key: "project_pm", home_scope_id: scopeId, count: 1 }
         ]);
+    });
+    it("persists the project observation loop without mutating canonical work", async () => {
+        const before = await sql `
+      select
+        (select count(*)::int from public.tasks where user_id=${userId}) tasks,
+        (select count(*)::int from public.task_steps where user_id=${userId}) steps,
+        (select count(*)::int from public.objectives where user_id=${userId}) objectives
+    `;
+        const analysisProvider = {
+            reviewProjectState: vi.fn(async () => ({
+                gaps: [{
+                        key: "missing-criteria", title: "완료 기준 부족", description: "출시 기준을 보강해야 함",
+                        evidenceRefs: [`task:${taskId}`], priorityHint: "high", confidence: 0.9, blocking: true,
+                        rationale: "현재 진행 중 작업만으로 출시 판정이 어려움"
+                    }],
+                unknowns: ["GitHub source revision unknown"]
+            })),
+            refineBacklog: vi.fn(async () => ({
+                items: [{
+                        key: "define-criteria", sourceGapKey: "missing-criteria", objectiveId, title: "출시 기준 정의",
+                        description: "검토 가능한 출시 기준을 만든다", suggestedPriority: "high",
+                        suggestedOwner: "hybrid", acceptanceCriteria: ["기준이 문서화됨"], dependencies: [],
+                        roughSize: "s", evidenceRefs: ["gap:missing-criteria", `task:${taskId}`], risk: null
+                    }],
+                unknowns: []
+            }))
+        };
+        const subject = new ProjectLeadershipService({
+            projectRepository: repository,
+            workflowRepository: new SupabaseProjectLeadershipRepository(sql),
+            analysisProvider,
+            clock: new FixedClock(new Date("2026-09-09T03:00:00.000Z"))
+        });
+        const request = { userId, workContextId: projectId, timeZone: "Asia/Seoul", idempotencyKey: `project-leadership:${projectId}:wave-1` };
+        const first = await subject.run(request);
+        const retry = await subject.run(request);
+        expect(retry).toEqual(first);
+        expect(analysisProvider.reviewProjectState).toHaveBeenCalledTimes(1);
+        expect(analysisProvider.refineBacklog).toHaveBeenCalledTimes(1);
+        expect(first.backlogProposal.content.sourceSnapshotArtifactId).toBe(first.snapshot.id);
+        expect(first.backlogProposal.content.sourceGapAnalysisArtifactId).toBe(first.gapAnalysis.id);
+        const persisted = await sql `
+      select artifact_type,work_context_id,content_hash from public.artifacts
+      where user_id=${userId} and artifact_type in ('project_state_snapshot','gap_analysis','backlog_proposal')
+      order by created_at
+    `;
+        expect(persisted).toHaveLength(3);
+        expect(persisted.every((item) => item.work_context_id === projectId && item.content_hash.length === 64)).toBe(true);
+        const traces = await sql `
+      select w.status,w.current_step,w.checkpoint_version,c.work_context_id,
+        (select count(*)::int from public.context_packages p where p.user_id=w.user_id and p.id=c.id) package_count
+      from public.workflow_runs w
+      join public.context_packages c on c.id=(w.checkpoint_state->>'contextPackageId')::uuid and c.user_id=w.user_id
+      where w.id=${first.workflowRunId} and w.user_id=${userId}
+    `;
+        expect(traces[0]).toEqual({ status: "completed", current_step: "COMPLETE", checkpoint_version: 3, work_context_id: projectId, package_count: 1 });
+        const after = await sql `
+      select
+        (select count(*)::int from public.tasks where user_id=${userId}) tasks,
+        (select count(*)::int from public.task_steps where user_id=${userId}) steps,
+        (select count(*)::int from public.objectives where user_id=${userId}) objectives
+    `;
+        expect(after).toEqual(before);
+        const otherArtifacts = await sql `
+      select count(*)::int count from public.artifacts where user_id=${userId} and work_context_id=${otherProjectId}
+        and artifact_type in ('project_state_snapshot','gap_analysis','backlog_proposal')
+    `;
+        expect(otherArtifacts[0]?.count).toBe(0);
     });
 });
 //# sourceMappingURL=supabase-project-pm-repository.integration.test.js.map

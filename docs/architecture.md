@@ -1282,3 +1282,5 @@ UI 구현은 이 순서의 Core 기능을 대체하지 않는다.
 - Workflow approval은 checkpoint version + precondition + idempotent resume.
 - Agent isolation은 Scope/AgentScopeGrant/ToolGrant.
 - AgentRun / AIExecution / ToolCall / Artifact를 분리.
+- Project leadership의 현재 상태, gap, 승인 전 backlog는 별도 mutable table 대신 versioned typed Artifact로 보존한다.
+- Project observation workflow는 `WorkflowRun → ContextPackage → project_state_snapshot → gap_analysis → backlog_proposal` provenance chain을 유지한다.
