@@ -63,7 +63,7 @@ function ProposalPanel({ proposal, action, pending }: {
     <h2 id="proposal-title">{proposal.summary}</h2><p>{proposal.reason}</p>
     <div className="proposal-scroll">{(["kept", "moved", "deferred", "added"] as const).map((kind) => {
       const changes = proposal.changes.filter((item) => item.change === kind);
-      return changes.length ? <div className={`proposal-section ${kind}`} key={kind}><h3>{changeLabel[kind]}</h3>{changes.map((item) => <div className="proposal-change" key={`${kind}:${item.key}`}><strong>{item.title}</strong><span>{item.before ?? "—"}{item.before !== item.after ? ` → ${item.after ?? "오늘 계획 밖"}` : ""}</span></div>)}</div> : null;
+      return changes.length ? <div className={`proposal-section ${kind}`} key={kind}><h3>{changeLabel[kind]}</h3>{changes.map((item, index) => <div className="proposal-change" key={`${kind}:${item.key}:${index}`}><strong>{item.title}</strong><span>{item.before ?? "—"}{item.before !== item.after ? ` → ${item.after ?? "오늘 계획 밖"}` : ""}</span></div>)}</div> : null;
     })}</div>
     <form className="proposal-actions" action={action}><button name="decision" value="reject" type="submit" disabled={pending}>거절</button><button className="approve" name="decision" value="approve" type="submit" disabled={pending}>이대로 변경</button></form>
   </section>;

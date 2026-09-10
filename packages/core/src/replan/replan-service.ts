@@ -52,7 +52,8 @@ const stateHash = (trigger: ReplanTrigger, state: ReplanPlanState, observation: 
     directives: observation.strategicDirectives.map((value) => value.id),
     activeTaskId: state.activeTaskId,
     workUntil: state.workUntil.toISOString(),
-    adjustment: trigger.adjustment ?? null
+    adjustment: trigger.adjustment ?? null,
+    manualTriggerId: trigger.reason === "manual_replan" ? trigger.id : null
   }))
   .digest("hex");
 
