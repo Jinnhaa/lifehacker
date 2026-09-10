@@ -1,9 +1,9 @@
 import "server-only";
 
 import { deriveCurrentAction, DynamicReplanningService, SupabaseMorningRepository, SupabaseReplanRepository } from "@amber/core";
-import { SystemClock, type UserId } from "@amber/shared";
+import { SystemClock, zonedDateTimeToUtc, type UserId } from "@amber/shared";
 import postgres, { type Sql } from "postgres";
-import type { HomeProposalChange, HomeTimelineItem, HomeViewModel } from "./home-types";
+import type { HomeProposalChange, HomeTimelineItem, HomeViewModel, HomeWeekDay } from "./home-types";
 
 const LOCAL_DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -31,7 +31,7 @@ const time = (value: Date, timeZone: string): string => new Intl.DateTimeFormat(
   timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23"
 }).format(value);
 
-type PlanRow = { id: string; revision_no: number; input_snapshot: unknown };
+type PlanRow = { id: string; plan_date?: string; revision_no: number; input_snapshot: unknown };
 type ItemRow = {
   id: string; item_type: "task" | "routine" | "rest" | "buffer"; task_id: string | null;
   activity_occurrence_id: string | null; title: string; planned_start_at: Date; planned_end_at: Date;
@@ -40,6 +40,18 @@ type ItemRow = {
 
 const record = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value)
   ? value as Record<string, unknown> : {};
+
+const addDays = (date: string, days: number): string => {
+  const value = new Date(`${date}T00:00:00.000Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+};
+
+const weekDates = (date: string): string[] => {
+  const weekday = new Date(`${date}T00:00:00.000Z`).getUTCDay();
+  const monday = addDays(date, -(weekday === 0 ? 6 : weekday - 1));
+  return Array.from({ length: 7 }, (_, index) => addDays(monday, index));
+};
 
 const readItems = async (sql: Sql, userId: UserId, planId: string): Promise<ItemRow[]> => sql<ItemRow[]>`
   select i.id,i.item_type,i.task_id,i.activity_occurrence_id,
@@ -57,6 +69,66 @@ const readItems = async (sql: Sql, userId: UserId, planId: string): Promise<Item
     and i.planned_start_at is not null and i.planned_end_at is not null
   order by i.position
 `;
+
+const calendarItem = (item: Record<string, unknown>, fallbackId: string): HomeTimelineItem | null => {
+  const start = new Date(String(item.start));
+  const end = new Date(String(item.end));
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+  return {
+    id: typeof item.id === "string" ? item.id : fallbackId,
+    kind: "calendar", title: typeof item.title === "string" ? item.title : "고정 일정",
+    startsAt: start.toISOString(), endsAt: end.toISOString(),
+    minutes: Math.max(0, Math.round((end.getTime() - start.getTime()) / 60_000)),
+    status: "fixed", context: "Calendar", current: false
+  };
+};
+
+const planTimeline = async (sql: Sql, userId: UserId, plan: PlanRow): Promise<HomeTimelineItem[]> => {
+  const items = await readItems(sql, userId, plan.id);
+  return items.map((item) => ({
+    id: item.id, kind: item.item_type, title: item.title,
+    startsAt: item.planned_start_at.toISOString(), endsAt: item.planned_end_at.toISOString(),
+    minutes: item.planned_minutes, status: item.status, context: item.context_title, current: false
+  } satisfies HomeTimelineItem)).sort((left, right) => left.startsAt.localeCompare(right.startsAt));
+};
+
+const readWeek = async (sql: Sql, userId: UserId, dates: readonly string[], timeZone: string): Promise<HomeWeekDay[]> => {
+  const start = zonedDateTimeToUtc(`${dates[0]}T00:00:00`, timeZone);
+  const end = zonedDateTimeToUtc(`${addDays(dates[6]!, 1)}T00:00:00`, timeZone);
+  const [plans, constraints] = await Promise.all([
+    sql<PlanRow[]>`select id,plan_date::text,revision_no,input_snapshot from public.daily_plans
+      where user_id=${userId} and plan_date between ${dates[0]!} and ${dates[6]!} and status='approved' order by plan_date`,
+    sql<{ id: string; value: unknown; valid_from: Date; valid_until: Date }[]>`
+      select c.id,c.value,c.valid_from,c.valid_until from public.constraints c
+      join public.external_references r on r.internal_entity_id=c.id and r.user_id=c.user_id
+      where c.user_id=${userId} and c.constraint_type='availability' and c.valid_from<${end} and c.valid_until>${start}
+        and coalesce(c.value->>'blocksCapacity','false')='true' and coalesce(c.value->>'syncStatus','active')='active'
+        and r.external_type='calendar_event' and r.ownership='external' and r.sync_status='active'
+      order by c.valid_from`
+  ]);
+  const planEntries = await Promise.all(plans.map(async (plan) => [plan.plan_date!, await planTimeline(sql, userId, plan)] as const));
+  const byDate = new Map(planEntries);
+  for (const constraint of constraints) {
+    const value = record(constraint.value);
+    for (const date of dates) {
+      const dayStart = zonedDateTimeToUtc(`${date}T00:00:00`, timeZone);
+      const dayEnd = zonedDateTimeToUtc(`${addDays(date, 1)}T00:00:00`, timeZone);
+      if (constraint.valid_from < dayEnd && constraint.valid_until > dayStart) {
+        const item = calendarItem({
+          id: constraint.id, title: value.title,
+          start: constraint.valid_from < dayStart ? dayStart : constraint.valid_from,
+          end: constraint.valid_until > dayEnd ? dayEnd : constraint.valid_until
+        }, constraint.id);
+        if (!item) continue;
+        const existing = byDate.get(date) ?? [];
+        const duplicate = existing.some((entry) => entry.kind === "calendar" && entry.title === item.title
+          && entry.startsAt === item.startsAt && entry.endsAt === item.endsAt);
+        if (!duplicate) byDate.set(date, [...existing, item]);
+      }
+    }
+  }
+  return dates.map((day) => ({ date: day, items: (byDate.get(day) ?? []).sort((a, b) => a.startsAt.localeCompare(b.startsAt)) }));
+};
 
 const itemKey = (item: ItemRow): string => item.task_id ?? item.activity_occurrence_id ?? `${item.item_type}:${item.title}`;
 
@@ -103,7 +175,8 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
     if (!profiles[0]) throw new Error("AMBER_USER_ID에 해당하는 profile을 찾지 못했습니다.");
     const timeZone = profiles[0].timezone;
     const date = localDate(now, timeZone);
-    const [plans, currentAction, goals, agents, decisionRows, pendingRuns] = await Promise.all([
+    const dates = weekDates(date);
+    const [plans, currentAction, goals, agents, decisionRows, pendingRuns, week] = await Promise.all([
       sql<PlanRow[]>`select id,revision_no,input_snapshot from public.daily_plans where user_id=${userId} and plan_date=${date} and status='approved' order by revision_no desc limit 1`,
       deriveCurrentAction(sql, userId, date),
       sql<{ name: string; status: string }[]>`select title name,status from public.goals where user_id=${userId} and status='active' order by importance desc,created_at limit 3`,
@@ -119,7 +192,8 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
         from public.workflow_runs where user_id=${userId} and workflow_type='dynamic_replanning'
           and status='waiting_for_user' and current_step='awaiting_approval' and checkpoint_state->>'planDate'=${date}
         order by updated_at desc limit 1
-      `
+      `,
+      readWeek(sql, userId, dates, timeZone)
     ]);
     const approved = plans[0] ?? null;
     const approvedItems = approved ? await readItems(sql, userId, approved.id) : [];
@@ -171,6 +245,9 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
       } : null,
       approvedPlan: approved ? { id: approved.id, revisionNo: approved.revision_no } : null,
       timeline,
+      week: week.map((day) => ({ ...day, items: day.items.map((item) => ({
+        ...item, current: day.date === date && currentAction?.planItemId === item.id
+      })) })),
       goals,
       agents: agents.map((item) => ({
         name: item.name, status: item.run_status === "running" ? "working" : "idle",
@@ -183,7 +260,7 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
     return {
       configured: false, error: error instanceof Error ? error.message : "Home 데이터를 불러오지 못했습니다.",
       date: localDate(now, "Asia/Seoul"), timeZone: "Asia/Seoul", currentAction: null, approvedPlan: null,
-      timeline: [], goals: [], agents: [], decisionCount: 0, proposal: null
+      timeline: [], week: weekDates(localDate(now, "Asia/Seoul")).map((date) => ({ date, items: [] })), goals: [], agents: [], decisionCount: 0, proposal: null
     };
   }
 };

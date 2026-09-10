@@ -18,6 +18,11 @@ export type HomeProposalChange = {
   readonly after: string | null;
 };
 
+export type HomeWeekDay = {
+  readonly date: string;
+  readonly items: readonly HomeTimelineItem[];
+};
+
 export type HomeViewModel = {
   readonly configured: boolean;
   readonly error: string | null;
@@ -31,6 +36,7 @@ export type HomeViewModel = {
   };
   readonly approvedPlan: null | { readonly id: string; readonly revisionNo: number };
   readonly timeline: readonly HomeTimelineItem[];
+  readonly week: readonly HomeWeekDay[];
   readonly goals: readonly { readonly name: string; readonly status: string }[];
   readonly agents: readonly { readonly name: string; readonly status: string; readonly detail: string }[];
   readonly decisionCount: number;

@@ -2,23 +2,17 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import { decideChiefReplan, requestChiefReplan } from "../app/actions";
-import type { ChiefActionState, HomeTimelineItem, HomeViewModel } from "../lib/home-types";
+import type { ChiefActionState, HomeViewModel } from "../lib/home-types";
+import { TodayCalendar, WeekCalendarOverlay } from "./calendar-views";
 
 const initialActionState: ChiefActionState = { status: "idle", message: "" };
 const changeLabel = { kept: "유지", moved: "이동", deferred: "내일 후보", added: "추가" } as const;
-const itemLabel: Record<HomeTimelineItem["kind"], string> = {
-  task: "업무", routine: "루틴", rest: "휴식", buffer: "버퍼", calendar: "고정 일정"
-};
-const formatTime = (value: string, timeZone: string) => new Intl.DateTimeFormat("ko-KR", {
-  timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23"
-}).format(new Date(value));
-
 function OwnerAvatar() {
   return <span className="owner-avatar" aria-label="Owner"><i className="owner-fin" /><i className="owner-face"><b /><em /></i><i className="owner-feet" /></span>;
 }
 
-function ChiefAvatar() {
-  return <span className="chief-avatar" aria-label="Chief Amber"><i className="chief-hair" /><i className="chief-face"><b /><em /></i><i className="chief-body" /></span>;
+function ChiefAvatar({ state = "idle" }: { state?: "idle" | "active" | "working" }) {
+  return <span className={`chief-avatar is-${state}`} data-asset-slot={`chief-${state}`} aria-label="Chief Amber"><i className="chief-hair" /><i className="chief-face"><b /><em /></i><i className="chief-body" /></span>;
 }
 
 function AgentAvatar({ active }: { active: boolean }) {
@@ -40,17 +34,6 @@ function QuestHud({ data }: { data: HomeViewModel }) {
       <span>0{index + 1}</span><div><strong>{goal.name}</strong><small>{goal.status}</small></div><i />
     </div>) : <p className="hud-empty">활성 Goal이 없습니다.</p>}</div>
   </aside>;
-}
-
-function TodayBoard({ items, timeZone }: { items: readonly HomeTimelineItem[]; timeZone: string }) {
-  return <section className="today-board" data-testid="today-flow" aria-labelledby="today-board-title">
-    <span className="board-clip left" /><span className="board-clip right" />
-    <header><div><small>LIVE PLAN</small><h2 id="today-board-title">오늘 흐름</h2></div><span>{items.length} ITEMS</span></header>
-    <div className="board-rule" />
-    {items.length ? <ol>{items.slice(0, 7).map((item) => <li className={`${item.kind} ${item.current ? "current" : ""} ${item.status === "completed" ? "completed" : ""}`} key={item.id}>
-      <time>{formatTime(item.startsAt, timeZone)}</time><i className="flow-node" /><div><strong>{item.title}</strong><small>{item.context ?? itemLabel[item.kind]} · {item.minutes}분</small></div>{item.current && <b>NOW</b>}
-    </li>)}</ol> : <p className="board-empty">승인 계획에 표시할 항목이 없습니다.</p>}
-  </section>;
 }
 
 function ProposalPanel({ proposal, action, pending }: {
@@ -83,14 +66,31 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
   const [actionState, submitAction, pending] = useActionState(requestChiefReplan, initialActionState);
   const [decisionState, submitDecision, decisionPending] = useActionState(decideChiefReplan, initialActionState);
   const [notice, setNotice] = useState("");
+  const [chiefOpen, setChiefOpen] = useState(false);
+  const [weekOpen, setWeekOpen] = useState(false);
   const commandRef = useRef<HTMLInputElement>(null);
+  const chiefRef = useRef<HTMLDivElement>(null);
+  const openChief = () => {
+    setChiefOpen(true);
+    window.requestAnimationFrame(() => commandRef.current?.focus());
+  };
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); commandRef.current?.focus(); }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); openChief(); }
+      if (event.key === "Escape") setChiefOpen(false);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
+  useEffect(() => {
+    if (!chiefOpen) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !chiefRef.current?.contains(event.target)) setChiefOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    return () => document.removeEventListener("pointerdown", closeOutside);
+  }, [chiefOpen]);
+  useEffect(() => { if (initialData.proposal) setChiefOpen(false); }, [initialData.proposal]);
   const date = new Intl.DateTimeFormat("ko-KR", { timeZone: initialData.timeZone, month: "long", day: "numeric", weekday: "long" }).format(new Date());
   const calendarCount = initialData.timeline.filter((item) => item.kind === "calendar").length;
   const feedback = decisionState.message || actionState.message;
@@ -108,17 +108,27 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
         <div className="university-shelf"><i /><i /><i /><i /></div>
         <div className="lounge-object"><span className="sofa" /><span className="coffee-table"><i /></span><span className="floor-lamp" /></div>
         <div className="owner-position"><OwnerAvatar /><span>Owner</span></div>
-        <div className="chief-position"><div className="chief-desk"><span className="chief-monitor"><i /></span><span className="chief-lamp" /><ChiefAvatar /></div><div className={`chief-state ${initialData.proposal ? "attention" : ""}`}><i />{initialData.proposal ? "검토 대기" : "대기 중"}</div></div>
-        <div className="today-position"><TodayBoard items={initialData.timeline} timeZone={initialData.timeZone} /></div>
+        <div className={`chief-position ${chiefOpen ? "is-open" : ""}`} ref={chiefRef}>
+          <button className="chief-character-trigger" type="button" onClick={() => chiefOpen ? setChiefOpen(false) : openChief()} disabled={!initialData.configured} aria-expanded={chiefOpen} aria-controls="chief-speech-panel">
+            <div className="chief-desk"><span className="chief-monitor"><i /></span><span className="chief-lamp" /><ChiefAvatar state={pending ? "working" : chiefOpen ? "active" : "idle"} /></div>
+            <div className={`chief-state ${initialData.proposal ? "attention" : ""}`}><i />{pending ? "계산 중" : initialData.proposal ? "검토 대기" : chiefOpen ? "듣는 중" : "대기 중"}</div>
+          </button>
+          {chiefOpen && <div className="chief-speech" id="chief-speech-panel">
+            <header><span>ASK CHIEF</span><button type="button" onClick={() => setChiefOpen(false)} aria-label="Chief 입력 닫기">×</button></header>
+            <strong>오늘 흐름을 어떻게 조정할까요?</strong>
+            <form action={submitAction}><input id="chief-command" ref={commandRef} name="command" placeholder="예: 나 지금 2시간 쉬고 싶어" aria-label="Chief에게 일정 조정 요청" disabled={!initialData.configured || pending} /><button type="submit" disabled={!initialData.configured || pending}>{pending ? "계산 중…" : "변경안 만들기"}</button></form>
+            {feedback && <p className={`command-feedback ${feedbackStatus}`} role="status">{feedback}</p>}
+          </div>}
+        </div>
+        <div className="today-position"><TodayCalendar items={initialData.timeline} timeZone={initialData.timeZone} onOpenWeek={() => setWeekOpen(true)} /></div>
         <div className="agents-position"><div className="agent-zone-heading"><span>AI OFFICE</span><small>{initialData.agents.filter((agent) => agent.status === "working").length} WORKING</small></div>{initialData.agents.length ? initialData.agents.slice(0, 3).map((agent) => <Desk {...agent} key={agent.name} />) : <div className="empty-workstation"><span className="empty-chair" /><p>활성 Agent 없음</p></div>}</div>
         <QuestHud data={initialData} />
         {initialData.proposal && <ProposalPanel proposal={initialData.proposal} action={submitDecision} pending={decisionPending} />}
       </div>
     </div>
 
-    <form className="chief-command" action={submitAction}><span className="command-avatar"><ChiefAvatar /></span><label htmlFor="chief-command"><small>ASK CHIEF</small><strong>{initialData.proposal ? "변경안을 검토하고 있어요" : "오늘 흐름을 조정할까요?"}</strong></label><input id="chief-command" ref={commandRef} name="command" placeholder="예: 나 지금 2시간 쉬고 싶어" aria-label="Chief에게 일정 조정 요청" disabled={!initialData.configured || pending} /><kbd>⌘ K</kbd><button type="submit" disabled={!initialData.configured || pending}>{pending ? "계산 중…" : "변경안 만들기"}</button></form>
-    {feedback && <p className={`command-feedback ${feedbackStatus}`} role="status">{feedback}</p>}
-    <CurrentMission data={initialData} focusCommand={() => commandRef.current?.focus()} focusNotice={() => setNotice("집중 실행은 기존 Focus 화면에서 시작할 수 있어요.")} />
+    <CurrentMission data={initialData} focusCommand={openChief} focusNotice={() => setNotice("집중 실행은 기존 Focus 화면에서 시작할 수 있어요.")} />
+    {weekOpen && <WeekCalendarOverlay days={initialData.week} today={initialData.date} timeZone={initialData.timeZone} onClose={() => setWeekOpen(false)} />}
     {notice && <div className="soft-toast" role="status">{notice}<button onClick={() => setNotice("")} type="button">×</button></div>}
   </main>;
 }
