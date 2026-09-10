@@ -1,38 +1,61 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useCallback, useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { decideChiefReplan, requestChiefReplan } from "../app/actions";
 import type { ChiefActionState, HomeViewModel } from "../lib/home-types";
 import { TodayCalendar, WeekCalendarOverlay } from "./calendar-views";
 
 const initialActionState: ChiefActionState = { status: "idle", message: "" };
 const changeLabel = { kept: "유지", moved: "이동", deferred: "내일 후보", added: "추가" } as const;
-function OwnerAvatar() {
-  return <span className="owner-avatar" aria-label="Owner"><i className="owner-fin" /><i className="owner-face"><b /><em /></i><i className="owner-feet" /></span>;
+
+type AssetState = "idle" | "planning" | "working";
+type StationId = "owner" | "project-pm" | "university" | "career";
+type WorldStyle = CSSProperties & { "--x": number; "--y": number; "--w": number; "--z": number };
+
+const worldStyle = (x: number, y: number, width: number, z: number): WorldStyle => ({
+  "--x": x, "--y": y, "--w": width, "--z": z
+});
+
+const stationAssets: Record<StationId, string> = {
+  owner: "/assets/tycoon/stations/owner-desk.webp",
+  "project-pm": "/assets/tycoon/stations/project-studio.webp",
+  university: "/assets/tycoon/stations/learning-studio.webp",
+  career: "/assets/tycoon/stations/career-desk.webp"
+};
+
+function CharacterSprite({ role, state, label }: { role: StationId | "chief"; state: AssetState; label: string }) {
+  return <img className={`world-character is-${state}`} src={`/assets/tycoon/characters/${role}/${state}.webp`} alt={label} />;
 }
 
-function ChiefAvatar({ state = "idle" }: { state?: "idle" | "active" | "working" }) {
-  return <span className={`chief-avatar is-${state}`} data-asset-slot={`chief-${state}`} aria-label="Chief Amber"><i className="chief-hair" /><i className="chief-face"><b /><em /></i><i className="chief-body" /></span>;
-}
-
-function AgentAvatar({ active }: { active: boolean }) {
-  return <span className={`agent-avatar ${active ? "active" : ""}`} aria-hidden="true"><i /><b /><em /></span>;
-}
-
-function Desk({ name, status, detail }: HomeViewModel["agents"][number]) {
-  const active = status === "working";
-  return <div className={`workstation ${active ? "is-working" : "is-idle"}`}>
-    <div className="desk-object"><span className="desk-screen"><i /></span><span className="desk-cup" /><AgentAvatar active={active} /></div>
-    <div className="desk-caption"><strong>{name}</strong><span><i />{active ? "작업 중" : "대기"}</span><small>{detail}</small></div>
-  </div>;
+function OfficeStation({ id, label, detail, x, y, width, characterY, characterWidth, state = "idle" }: {
+  id: StationId;
+  label: string;
+  detail: string;
+  x: number;
+  y: number;
+  width: number;
+  characterY: number;
+  characterWidth: number;
+  state?: AssetState;
+}) {
+  const characterTop = 50 + ((characterY - y) / width) * 100;
+  return <section className={`world-entity station-${id}`} data-station={id} style={worldStyle(x, y, width, 20)} aria-label={`${label}, ${detail}`}>
+    <img className="station-shadow" src="/assets/tycoon/ui/station-contact-shadow.png" alt="" />
+    <img className="station-sprite" src={stationAssets[id]} alt="" />
+    <span className="station-character" style={{ width: `${(characterWidth / width) * 100}%`, top: `${characterTop}%` }}>
+      <CharacterSprite role={id} state={state} label={label} />
+    </span>
+    <span className="station-caption"><strong>{label}</strong><small><i className={state} />{detail}</small></span>
+  </section>;
 }
 
 function QuestHud({ data }: { data: HomeViewModel }) {
   return <aside className="quest-hud" aria-label="오늘의 핵심 목표">
     <div className="hud-eyebrow"><span>TODAY QUEST</span><b>{data.goals.length}</b></div>
     <div className="quest-list">{data.goals.length ? data.goals.slice(0, 3).map((goal, index) => <div className="quest-line" key={`${goal.name}:${index}`}>
-      <span>0{index + 1}</span><div><strong>{goal.name}</strong><small>{goal.status}</small></div><i />
-    </div>) : <p className="hud-empty">활성 Goal이 없습니다.</p>}</div>
+      <span>0{index + 1}</span><strong>{goal.name}</strong><i />
+    </div>) : <p className="hud-empty">활성 Goal 없음</p>}</div>
   </aside>;
 }
 
@@ -52,28 +75,28 @@ function ProposalPanel({ proposal, action, pending }: {
   </section>;
 }
 
-function CurrentMission({ data, focusCommand, focusNotice }: { data: HomeViewModel; focusCommand: () => void; focusNotice: () => void }) {
+function CurrentMission({ data, openChief }: { data: HomeViewModel; openChief: () => void }) {
   const action = data.currentAction;
+  const ownerState: AssetState = action?.source === "focus_session" ? "working" : "idle";
   return <section className="mission-hud" data-testid="current-action">
-    <div className="owner-slot"><OwnerAvatar /><span>OWNER</span></div>
-    <div className="mission-copy"><small>CURRENT MISSION</small>{!data.configured ? <><h1>연결 설정이 필요합니다</h1><p>{data.error}</p></> : !data.approvedPlan ? <><h1>승인된 오늘 계획이 없습니다</h1><p>Morning 흐름에서 오늘 계획을 승인해 주세요.</p></> : !action ? <><h1>지금 실행할 계획 항목이 없습니다</h1><p>오늘 계획의 실행 가능한 항목을 모두 확인했습니다.</p></> : <><h1>{action.title}</h1><p>{action.context ?? (action.source === "focus_session" ? "진행 중인 FocusSession" : "승인된 오늘 계획")}</p></>}</div>
+    <div className="mission-owner"><CharacterSprite role="owner" state={ownerState} label="Owner 한교동" /><span>OWNER</span></div>
+    <div className="mission-copy"><small>CURRENT MISSION</small>{!data.configured ? <><h1>연결 설정이 필요합니다</h1><p>{data.error}</p></> : !data.approvedPlan ? <><h1>승인된 오늘 계획이 없습니다</h1><p>Morning에서 오늘 계획을 승인해 주세요.</p></> : !action ? <><h1>지금 실행할 계획 항목이 없습니다</h1><p>오늘 계획의 실행 가능한 항목을 모두 확인했습니다.</p></> : <><h1>{action.title}</h1><p>{action.context ?? (action.source === "focus_session" ? "진행 중인 FocusSession" : "승인된 오늘 계획")}</p></>}</div>
     <div className="mission-meta"><div><small>예상 시간</small><strong>{action?.minutes ? `${action.minutes}분` : "—"}</strong></div><div><small>상태</small><strong>{action?.source === "focus_session" ? "집중 중" : action ? "실행 가능" : "대기"}</strong></div><div><small>PLAN</small><strong>{data.approvedPlan ? `v${data.approvedPlan.revisionNo}` : "—"}</strong></div></div>
-    <div className="mission-actions"><button className="focus-button" onClick={focusNotice} disabled={!action} type="button"><span>▶</span> 집중 시작</button><button className="chief-button" onClick={focusCommand} disabled={!data.configured} type="button">Chief에게 조정 요청</button></div>
+    <div className="mission-actions"><button className="focus-button" disabled type="button" title="Focus 화면 연결 전입니다">집중 시작 · 준비 중</button><button className="chief-button" onClick={openChief} disabled={!data.configured} type="button">Chief에게 조정 요청</button></div>
   </section>;
 }
 
 export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel }) {
   const [actionState, submitAction, pending] = useActionState(requestChiefReplan, initialActionState);
   const [decisionState, submitDecision, decisionPending] = useActionState(decideChiefReplan, initialActionState);
-  const [notice, setNotice] = useState("");
   const [chiefOpen, setChiefOpen] = useState(false);
   const [weekOpen, setWeekOpen] = useState(false);
   const commandRef = useRef<HTMLInputElement>(null);
   const chiefRef = useRef<HTMLDivElement>(null);
-  const openChief = () => {
+  const openChief = useCallback(() => {
     setChiefOpen(true);
     window.requestAnimationFrame(() => commandRef.current?.focus());
-  };
+  }, []);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); openChief(); }
@@ -81,7 +104,7 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, []);
+  }, [openChief]);
   useEffect(() => {
     if (!chiefOpen) return;
     const closeOutside = (event: PointerEvent) => {
@@ -91,27 +114,39 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
     return () => document.removeEventListener("pointerdown", closeOutside);
   }, [chiefOpen]);
   useEffect(() => { if (initialData.proposal) setChiefOpen(false); }, [initialData.proposal]);
+
   const date = new Intl.DateTimeFormat("ko-KR", { timeZone: initialData.timeZone, month: "long", day: "numeric", weekday: "long" }).format(new Date());
   const calendarCount = initialData.timeline.filter((item) => item.kind === "calendar").length;
   const feedback = decisionState.message || actionState.message;
   const feedbackStatus = decisionState.message ? decisionState.status : actionState.status;
+  const projectAgent = initialData.agents.find((agent) => /project|pm|프로젝트/i.test(agent.name));
+  const projectState: AssetState = projectAgent?.status === "working" ? "working" : "idle";
+  const chiefState: AssetState = pending ? "working" : chiefOpen ? "planning" : "idle";
 
   return <main className="tycoon-shell">
-    <header className="world-header"><div className="brand"><span className="brand-mark">A</span><div><strong>Amber HQ</strong><small>{date}</small></div></div><div className="world-status"><span className={initialData.configured ? "online" : "offline"}><i />{initialData.configured ? "HQ ONLINE" : "SETUP NEEDED"}</span><span>CALENDAR <b>{calendarCount}</b></span><span>REVIEW <b>{initialData.decisionCount}</b></span></div></header>
+    <header className="world-header">
+      <div className="brand"><span className="brand-mark">A</span><div><strong>Amber HQ</strong><small>{date}</small></div></div>
+      <div className="world-status"><span className={initialData.configured ? "online" : "offline"}><i />{initialData.configured ? "HQ ONLINE" : "SETUP NEEDED"}</span><button type="button" onClick={() => setWeekOpen(true)}>CALENDAR <b>{calendarCount}</b></button><span>REVIEW <b>{initialData.decisionCount}</b></span></div>
+    </header>
 
     <div className="office-stage">
       <div className="office-world">
-        <div className="floor-grid" /><div className="back-wall"><span className="window-object"><i /><b /></span><span className="wall-logo">AMBER<br />HQ</span><span className="wall-shelf"><i /><i /><i /></span></div>
-        <div className="zone-rug logfolio-rug" /><div className="zone-rug university-rug" /><div className="zone-rug lounge-rug" />
-        <div className="zone-tag logfolio-tag"><i /> PROJECT STUDIO</div><div className="zone-tag university-tag"><i /> LEARNING LAB</div><div className="zone-tag chief-tag"><i /> CHIEF DESK</div>
-        <div className="project-table"><span className="table-screen" /><span className="table-paper one" /><span className="table-paper two" /><span className="table-plant" /></div>
-        <div className="university-shelf"><i /><i /><i /><i /></div>
-        <div className="lounge-object"><span className="sofa" /><span className="coffee-table"><i /></span><span className="floor-lamp" /></div>
-        <div className="owner-position"><OwnerAvatar /><span>Owner</span></div>
-        <div className={`chief-position ${chiefOpen ? "is-open" : ""}`} ref={chiefRef}>
-          <button className="chief-character-trigger" type="button" onClick={() => chiefOpen ? setChiefOpen(false) : openChief()} disabled={!initialData.configured} aria-expanded={chiefOpen} aria-controls="chief-speech-panel">
-            <div className="chief-desk"><span className="chief-monitor"><i /></span><span className="chief-lamp" /><ChiefAvatar state={pending ? "working" : chiefOpen ? "active" : "idle"} /></div>
-            <div className={`chief-state ${initialData.proposal ? "attention" : ""}`}><i />{pending ? "계산 중" : initialData.proposal ? "검토 대기" : chiefOpen ? "듣는 중" : "대기 중"}</div>
+        <OfficeStation id="project-pm" label="Project PM · 토토" detail={projectState === "working" ? "작업 중" : "대기 중"} x={245} y={330} width={360} characterY={285} characterWidth={118} state={projectState} />
+        <OfficeStation id="university" label="University · 포포" detail="대기 중" x={1330} y={330} width={350} characterY={285} characterWidth={118} />
+        <OfficeStation id="owner" label="Owner · 한교동" detail={initialData.currentAction?.source === "focus_session" ? "집중 중" : "대기 중"} x={250} y={675} width={360} characterY={605} characterWidth={122} state={initialData.currentAction?.source === "focus_session" ? "working" : "idle"} />
+        <OfficeStation id="career" label="Career · 코코" detail="대기 중" x={1340} y={675} width={350} characterY={620} characterWidth={120} />
+
+        <section className="today-world-board" data-station="today" style={worldStyle(800, 128, 500, 30)} onClick={(event) => { if (!(event.target instanceof Element) || !event.target.closest("button")) setWeekOpen(true); }}>
+          <img className="today-frame" src="/assets/tycoon/ui/today-board-frame.webp" alt="" />
+          <div className="today-content"><TodayCalendar items={initialData.timeline} timeZone={initialData.timeZone} onOpenWeek={() => setWeekOpen(true)} /></div>
+        </section>
+
+        <div className={`chief-interaction ${chiefOpen ? "is-open" : ""}`} ref={chiefRef} style={worldStyle(800, 610, 390, 25)} data-station="chief">
+          <button className="chief-hotspot" type="button" onClick={() => chiefOpen ? setChiefOpen(false) : openChief()} disabled={!initialData.configured} aria-expanded={chiefOpen} aria-controls="chief-speech-panel">
+            <img className="station-shadow" src="/assets/tycoon/ui/station-contact-shadow.png" alt="" />
+            <img className="station-sprite" src="/assets/tycoon/stations/chief-desk.webp" alt="" />
+            <span className="station-character chief-character"><CharacterSprite role="chief" state={chiefState} label="Chief 느림이" /></span>
+            <span className="station-caption"><strong>Chief · 느림이</strong><small><i className={chiefState} />{pending ? "계획 계산 중" : initialData.proposal ? "검토 대기" : chiefOpen ? "요청 듣는 중" : "대기 중"}</small></span>
           </button>
           {chiefOpen && <div className="chief-speech" id="chief-speech-panel">
             <header><span>ASK CHIEF</span><button type="button" onClick={() => setChiefOpen(false)} aria-label="Chief 입력 닫기">×</button></header>
@@ -120,15 +155,18 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
             {feedback && <p className={`command-feedback ${feedbackStatus}`} role="status">{feedback}</p>}
           </div>}
         </div>
-        <div className="today-position"><TodayCalendar items={initialData.timeline} timeZone={initialData.timeZone} onOpenWeek={() => setWeekOpen(true)} /></div>
-        <div className="agents-position"><div className="agent-zone-heading"><span>AI OFFICE</span><small>{initialData.agents.filter((agent) => agent.status === "working").length} WORKING</small></div>{initialData.agents.length ? initialData.agents.slice(0, 3).map((agent) => <Desk {...agent} key={agent.name} />) : <div className="empty-workstation"><span className="empty-chair" /><p>활성 Agent 없음</p></div>}</div>
+
+        <section className="review-station" data-station="review" style={worldStyle(805, 785, 265, 28)} aria-label={`Review와 Inbox, 대기 ${initialData.decisionCount}건`}>
+          <img className="station-shadow" src="/assets/tycoon/ui/station-contact-shadow.png" alt="" /><img className="station-sprite" src="/assets/tycoon/stations/review-inbox-station.webp" alt="" />
+          <span className="review-caption">REVIEW / INBOX {initialData.decisionCount > 0 && <b>{initialData.decisionCount}</b>}</span>
+        </section>
+
         <QuestHud data={initialData} />
         {initialData.proposal && <ProposalPanel proposal={initialData.proposal} action={submitDecision} pending={decisionPending} />}
       </div>
     </div>
 
-    <CurrentMission data={initialData} focusCommand={openChief} focusNotice={() => setNotice("집중 실행은 기존 Focus 화면에서 시작할 수 있어요.")} />
+    <CurrentMission data={initialData} openChief={openChief} />
     {weekOpen && <WeekCalendarOverlay days={initialData.week} today={initialData.date} timeZone={initialData.timeZone} onClose={() => setWeekOpen(false)} />}
-    {notice && <div className="soft-toast" role="status">{notice}<button onClick={() => setNotice("")} type="button">×</button></div>}
   </main>;
 }
