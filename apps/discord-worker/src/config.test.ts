@@ -10,8 +10,21 @@ describe("Discord worker config", () => {
       botToken: "test-token",
       allowedDiscordUserId: "123456789012345678",
       databaseUrl: LOCAL_SUPABASE_DATABASE_URL,
-      wakePollIntervalMs: 30_000
+      wakePollIntervalMs: 30_000,
+      calendarUserId: null,
+      calendarSyncIntervalMs: 900_000
     });
+  });
+
+  it("accepts Calendar user and a bounded sync interval", () => {
+    const config = loadDiscordWorkerConfig({
+      DISCORD_BOT_TOKEN: "test-token",
+      DISCORD_ALLOWED_USER_ID: "123456789012345678",
+      AMBER_USER_ID: "11111111-1111-4111-8111-111111111111",
+      CALENDAR_SYNC_INTERVAL_MS: "60000"
+    });
+    expect(config.calendarUserId).toBe("11111111-1111-4111-8111-111111111111");
+    expect(config.calendarSyncIntervalMs).toBe(60_000);
   });
 
   it("accepts a bounded wake polling interval", () => {

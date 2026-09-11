@@ -21,3 +21,6 @@ pnpm calendar:icloud:sync
 않으며 credential과 raw ICS payload를 로그 또는 DB에 저장하지 않는다. collection의
 CTag가 바뀌지 않으면 fetch를 생략하고, 그 외에는 bounded full fetch와 ETag/content
 hash로 update/delete를 reconciliation한다.
+
+첫 CLI 실행은 기존 `integration_accounts`를 생성하거나 활성화한다. 이후 persistent Discord
+worker가 시작 시 한 번, 이후 기본 15분마다 같은 read-only sync service를 실행한다.

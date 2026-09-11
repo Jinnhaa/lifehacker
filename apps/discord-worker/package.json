@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@amber/core": "workspace:*",
+    "@amber/google-calendar": "workspace:*",
+    "@amber/icloud-calendar": "workspace:*",
     "@amber/input": "workspace:*",
     "@amber/shared": "workspace:*",
     "discord.js": "14.27.0",

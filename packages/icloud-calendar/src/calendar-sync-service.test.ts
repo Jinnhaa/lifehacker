@@ -63,4 +63,15 @@ describe("ICloudCalendarSyncService", () => {
     expect(repository.applied[0]?.events).toEqual([]);
     expect(repository.applied[0]?.collectionRemoved).toBe(true);
   });
+
+  it("does not alter persisted constraints when provider discovery fails", async () => {
+    const repository = new FakeRepository();
+    const reader: ICloudCalDavReader = {
+      discover: async () => { throw new Error("provider unavailable"); },
+      fetchCollection: async () => { throw new Error("unexpected fetch"); }
+    };
+    await expect(new ICloudCalendarSyncService(reader, repository, new FixedClock(new Date())).sync(account())).rejects.toThrow("provider unavailable");
+    expect(repository.applied).toEqual([]);
+    expect(repository.saved).toBe(0);
+  });
 });

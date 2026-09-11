@@ -4,6 +4,7 @@ import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ICloudCalendarAccount, ICloudCalendarCollection } from "./contracts.js";
 import { SupabaseICloudCalendarSyncRepository } from "./supabase-calendar-sync-repository.js";
+import { syncICloudCalendarForUser } from "./runtime-sync.js";
 
 const sql = postgres(process.env.TEST_DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres", { max: 10 });
 const userA = randomUUID();
@@ -56,6 +57,10 @@ afterAll(async () => {
 });
 
 describe("Supabase iCloud Calendar reconciliation", () => {
+  it("returns a safe no-op before loading credentials when no active account exists", async () => {
+    await expect(syncICloudCalendarForUser({ sql, userId: userB, environment: {} })).resolves.toBeNull();
+  });
+
   it("creates, deduplicates, updates, tombstones, restores, and isolates fixed constraints", async () => {
     const repository = new SupabaseICloudCalendarSyncRepository(sql);
     const account = await repository.getActiveAccount(userA) as ICloudCalendarAccount;
