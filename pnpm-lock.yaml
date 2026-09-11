@@ -56,6 +56,9 @@ importers:
       '@amber/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@amber/input':
+        specifier: workspace:*
+        version: link:../../packages/input
       '@amber/shared':
         specifier: workspace:*
         version: link:../../packages/shared
