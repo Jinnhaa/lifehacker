@@ -13,7 +13,7 @@ import type { z } from "zod";
 import type { AIExecutionRecord, AIExecutionRecorder } from "./openai-structured-output-provider.js";
 
 export const DEFAULT_OPENAI_PROJECT_ANALYSIS_MODEL = "gpt-5.6-sol";
-export const OPENAI_PROJECT_ANALYSIS_TIMEOUT_MS = 45_000;
+export const OPENAI_PROJECT_ANALYSIS_TIMEOUT_MS = 90_000;
 
 export interface OpenAIProjectAnalysisConfig {
   readonly apiKey: string;
