@@ -134,7 +134,7 @@ const itemKey = (item: ItemRow): string => item.task_id ?? item.activity_occurre
 
 const proposalChanges = (before: readonly ItemRow[], after: readonly ItemRow[], timeZone: string): HomeProposalChange[] => {
   const remaining = new Map(after.map((item) => [itemKey(item), item]));
-  const changes = before.map((item) => {
+  const changes: HomeProposalChange[] = before.map((item) => {
     const key = itemKey(item);
     const next = remaining.get(key);
     remaining.delete(key);

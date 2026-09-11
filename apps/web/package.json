@@ -3,7 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
+    "predev": "pnpm --filter @amber/core build --force",
     "dev": "next dev",
+    "prebuild": "pnpm --filter @amber/core build --force",
     "build": "next build",
     "typecheck": "tsc --noEmit"
   },
