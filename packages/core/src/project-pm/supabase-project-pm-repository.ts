@@ -4,11 +4,15 @@ import { SupabaseAgentRunRecorder } from "../agent-execution/supabase-agent-run-
 import type { Task, TaskExecutionMode, TaskStatus } from "../task/task.js";
 import type {
   ProjectDomainEvent,
+  ProjectArtifact,
+  ProjectDecision,
   ProjectGoal,
   ProjectObjective,
   ProjectPmContext,
   ProjectPmRepository,
   ProjectPmRunRecorder,
+  ProjectSourceReference,
+  ProjectTaskStep,
   ProjectWorkContext
 } from "./project-pm.js";
 
@@ -62,34 +66,93 @@ export class SupabaseProjectPmRepository implements ProjectPmRepository {
       where id=${project.id} and user_id=${userId} and kind='project' and archived_at is null
     `;
     if (!projects[0]) throw new Error("Project WorkContext disappeared");
-    const [objectives, goals, tasks, focus, planTasks, events] = await Promise.all([
-      this.sql<{ id: string; title: string; goal_id: string | null; target_date: string | null; importance: number; status: string }[]>`
-        select id,title,goal_id,target_date::text,importance,status from public.objectives
+    const [objectives, goals, tasks, taskSteps, artifacts, decisions, sourceReferences, focus, planTasks, events] = await Promise.all([
+      this.sql<{ id: string; title: string; goal_id: string | null; target_date: string | null; success_criteria: string | null; importance: number; status: string }[]>`
+        select id,title,goal_id,target_date::text,success_criteria,importance,status from public.objectives
         where user_id=${userId} and work_context_id=${project.id} and status='active' order by importance desc,created_at
       `,
       this.sql<{ id: string; title: string; status: string }[]>`
         select distinct g.id,g.title,g.status from public.goals g join public.objectives o on o.goal_id=g.id and o.user_id=g.user_id
         where g.user_id=${userId} and o.work_context_id=${project.id} order by g.title
       `,
-      this.sql<TaskRow[]>`select * from public.tasks where user_id=${userId} and work_context_id=${project.id} order by created_at`,
+      this.sql<TaskRow[]>`
+        select t.* from public.tasks t where t.user_id=${userId} and (
+          t.work_context_id=${project.id} or (
+            t.work_context_id is null and exists(
+              select 1 from public.objectives o where o.id=t.objective_id and o.user_id=t.user_id and o.work_context_id=${project.id}
+            )
+          )
+        ) order by t.created_at,t.id
+      `,
+      this.sql<{ id: string; task_id: string; position: number; title: string; owner: "user" | "ai"; estimated_minutes: number | null; completion_criteria: string | null; status: string; skill_key: string | null }[]>`
+        select s.id,s.task_id,s.position,s.title,s.owner,s.estimated_minutes,s.completion_criteria,s.status,s.skill_key
+        from public.task_steps s join public.tasks t on t.id=s.task_id and t.user_id=s.user_id
+        left join public.objectives o on o.id=t.objective_id and o.user_id=t.user_id
+        where s.user_id=${userId} and (t.work_context_id=${project.id} or (t.work_context_id is null and o.work_context_id=${project.id}))
+        order by s.task_id,s.position
+      `,
+      this.sql<{ id: string; artifact_type: string; title: string | null; task_id: string | null; work_context_id: string | null; content_text: string | null; content_hash: string | null; verification_status: "unverified" | "verified" | "failed" | null; review_status: "pending_review" | "accepted" | "rejected" | null; created_at: Date }[]>`
+        select distinct a.id,a.artifact_type,a.title,a.task_id,a.work_context_id,a.content_text,a.content_hash,a.verification_status,a.review_status,a.created_at
+        from public.artifacts a
+        left join public.tasks t on t.id=a.task_id and t.user_id=a.user_id
+        left join public.objectives o on o.id=t.objective_id and o.user_id=t.user_id
+        where a.user_id=${userId}
+          and a.artifact_type not in ('project_state_snapshot','gap_analysis','backlog_proposal')
+          and (a.review_status is null or a.review_status='accepted') and (
+          a.work_context_id=${project.id} or t.work_context_id=${project.id} or (t.work_context_id is null and o.work_context_id=${project.id})
+        ) order by a.created_at,a.id
+      `,
+      this.sql<{ id: string; question: string; why_now: string; status: string; created_at: Date; resolved_at: Date | null }[]>`
+        select d.id,d.question,d.why_now,d.status,d.created_at,d.resolved_at from public.decisions d
+        left join public.workflow_runs w on w.id=d.workflow_run_id and w.user_id=d.user_id
+        where d.user_id=${userId} and (
+          d.impact->'context'->>'projectId'=${project.id}
+          or d.impact->'context'->>'workContextId'=${project.id}
+          or w.checkpoint_state->>'workContextId'=${project.id}
+        ) order by d.created_at desc,d.id limit 20
+      `,
+      this.sql<{ id: string; source: string; external_type: string; external_id: string; external_version: string | null; internal_entity_type: string; internal_entity_id: string; sync_status: "active" | "stale" | "deleted" | "conflict"; content_hash: string | null; last_seen_at: Date }[]>`
+        select distinct r.id,r.source,r.external_type,r.external_id,r.external_version,r.internal_entity_type,
+          r.internal_entity_id,r.sync_status,r.content_hash,r.last_seen_at
+        from public.external_references r
+        where r.user_id=${userId} and (
+          (r.internal_entity_type='work_context' and r.internal_entity_id=${project.id})
+          or (r.internal_entity_type='objective' and r.internal_entity_id in (
+            select id from public.objectives where user_id=${userId} and work_context_id=${project.id}
+          ))
+          or (r.internal_entity_type='task' and r.internal_entity_id in (
+            select t.id from public.tasks t left join public.objectives o on o.id=t.objective_id and o.user_id=t.user_id
+            where t.user_id=${userId} and (t.work_context_id=${project.id} or (t.work_context_id is null and o.work_context_id=${project.id}))
+          ))
+        ) order by r.source,r.external_type,r.external_id
+      `,
       this.sql<{ session_id: string; task_id: string; title: string; started_at: Date }[]>`
         select f.id session_id,f.task_id,t.title,f.started_at from public.focus_sessions f
         join public.tasks t on t.id=f.task_id and t.user_id=f.user_id
-        where f.user_id=${userId} and f.status='active' and t.work_context_id=${project.id}
+        left join public.objectives o on o.id=t.objective_id and o.user_id=t.user_id
+        where f.user_id=${userId} and f.status='active'
+          and (t.work_context_id=${project.id} or (t.work_context_id is null and o.work_context_id=${project.id}))
         order by f.started_at desc limit 1
       `,
       this.sql<{ task_id: string; position: number }[]>`
         select i.task_id,i.position from public.daily_plans p join public.plan_items i on i.daily_plan_id=p.id and i.user_id=p.user_id
         join public.tasks t on t.id=i.task_id and t.user_id=i.user_id
         where p.user_id=${userId} and p.plan_date=${planDate} and p.status='approved'
-          and i.item_type='task' and t.work_context_id=${project.id} and i.status not in ('completed','cancelled','skipped')
+          and i.item_type='task' and (
+            t.work_context_id=${project.id} or (
+              t.work_context_id is null and exists(select 1 from public.objectives o where o.id=t.objective_id and o.user_id=t.user_id and o.work_context_id=${project.id})
+            )
+          ) and i.status not in ('completed','cancelled','skipped')
         order by p.revision_no desc,i.position
       `,
-      this.sql<{ id: string; event_type: string; aggregate_type: string; aggregate_id: string; occurred_at: Date }[]>`
-        select id,event_type,aggregate_type,aggregate_id,occurred_at from public.domain_events e
+      this.sql<{ id: string; event_type: string; aggregate_type: string; aggregate_id: string; occurred_at: Date; payload: Readonly<Record<string, unknown>> }[]>`
+        select id,event_type,aggregate_type,aggregate_id,occurred_at,payload from public.domain_events e
         where e.user_id=${userId} and (
           e.aggregate_id=${project.id}
-          or e.aggregate_id in (select id from public.tasks where user_id=${userId} and work_context_id=${project.id})
+          or e.aggregate_id in (
+            select t.id from public.tasks t left join public.objectives o on o.id=t.objective_id and o.user_id=t.user_id
+            where t.user_id=${userId} and (t.work_context_id=${project.id} or (t.work_context_id is null and o.work_context_id=${project.id}))
+          )
           or e.aggregate_id in (select id from public.objectives where user_id=${userId} and work_context_id=${project.id})
         ) order by occurred_at desc,recorded_at desc limit 20
       `
@@ -98,17 +161,38 @@ export class SupabaseProjectPmRepository implements ProjectPmRepository {
       userId, project: mapProject(projects[0]), observedAt: now, planDate, timeZone,
       objectives: objectives.map((item): ProjectObjective => ({
         id: item.id, title: item.title, goalId: item.goal_id, targetDate: item.target_date,
+        successCriteria: item.success_criteria,
         importance: item.importance, status: item.status
       })),
       goals: goals.map((item): ProjectGoal => ({ id: item.id, title: item.title, status: item.status })),
       tasks: tasks.map(mapTask),
+      taskSteps: taskSteps.map((item): ProjectTaskStep => ({
+        id: item.id, taskId: item.task_id, position: item.position, title: item.title, owner: item.owner,
+        estimatedMinutes: item.estimated_minutes, completionCriteria: item.completion_criteria, status: item.status,
+        skillKey: item.skill_key
+      })),
+      artifacts: artifacts.map((item): ProjectArtifact => ({
+        id: item.id, artifactType: item.artifact_type, title: item.title, taskId: item.task_id,
+        workContextId: item.work_context_id, contentText: item.content_text, contentHash: item.content_hash,
+        verificationStatus: item.verification_status, reviewStatus: item.review_status, createdAt: item.created_at
+      })),
+      decisions: decisions.map((item): ProjectDecision => ({
+        id: item.id, question: item.question, whyNow: item.why_now, status: item.status,
+        createdAt: item.created_at, resolvedAt: item.resolved_at
+      })),
+      sourceReferences: sourceReferences.map((item): ProjectSourceReference => ({
+        id: item.id, source: item.source, externalType: item.external_type, externalId: item.external_id,
+        externalVersion: item.external_version, internalEntityType: item.internal_entity_type,
+        internalEntityId: item.internal_entity_id, syncStatus: item.sync_status, contentHash: item.content_hash,
+        lastSeenAt: item.last_seen_at
+      })),
       activeFocus: focus[0] ? {
         sessionId: focus[0].session_id, taskId: focus[0].task_id, title: focus[0].title, startedAt: focus[0].started_at
       } : null,
       approvedPlanTasks: planTasks.map((item) => ({ taskId: item.task_id, position: item.position })),
       recentEvents: events.map((item): ProjectDomainEvent => ({
         id: item.id, eventType: item.event_type, aggregateType: item.aggregate_type,
-        aggregateId: item.aggregate_id, occurredAt: item.occurred_at
+        aggregateId: item.aggregate_id, occurredAt: item.occurred_at, payload: item.payload
       }))
     };
   }

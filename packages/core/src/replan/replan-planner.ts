@@ -35,13 +35,32 @@ const subtractIntervals = (source: TimeInterval, occupied: readonly TimeInterval
 };
 
 export const buildReplanDraft = (input: BuildReplanDraftInput): MorningPlanDraft => {
-  const { observation, previous, now } = input;
-  const workUntil = resolveReplanWorkUntil(observation, previous);
+  const { observation, previous, now, adjustment } = input;
+  const configuredWorkUntil = resolveReplanWorkUntil(observation, previous);
+  const requestedWorkUntil = adjustment?.kind === "exclude_after"
+    ? zonedDateTimeToUtc(`${previous.planDate}T${adjustment.localTime}:00`, previous.timeZone)
+    : configuredWorkUntil;
+  const workUntil = requestedWorkUntil < configuredWorkUntil ? requestedWorkUntil : configuredWorkUntil;
   const remaining = previous.items.filter((item) => item.end > now && !inactiveStatuses.has(item.status));
   const unavailableTaskIds = new Set(previous.items.flatMap((item) =>
     item.taskId && (item.status === "blocked" || item.status === "switched" || item.taskStatus === "BLOCKED")
       && item.taskId !== previous.activeTaskId ? [item.taskId] : []));
   let tasks = observation.tasks.filter((task) => !unavailableTaskIds.has(task.id));
+  const currentTaskId = previous.activeTaskId
+    ?? remaining.find((item) => item.itemType === "task" && item.taskId)?.taskId
+    ?? null;
+  if (adjustment?.kind === "defer_current" && currentTaskId) {
+    tasks = tasks.filter((task) => task.id !== currentTaskId);
+  }
+  if (adjustment?.kind === "prioritize_task") {
+    const query = adjustment.taskQuery.toLocaleLowerCase();
+    tasks = tasks.map((task) => task.title.toLocaleLowerCase().includes(query) ? { ...task, importance: 5 } : task);
+  }
+  if (adjustment?.kind === "reduce_today" && tasks.length > 1) {
+    const lowest = [...tasks].sort((left, right) =>
+      left.importance - right.importance || right.updatedAt.getTime() - left.updatedAt.getTime())[0]!;
+    tasks = tasks.filter((task) => task.id !== lowest.id);
+  }
 
   if (previous.activeTaskId) {
     const active = tasks.find((task) => task.id === previous.activeTaskId);
@@ -71,6 +90,15 @@ export const buildReplanDraft = (input: BuildReplanDraftInput): MorningPlanDraft
         end: value.end
       })));
   const restIntervals = restItems.map((item) => ({ start: item.start, end: item.end }));
+  const requestedRest = adjustment?.kind === "unavailable"
+    ? [{
+        itemType: "rest" as const,
+        title: adjustment.summary,
+        plannedMinutes: adjustment.durationMinutes,
+        start: now,
+        end: new Date(Math.min(workUntil.getTime(), now.getTime() + adjustment.durationMinutes * MINUTE))
+      }].filter((item) => item.end > item.start)
+    : [];
   const adjusted: MorningObservation = {
     ...observation,
     tasks,
@@ -80,13 +108,17 @@ export const buildReplanDraft = (input: BuildReplanDraftInput): MorningPlanDraft
     observation: adjusted,
     now,
     workUntil,
-    privateIntervals: [...previous.privateIntervals, ...restIntervals],
+    privateIntervals: [
+      ...previous.privateIntervals,
+      ...restIntervals,
+      ...requestedRest.map((item) => ({ start: item.start, end: item.end }))
+    ],
     localWeekday: localWeekday(now, previous.timeZone),
     maximumWorkMinutes
   });
   return {
     ...planned,
-    items: [...planned.items, ...restItems].sort((left, right) => left.start.getTime() - right.start.getTime()),
+    items: [...planned.items, ...restItems, ...requestedRest].sort((left, right) => left.start.getTime() - right.start.getTime()),
     inputSnapshot: {
       ...planned.inputSnapshot,
       previousPlanId: previous.planId,

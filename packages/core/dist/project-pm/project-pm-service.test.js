@@ -28,13 +28,17 @@ const context = (overrides = {}) => ({
     observedAt: now,
     planDate: "2026-09-06",
     timeZone: "Asia/Seoul",
-    objectives: [{ id: "objective-1", title: "출시", goalId: "goal-1", targetDate: "2026-09-10", importance: 5, status: "active" }],
+    objectives: [{ id: "objective-1", title: "출시", goalId: "goal-1", targetDate: "2026-09-10", successCriteria: null, importance: 5, status: "active" }],
     goals: [{ id: "goal-1", title: "포트폴리오", status: "active" }],
     tasks: [
         task("30000000-0000-4000-8000-000000000001", "발표 스크립트 수정", { status: "IN_PROGRESS", actualMinutes: 15 }),
         task("30000000-0000-4000-8000-000000000002", "TAM 수치 검증", { status: "BLOCKED" }),
         task("30000000-0000-4000-8000-000000000003", "완료한 일", { status: "DONE", completedAt: now })
     ],
+    taskSteps: [],
+    artifacts: [],
+    decisions: [],
+    sourceReferences: [],
     activeFocus: null,
     approvedPlanTasks: [],
     recentEvents: [],

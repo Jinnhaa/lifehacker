@@ -126,7 +126,9 @@ export interface OpenAIResponsesClient {
 
 export interface AIExecutionRecord {
   readonly userId: UserId;
-  readonly jobType: "parse_input";
+  readonly jobType: "parse_input" | "project_state_review" | "backlog_refinement" | "document_draft";
+  readonly workflowRunId?: string;
+  readonly agentRunId?: string;
   readonly provider: "openai";
   readonly model: string;
   readonly promptVersion: string;

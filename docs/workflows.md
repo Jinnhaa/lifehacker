@@ -327,3 +327,75 @@ Approval 대기 시 WorkflowRun checkpoint를 저장하고 process는 종료 가
 `Inbox → ParsedEntity → DomainCommand → ExternalReference → DomainEvent`
 
 create/update/delete/stale/conflict를 동일 contract로 처리한다.
+
+## 21. Project Leadership Observation
+
+P0 첫 단계는 기존 `WorkflowRun`으로 다음 read-only iteration을 수행한다.
+
+```text
+OBSERVE
+→ DETECT_GAPS
+→ PROPOSE_BACKLOG
+→ COMPLETE
+```
+
+각 checkpoint는 `ContextPackage`와 이전 Artifact ID를 보존한다. 결과는 차례로 `project_state_snapshot`, `gap_analysis`, `backlog_proposal` Artifact가 된다. 동일 idempotency key의 완료된 run은 기존 결과를 반환한다.
+
+이 단계는 ApprovalRequest, Task/TaskStep materialization, routing, AgentRun, Artifact review, project state apply를 수행하지 않는다.
+
+## 22. Backlog Approval and Routing
+
+```text
+backlog_proposal
+→ batch ApprovalRequest
+→ typed user decision
+→ accepted items materialize
+→ Task / TaskStep
+→ human_executable / ai_executable / dependency_waiting
+```
+
+- ApprovalRequest는 proposal Artifact ID와 content hash에 결합한다.
+- 모든 proposal item은 accept 또는 exclude로 명시하며 priority와 owner를 item별로 override할 수 있다.
+- source snapshot과 현재 project projection의 fingerprint가 다르면 approval을 expired 처리하고 아무 Task도 만들지 않는다.
+- batch materialization, Decision/Feedback, DomainEvent, approval 완료는 한 transaction에서 처리한다.
+- 동일 proposal item의 Task와 TaskStep ID는 proposal Artifact ID와 stable item key에서 결정해 재처리를 idempotent하게 만든다.
+- 이 단계는 DailyPlan 연결과 AgentRun 실행을 수행하지 않는다.
+
+## 23. AI TaskStep Execution
+
+```text
+AI-owned executable TaskStep
+→ project-scoped ContextPackage
+→ versioned Skill
+→ AgentRun attempt
+→ structured AIExecution
+→ deterministic verifier
+→ verified Artifact(pending_review)
+→ Task WAITING_FOR_USER
+```
+
+- materialization이 AI step에 `document-draft` Skill을 명시적으로 배정하며 LLM이 Skill을 선택하지 않는다.
+- `taskStepId + skill key/version + context hash`로 동일 성공 실행을 재사용한다.
+- 모델 호출, schema validation, Skill verifier, Artifact 저장이 모두 끝나야 attempt가 성공한다.
+- 재시도는 최대 2회이고 각 시도를 별도 AgentRun으로 보존한다. 최종 실패는 TaskStep과 Task를 blocked 상태로 둔다.
+- ContextPackage는 Project scope의 WorkContext, Objective, Task, TaskStep, accepted Artifact, Decision과 source ref만 포함한다.
+- P0-3은 read-only model execution만 허용하며 ToolCall과 외부 write를 수행하지 않는다.
+- Artifact는 `verified + pending_review`이며 accept/reject와 Project state 반영은 후속 workflow의 책임이다.
+
+## 24. Artifact Review and Project Feedback
+
+```text
+pending_review Artifact
+→ accept | revise | reject
+→ Decision + DecisionFeedback + DomainEvent
+→ accepted canonical Task state
+→ Project Leadership iteration N+1
+```
+
+- Review command는 Artifact ID와 content hash에 결합하며 동일 idempotency key를 재사용하면 기존 판단을 반환한다.
+- accept는 verified content와 TaskStep completion criteria를 다시 검사한다. AI step과 명시적으로 연결된 hybrid review step을 완료하고, 모든 step이 끝난 경우 기존 Task state machine으로 Task를 DONE 처리한다.
+- reject는 Artifact를 rejected로 두고 TaskStep/Task를 blocked로 유지한다.
+- revise는 content를 수정하지 않는다. 기존 Artifact를 rejected로 두고 revision instruction을 ContextPackage에 포함한 새 execution identity와 `revision_of_artifact_id`를 사용한다. 실행 실패 retry 횟수와 사용자 revision은 별개다.
+- accepted 또는 legacy canonical Artifact만 Project projection에 포함한다. pending/rejected Artifact는 snapshot 근거에서 제외한다.
+- accept 후 기존 ProjectLeadershipService를 새 idempotent iteration으로 실행해 snapshot, gap analysis, backlog proposal을 다시 만든다. Task 완료만으로 gap을 닫지 않고 `project-state-review`가 갱신된 evidence를 재평가한다.
+- Objective와 Project 완료는 자동화하지 않는다.

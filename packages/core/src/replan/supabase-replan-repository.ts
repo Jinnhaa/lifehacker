@@ -12,6 +12,7 @@ import type {
   ReplanTrigger,
   ReplanWorkflowRun
 } from "./replan.js";
+import type { ChiefReplanAdjustment } from "./chief-replan-request.js";
 
 interface EventRow { id: string; user_id: string; correlation_id: string; occurred_at: Date; payload: unknown }
 interface WorkflowRow {
@@ -36,7 +37,10 @@ const mapTrigger = (row: EventRow): ReplanTrigger => {
     reason: String(payload.reason) as ReplanTrigger["reason"],
     deltaMinutes: typeof payload.delta_minutes === "number" ? payload.delta_minutes : 0,
     correlationId: row.correlation_id,
-    occurredAt: row.occurred_at
+    occurredAt: row.occurred_at,
+    ...(payload.adjustment && typeof payload.adjustment === "object"
+      ? { adjustment: payload.adjustment as ChiefReplanAdjustment }
+      : {})
   };
 };
 
@@ -107,7 +111,7 @@ export class SupabaseReplanRepository implements ReplanRepository {
     return rows[0] ? mapTrigger(rows[0]) : null;
   }
 
-  async createManualTrigger(userId: UserId, now: Date, messageId: string): Promise<ReplanTrigger> {
+  async createManualTrigger(userId: UserId, now: Date, messageId: string, adjustment: ChiefReplanAdjustment): Promise<ReplanTrigger> {
     const plans = await this.sql<{ id: string }[]>`
       select id from public.daily_plans where user_id=${userId} and status='approved' order by plan_date desc,revision_no desc limit 1
     `;
@@ -115,7 +119,7 @@ export class SupabaseReplanRepository implements ReplanRepository {
     const rows = await this.sql<EventRow[]>`
       insert into public.domain_events(user_id,event_type,aggregate_type,aggregate_id,actor_type,occurred_at,correlation_id,idempotency_key,payload_version,payload)
       values(${userId},'replan_triggered','daily_plan',${aggregateId},'user',${now},gen_random_uuid(),${`manual-replan:${messageId}`},1,
-        ${this.sql.json({ reason: "manual_replan", delta_minutes: 0, replan_executed: false })})
+        ${this.sql.json({ reason: "manual_replan", delta_minutes: 0, replan_executed: false, adjustment })})
       on conflict(user_id,idempotency_key) do nothing returning id,user_id,correlation_id,occurred_at,payload
     `;
     if (rows[0]) return mapTrigger(rows[0]);
@@ -234,6 +238,7 @@ export class SupabaseReplanRepository implements ReplanRepository {
         highlights: draft.highlights,
         triggerId: trigger.id,
         triggerReason: trigger.reason,
+        adjustment: trigger.adjustment ?? null,
         impact: decision.impact,
         impactReasons: decision.reasons,
         fixedEvents: draft.fixedEvents.map((value) => ({
@@ -248,7 +253,9 @@ export class SupabaseReplanRepository implements ReplanRepository {
       `;
       const planId = planRows[0]!.id;
       await this.insertItems(tx, trigger.userId, previous.planDate, planId, draft);
-      await tx`update public.daily_plans set status='superseded' where id=${previous.planId} and user_id=${trigger.userId} and status='approved'`;
+      if (decision.impact === "SMALL_CHANGE") {
+        await tx`update public.daily_plans set status='superseded' where id=${previous.planId} and user_id=${trigger.userId} and status='approved'`;
+      }
       const checkpoint = {
         planDate: previous.planDate, timeZone: previous.timeZone, planId, triggerId: trigger.id,
         impact: decision.impact, impactReasons: decision.reasons
@@ -271,7 +278,7 @@ export class SupabaseReplanRepository implements ReplanRepository {
       await tx`
         insert into public.domain_events(user_id,event_type,aggregate_type,aggregate_id,actor_type,occurred_at,correlation_id,workflow_run_id,idempotency_key,payload_version,payload)
         values(${trigger.userId},'plan_replanned','daily_plan',${planId},'system',${now},${trigger.correlationId},${workflowId},
-          ${`plan-replanned:${trigger.id}`},1,${tx.json({ revision_no: revisionNo, trigger_id: trigger.id, reason: trigger.reason, impact: decision.impact, impact_reasons: decision.reasons })})
+          ${`plan-replanned:${trigger.id}`},1,${tx.json({ revision_no: revisionNo, trigger_id: trigger.id, reason: trigger.reason, adjustment: trigger.adjustment ?? null, impact: decision.impact, impact_reasons: decision.reasons })})
         on conflict(user_id,idempotency_key) do nothing
       `;
       if (decision.impact === "SMALL_CHANGE") {

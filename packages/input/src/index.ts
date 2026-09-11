@@ -4,6 +4,8 @@ export * from "./deterministic-facts.js";
 export * from "./deterministic-interpreter.js";
 export * from "./input-service.js";
 export * from "./openai-structured-output-provider.js";
+export * from "./openai-project-analysis-provider.js";
+export * from "./openai-ai-task-executor.js";
 export * from "./repositories.js";
 export * from "./supabase-ai-execution-recorder.js";
 export * from "./supabase-input-repository.js";

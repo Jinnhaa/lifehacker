@@ -92,7 +92,7 @@ describe("DynamicReplanningService", () => {
       userId, timeZone: "Asia/Seoul", text: "오늘 일정 다시 짜줘", messageId: "discord:manual", receivedAt: now
     });
     expect(response.handled).toBe(true);
-    expect(repository.createManualTrigger).toHaveBeenCalledWith(userId, now, "discord:manual");
+    expect(repository.createManualTrigger).toHaveBeenCalledWith(userId, now, "discord:manual", expect.objectContaining({ kind: "rebalance" }));
   });
 
   it("requires approval for an important revision and resumes it safely", async () => {

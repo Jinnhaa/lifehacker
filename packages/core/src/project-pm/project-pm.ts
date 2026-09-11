@@ -20,8 +20,56 @@ export interface ProjectObjective {
   readonly title: string;
   readonly goalId: string | null;
   readonly targetDate: string | null;
+  readonly successCriteria: string | null;
   readonly importance: number;
   readonly status: string;
+}
+
+export interface ProjectTaskStep {
+  readonly id: string;
+  readonly taskId: string;
+  readonly position: number;
+  readonly title: string;
+  readonly owner: "user" | "ai";
+  readonly estimatedMinutes: number | null;
+  readonly completionCriteria: string | null;
+  readonly status: string;
+  readonly skillKey: string | null;
+}
+
+export interface ProjectArtifact {
+  readonly id: string;
+  readonly artifactType: string;
+  readonly title: string | null;
+  readonly taskId: string | null;
+  readonly workContextId: string | null;
+  readonly contentText: string | null;
+  readonly contentHash: string | null;
+  readonly verificationStatus: "unverified" | "verified" | "failed" | null;
+  readonly reviewStatus: "pending_review" | "accepted" | "rejected" | null;
+  readonly createdAt: Date;
+}
+
+export interface ProjectDecision {
+  readonly id: string;
+  readonly question: string;
+  readonly whyNow: string;
+  readonly status: string;
+  readonly createdAt: Date;
+  readonly resolvedAt: Date | null;
+}
+
+export interface ProjectSourceReference {
+  readonly id: string;
+  readonly source: string;
+  readonly externalType: string;
+  readonly externalId: string;
+  readonly externalVersion: string | null;
+  readonly internalEntityType: string;
+  readonly internalEntityId: string;
+  readonly syncStatus: "active" | "stale" | "deleted" | "conflict";
+  readonly contentHash: string | null;
+  readonly lastSeenAt: Date;
 }
 
 export interface ProjectGoal {
@@ -48,6 +96,7 @@ export interface ProjectDomainEvent {
   readonly aggregateType: string;
   readonly aggregateId: string;
   readonly occurredAt: Date;
+  readonly payload: Readonly<Record<string, unknown>>;
 }
 
 export interface ProjectPmContext {
@@ -59,6 +108,10 @@ export interface ProjectPmContext {
   readonly objectives: readonly ProjectObjective[];
   readonly goals: readonly ProjectGoal[];
   readonly tasks: readonly Task[];
+  readonly taskSteps: readonly ProjectTaskStep[];
+  readonly artifacts: readonly ProjectArtifact[];
+  readonly decisions: readonly ProjectDecision[];
+  readonly sourceReferences: readonly ProjectSourceReference[];
   readonly activeFocus: ProjectFocusTask | null;
   readonly approvedPlanTasks: readonly ProjectPlanTask[];
   readonly recentEvents: readonly ProjectDomainEvent[];

@@ -255,7 +255,9 @@ Pause는 Task state가 아니라 FocusSession state로 표현한다.
 - `owner`: user / ai
 - `estimated_minutes?`
 - `completion_criteria?`
-- `status`: pending / in_progress / completed / skipped
+- `skill_key?`: AI step의 명시적 versioned Skill assignment
+- `review_of_step_id?`: Artifact review가 대신 완료할 명시적 user review step
+- `status`: pending / dependency_waiting / in_progress / waiting_for_review / blocked / completed / skipped
 
 ### EstimateRevision
 
@@ -707,8 +709,11 @@ home_scope_id=...
 - `template_version`
 - `policy_version`
 - `workflow_run_id?`
+- `task_step_id?`, `skill_key?`, `skill_version?`
+- `attempt_number?`, `execution_key?`, `idempotency_key?`
 - `input_context_ref`
 - `status`
+- `failure_code?`, `failure_reason?`
 - `max_turns`, `max_tool_calls`, `timeout_seconds`
 - `cost_budget`
 - `started_at`
@@ -785,10 +790,14 @@ Agent, AIExecution 또는 ToolCall이 만든 재사용 가능한 결과다.
 - `artifact_type`, `storage_ref`, `content_hash?`
 - `agent_run_id?`, `ai_execution_id?`, `tool_call_id?`
 - `task_id?`, `work_context_id?`
-- `provenance`, `status`
+- `task_step_id?`, `schema_version?`
+- `revision_of_artifact_id?`
+- `provenance`, `verification_status?`, `review_status?`: pending_review / accepted / rejected
 - `created_at`
 
 최소 하나의 producer reference를 가져야 한다. Task/WorkContext 연결은 산출물의 업무 맥락이 있을 때만 사용한다.
+
+Artifact content는 immutable하다. Review는 별도 entity 없이 `review_status`, Decision, DecisionFeedback, DomainEvent로 기록한다. `revise`는 기존 Artifact를 rejected 처리하고 `revision_of_artifact_id`로 연결된 새 AgentRun/Artifact를 만든다.
 
 실행 관계:
 
@@ -924,6 +933,24 @@ MCP를 사용할 경우 server 단위 connection/config.
 ---
 
 ## 18. Audit Resolution Contracts
+
+### Project leadership observation artifacts
+
+프로젝트 현재 상태는 별도 mutable entity가 아니라 `WorkContext`, `Goal`/`Objective`, `Task`/`TaskStep`, 기존 Artifact, Decision, DomainEvent, ExternalReference에서 계산한다.
+
+관찰 결과는 다음 typed Artifact chain으로 보존한다.
+
+```text
+project_state_snapshot → gap_analysis → backlog_proposal
+```
+
+- snapshot은 evidence-backed read model이며 canonical project state가 아니다.
+- gap은 확정된 업무가 아니며 evidence, confidence, unknown을 유지한다.
+- backlog proposal은 승인 전 후보이므로 Task를 생성하거나 변경하지 않는다.
+- Task의 effective WorkContext는 direct `Task.work_context_id`를 우선하고, null이면 `Objective.work_context_id`에서 유도한다.
+- backlog proposal 승인 결과는 기존 `Decision`과 `DecisionFeedback`에 보존한다.
+- 승인된 proposal item만 `Task` 결과 단위와 `TaskStep` 실행 단위로 materialize한다.
+- human/AI 소유권은 Task가 아니라 `TaskStep.owner=user|ai`로 표현한다. hybrid item은 AI 초안 step 뒤에 user review step을 둔다.
 
 ### Input mutation
 `InboxItem → ParsedEntity → DomainCommand → DomainEvent`

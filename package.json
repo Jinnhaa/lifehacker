@@ -8,7 +8,7 @@
     "lint": "eslint .",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
-    "test:unit": "vitest run --exclude '**/*.integration.test.ts'",
+    "test:unit": "vitest run --exclude '**/*.integration.test.ts' --exclude '**/*.e2e.test.ts'",
     "test:integration": "vitest run packages/core/src/task/supabase-task-repository.integration.test.ts packages/core/src/morning/supabase-morning-repository.integration.test.ts packages/core/src/focus/supabase-focus-repository.integration.test.ts packages/core/src/replan/supabase-replan-repository.integration.test.ts packages/core/src/day-close/supabase-day-close-repository.integration.test.ts packages/core/src/wake/supabase-wake-repository.integration.test.ts packages/core/src/decision-learning/supabase-decision-learning-repository.integration.test.ts packages/core/src/pattern-learning/supabase-pattern-learning-repository.integration.test.ts packages/core/src/principle-approval/supabase-principle-approval-repository.integration.test.ts packages/core/src/principle-application/supabase-principle-reader.integration.test.ts packages/core/src/project-pm/supabase-project-pm-repository.integration.test.ts packages/input/src/input-service.integration.test.ts apps/discord-worker/src/discord-message-adapter.integration.test.ts packages/google-calendar/src/supabase-calendar-sync-repository.integration.test.ts packages/icloud-calendar/src/supabase-calendar-sync-repository.integration.test.ts",
     "db:start": "supabase start",
     "db:stop": "supabase stop",

@@ -3,6 +3,7 @@ import type { DerivedCurrentAction } from "../execution/current-action.js";
 import type { MorningObservation, MorningPlan, MorningPlanDraft, MorningPlanItemDraft, MorningRepository } from "../morning/morning.js";
 import type { ReplanTriggerReason } from "../rules/replan.js";
 import type { DecisionLearningRecorder } from "../decision-learning/decision-learning.js";
+import type { ChiefReplanAdjustment } from "./chief-replan-request.js";
 
 export type ReplanImpact = "SMALL_CHANGE" | "IMPORTANT_CHANGE";
 
@@ -13,6 +14,7 @@ export interface ReplanTrigger {
   readonly deltaMinutes: number;
   readonly correlationId: string;
   readonly occurredAt: Date;
+  readonly adjustment?: ChiefReplanAdjustment;
 }
 
 export interface ReplanPlanItem extends MorningPlanItemDraft {
@@ -63,7 +65,7 @@ export interface ReplanRevisionResult {
 
 export interface ReplanRepository {
   findLatestPendingTrigger(userId: UserId): Promise<ReplanTrigger | null>;
-  createManualTrigger(userId: UserId, now: Date, messageId: string): Promise<ReplanTrigger>;
+  createManualTrigger(userId: UserId, now: Date, messageId: string, adjustment: ChiefReplanAdjustment): Promise<ReplanTrigger>;
   findPendingApproval(userId: UserId, planDate: string): Promise<ReplanWorkflowRun | null>;
   findCompletedApprovalByMessage(userId: UserId, planDate: string, messageId: string): Promise<ReplanWorkflowRun | null>;
   findByTrigger(userId: UserId, triggerId: string): Promise<ReplanRevisionResult | null>;
@@ -112,4 +114,5 @@ export interface BuildReplanDraftInput {
   readonly observation: MorningObservation;
   readonly previous: ReplanPlanState;
   readonly now: Date;
+  readonly adjustment?: ChiefReplanAdjustment;
 }

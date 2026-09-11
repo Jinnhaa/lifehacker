@@ -1,0 +1,26 @@
+{
+  "name": "@amber/web",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "predev": "pnpm --filter @amber/core build --force",
+    "dev": "next dev",
+    "prebuild": "pnpm --filter @amber/core build --force",
+    "build": "next build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@amber/core": "workspace:*",
+    "@amber/shared": "workspace:*",
+    "next": "latest",
+    "postgres": "3.4.7",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "typescript": "^5.9.0"
+  }
+}
