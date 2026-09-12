@@ -42,7 +42,8 @@ const relativeDeadline = (receivedAt: Date, dayOffset: number, timeZone: string)
 };
 
 export const extractExplicitTaskFacts = (text: string, receivedAt: Date, timeZone: string): ExplicitTaskFacts => {
-  const duration = text.match(/(?:^|\s)(\d+)\s*(?:분|minutes?)(?:\s|$)/i);
+  const duration = text.match(/(?:^|\s)(\d+)\s*(?:분|minutes?)(?=\s|$|이면|정도)/i);
+  const durationHours = text.match(/(?:^|\s)(\d+)\s*(?:시간|hours?)(?=\s|$|이면|정도)/i);
   const importance = text.match(/(?:중요도|importance)\s*[:=]?\s*([1-5])/i);
   const isoDate = text.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
   let officialDeadline: string | undefined;
@@ -53,7 +54,9 @@ export const extractExplicitTaskFacts = (text: string, receivedAt: Date, timeZon
   }
   return {
     ...(officialDeadline && { officialDeadline }),
-    ...(duration?.[1] && { estimatedMinutes: Number(duration[1]) }),
+    ...(duration?.[1]
+      ? { estimatedMinutes: Number(duration[1]) }
+      : durationHours?.[1] ? { estimatedMinutes: Number(durationHours[1]) * 60 } : {}),
     ...(importance?.[1] && { importance: Number(importance[1]) as 1 | 2 | 3 | 4 | 5 })
   };
 };

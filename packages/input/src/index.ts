@@ -1,5 +1,6 @@
 export * from "./ai-interpreter.js";
 export * from "./contracts.js";
+export * from "./context-resolution.js";
 export * from "./deterministic-facts.js";
 export * from "./deterministic-interpreter.js";
 export * from "./input-service.js";

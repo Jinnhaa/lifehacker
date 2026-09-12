@@ -77,6 +77,21 @@ const adapterWith = (processorResult: InputProcessingResult | Error = applied) =
 };
 
 describe("DiscordMessageAdapter", () => {
+  it("routes a pending task confirmation before creating a new input", async () => {
+    const processTextInput = vi.fn(async () => applied);
+    const processConfirmationReply = vi.fn(async () => ({ handled: true as const, status: "applied" as const, taskId, duplicate: false, message: "반영" }));
+    const adapter = new DiscordMessageAdapter(
+      allowedDiscordUserId,
+      { resolve: vi.fn(async () => ({ userId, timeZone: "Asia/Seoul" })) },
+      { processTextInput, processConfirmationReply },
+      { getTaskById: vi.fn(async () => task) }
+    );
+    const incoming = message({ content: "30분이면 돼" });
+    await expect(adapter.handle(incoming.value)).resolves.toEqual({ kind: "replied", outcome: "applied" });
+    expect(processConfirmationReply).toHaveBeenCalledOnce();
+    expect(processTextInput).not.toHaveBeenCalled();
+  });
+
   it("maps an allowlisted DM to InputService once and formats a safe success reply", async () => {
     const { adapter, processor, received } = adapterWith();
     const incoming = message();

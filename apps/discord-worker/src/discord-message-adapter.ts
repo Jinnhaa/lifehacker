@@ -1,6 +1,6 @@
 import type { ChiefMessageHandler, DayCloseMessageHandler, FocusMessageHandler, MorningMessageHandler, PrincipleApprovalMessageHandler, ReplanMessageHandler, Task, TaskRepository, WakeMessageHandler } from "@amber/core";
 import { DomainError, type TaskId, type UserId } from "@amber/shared";
-import type { InputProcessingResult, TextInputValue } from "@amber/input";
+import type { ConfirmationProcessingResult, InputProcessingResult, TextInputValue } from "@amber/input";
 import type { DiscordUserResolver } from "./discord-user-resolver.js";
 import { formatConfirmationReply, formatTaskCreatedReply } from "./reply-formatter.js";
 
@@ -25,6 +25,12 @@ export interface DiscordInboundMessage {
 
 export interface TextInputProcessor {
   processTextInput(input: TextInputValue): Promise<InputProcessingResult>;
+  processConfirmationReply?(input: {
+    readonly userId: UserId;
+    readonly text: string;
+    readonly receivedAt: Date;
+    readonly clientRequestId: string;
+  }): Promise<ConfirmationProcessingResult>;
 }
 
 export interface TaskSummaryReader {
@@ -138,6 +144,21 @@ export class DiscordMessageAdapter {
           receivedAt: message.createdAt
         });
         if (chief.handled && chief.reply) return this.reply(message, chief.reply, "workflow");
+      }
+
+      if (this.inputProcessor.processConfirmationReply) {
+        const confirmation = await this.inputProcessor.processConfirmationReply({
+          userId: identity.userId,
+          text: message.content,
+          receivedAt: message.createdAt,
+          clientRequestId: `discord:${message.id}`
+        });
+        if (confirmation.handled) {
+          if (confirmation.status !== "applied") return this.reply(message, confirmation.message, "confirmation");
+          const task = await this.taskReader.getTaskById(identity.userId, confirmation.taskId);
+          if (!task) return this.reply(message, "지금은 기록하지 못했어. 잠시 후 다시 보내줘.", "failed");
+          return this.reply(message, formatTaskCreatedReply(task, identity.timeZone), "applied");
+        }
       }
 
       const result = await this.inputProcessor.processTextInput({

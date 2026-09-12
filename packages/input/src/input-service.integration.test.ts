@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { SupabaseTaskRepository, TaskService } from "@amber/core";
+import { createMorningPlan, SupabaseMorningRepository, SupabaseTaskRepository, TaskService } from "@amber/core";
 import { FixedClock, type CorrelationId, type IdGenerator, type UserId } from "@amber/shared";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -253,5 +253,96 @@ describe("InputService CREATE_TASK pipeline", () => {
     `;
     expect(after[0]?.count).toBe(before[0]?.count);
     expect(commands[0]?.count).toBe(0);
+  });
+
+  it("resolves a unique WorkContext and refuses an ambiguous match", async () => {
+    const uniqueId = randomUUID();
+    await admin`insert into public.work_contexts(id,user_id,kind,title,status,agent_mode) values (${uniqueId},${userId},'project','Intake Unique','active','auto')`;
+    const resolved = await serviceWith(new DeterministicTestInterpreter(taskResult({ entities: [{
+      entityType: "task_candidate", data: { title: "문맥 업무", workContextHint: "intake unique", inferredFields: ["workContextHint"] },
+      provenance: { title: "user_explicit", workContextHint: "ai_inferred" }, confidence: 0.9
+    }] }))).processManualText(manualInput("context-unique", "문맥 업무"));
+    expect(resolved.status).toBe("applied");
+    if (resolved.status !== "applied") throw new Error("Expected applied");
+    const taskRows = await admin<{ work_context_id: string | null }[]>`select work_context_id from public.tasks where id=${resolved.taskId}`;
+    expect(taskRows[0]?.work_context_id).toBe(uniqueId);
+
+    await admin`insert into public.work_contexts(user_id,kind,title,status,agent_mode) values (${userId},'project','Ambiguous Alpha','active','auto'),(${userId},'project','Ambiguous Beta','active','auto')`;
+    const ambiguous = await serviceWith(new DeterministicTestInterpreter(taskResult({ entities: [{
+      entityType: "task_candidate", data: { title: "모호한 업무", workContextHint: "Ambiguous", inferredFields: ["workContextHint"] },
+      provenance: { title: "user_explicit", workContextHint: "ai_inferred" }, confidence: 0.7
+    }] }))).processManualText(manualInput("context-ambiguous", "모호한 업무"));
+    expect(ambiguous.status).toBe("waiting_for_confirmation");
+    const rows = await admin<{ count: number }[]>`select count(*)::int count from public.tasks where user_id=${userId} and title='모호한 업무'`;
+    expect(rows[0]?.count).toBe(0);
+  });
+
+  it("resumes one pending confirmation, applies corrections, and dedupes the reply", async () => {
+    await admin`update public.parsed_entities p set processing_status='rejected' from public.inbox_items i where p.inbox_item_id=i.id and p.user_id=${userId} and i.parse_status='waiting_for_confirmation'`;
+    await admin`update public.inbox_items set parse_status='applied' where user_id=${userId} and parse_status='waiting_for_confirmation'`;
+    const service = serviceWith(new DeterministicTestInterpreter(taskResult({ requiresConfirmation: true, clarificationQuestions: ["예상 시간을 알려줘."] })));
+    await service.processManualText(manualInput("resume-confirmation", "보고서 작성"));
+    const reply = { userId, text: "30분이면 돼", receivedAt: new Date(), clientRequestId: "confirmation-reply-1" };
+    const first = await service.processConfirmationReply(reply);
+    const second = await service.processConfirmationReply(reply);
+    expect(first).toMatchObject({ handled: true, status: "applied", duplicate: false });
+    expect(second).toMatchObject({ handled: true, status: "applied", duplicate: true });
+    if (!first.handled || first.status !== "applied") throw new Error("Expected applied confirmation");
+    const rows = await admin<{ estimated_minutes: number; count: number }[]>`
+      select min(estimated_minutes)::int estimated_minutes,count(*)::int count from public.tasks where user_id=${userId} and id=${first.taskId}
+    `;
+    expect(rows[0]).toEqual({ estimated_minutes: 30, count: 1 });
+  });
+
+  it("materializes a clear Notion item once, keeps low-confidence work pending, and exposes the task to Morning", async () => {
+    const contextId = randomUUID();
+    await admin`insert into public.work_contexts(id,user_id,kind,title,status,agent_mode) values (${contextId},${userId},'project','Notion Intake','active','auto')`;
+    const service = serviceWith(new DeterministicTestInterpreter(taskResult()));
+    const item = {
+      source: "notion" as const, sourceItemId: `page-${randomUUID()}`, sourceVersion: "v1", sourceUrl: "https://notion.so/test",
+      observedAt: new Date(), title: "Notion 발견 업무", officialDeadline: new Date("2026-09-12T02:00:00Z"),
+      workContextHint: "Notion Intake", objectiveHint: null, status: "open" as const, taskSemantics: "clear" as const,
+      rawPayload: { sourceId: "test-source" }
+    };
+    const first = await service.processDiscoveredWorkItem(userId, item);
+    const second = await service.processDiscoveredWorkItem(userId, { ...item, sourceVersion: "v2", observedAt: new Date(Date.now() + 1_000) });
+    expect(first.status).toBe("materialized");
+    expect(second).toMatchObject({ status: "materialized", duplicate: true });
+    if (first.status !== "materialized") throw new Error("Expected materialized Notion item");
+    expect(second.status === "materialized" && second.taskId).toBe(first.taskId);
+    const refs = await admin<{ internal_entity_type: string; internal_entity_id: string; external_version: string }[]>`
+      select internal_entity_type,internal_entity_id,external_version from public.external_references where user_id=${userId} and source='notion' and external_id=${item.sourceItemId}
+    `;
+    expect(refs[0]).toEqual({ internal_entity_type: "task", internal_entity_id: first.taskId, external_version: "v2" });
+
+    const low = await service.processDiscoveredWorkItem(userId, { ...item, sourceItemId: `note-${randomUUID()}`, title: "단순 메모", officialDeadline: null, workContextHint: null, status: "unknown", taskSemantics: "unclear" });
+    expect(low.status).toBe("needs_confirmation");
+    const confirmed = await service.processConfirmationReply({ userId, text: "맞아", receivedAt: new Date(), clientRequestId: "notion-low-confirm" });
+    expect(confirmed).toMatchObject({ handled: true, status: "applied" });
+    if (!confirmed.handled || confirmed.status !== "applied") throw new Error("Expected confirmed Notion item");
+    const promoted = await admin<{ internal_entity_type: string; internal_entity_id: string }[]>`
+      select internal_entity_type,internal_entity_id from public.external_references where user_id=${userId} and internal_entity_id=${confirmed.taskId}
+    `;
+    expect(promoted[0]).toEqual({ internal_entity_type: "task", internal_entity_id: confirmed.taskId });
+    const observation = await new SupabaseMorningRepository(admin).loadObservation(userId, "2026-09-12", "Asia/Seoul");
+    expect(observation.tasks.some((task) => task.id === first.taskId)).toBe(true);
+    const proposal = createMorningPlan({ observation, now: new Date("2026-09-12T00:00:00Z"), workUntil: new Date("2026-09-12T09:00:00Z"), privateIntervals: [], localWeekday: 6 });
+    expect(proposal.items.some((entry) => entry.taskId === first.taskId)).toBe(true);
+  });
+
+  it("does not guess when multiple confirmations exist and expires stale candidates", async () => {
+    await admin`update public.parsed_entities p set processing_status='rejected' from public.inbox_items i where p.inbox_item_id=i.id and p.user_id=${userId} and i.parse_status='waiting_for_confirmation'`;
+    await admin`update public.inbox_items set parse_status='applied' where user_id=${userId} and parse_status='waiting_for_confirmation'`;
+    const service = serviceWith(new DeterministicTestInterpreter(taskResult({ requiresConfirmation: true })));
+    await service.processManualText(manualInput("multiple-a"));
+    await service.processManualText(manualInput("multiple-b"));
+    await expect(service.processConfirmationReply({ userId, text: "맞아", receivedAt: new Date(), clientRequestId: "multiple-reply" }))
+      .resolves.toMatchObject({ handled: true, status: "needs_selection" });
+    await admin`update public.parsed_entities p set processing_status='rejected' from public.inbox_items i where p.inbox_item_id=i.id and p.user_id=${userId} and i.parse_status='waiting_for_confirmation'`;
+    await admin`update public.inbox_items set parse_status='applied' where user_id=${userId} and parse_status='waiting_for_confirmation'`;
+    await service.processManualText(manualInput("stale"));
+    await admin`update public.parsed_entities set created_at=now()-interval '25 hours' where user_id=${userId} and processing_status='validated' and requires_confirmation=true`;
+    await expect(service.processConfirmationReply({ userId, text: "맞아", receivedAt: new Date(), clientRequestId: "stale-reply" }))
+      .resolves.toMatchObject({ handled: true, status: "expired" });
   });
 });

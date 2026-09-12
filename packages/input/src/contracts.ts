@@ -63,3 +63,18 @@ export interface ExplicitTaskFacts {
   readonly estimatedMinutes?: number;
   readonly importance?: 1 | 2 | 3 | 4 | 5;
 }
+
+export interface DiscoveredWorkItem {
+  readonly source: "notion";
+  readonly sourceItemId: string;
+  readonly sourceVersion: string | null;
+  readonly sourceUrl: string | null;
+  readonly observedAt: Date;
+  readonly title: string;
+  readonly officialDeadline: Date | null;
+  readonly workContextHint: string | null;
+  readonly objectiveHint: string | null;
+  readonly status: "open" | "completed" | "deleted" | "unknown";
+  readonly taskSemantics: "clear" | "unclear";
+  readonly rawPayload: Readonly<Record<string, unknown>>;
+}
