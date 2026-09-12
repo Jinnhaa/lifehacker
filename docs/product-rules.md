@@ -556,6 +556,21 @@ Morning Workflow:
 
 부담 이유가 다르면 개입도 달라져야 한다.
 
+### 17A. Chief Outcome Priority
+
+Morning Plan을 만들기 전에 Chief는 현재 Task, 마감, 명시적 약속, Goal/Objective 연결,
+실행 가능한 dependency, 고정 Calendar 제약과 확인된 가용시간을 함께 검토한다.
+
+Chief의 결과는 다음 세 가지로 압축한다.
+
+- 오늘 끝낼 핵심 결과 최대 3개
+- 이후 부담을 실제로 줄이는 근거가 있을 때만 Future Relief 1개
+- 오늘 하지 않아도 되는 대표 항목과 그 이유
+
+마감·약속·dependency 같은 hard constraint와 후보 필터는 코드로 검증한다.
+Chief 판단은 Daily Plan의 우선 후보와 이유를 제공하고, 언제 배치할지는 기존 Morning Planner가 결정한다.
+우선순위 계산만으로 이미 승인된 Daily Plan을 supersede하지 않는다.
+
 ---
 
 ## 18. Daily Plan 승인

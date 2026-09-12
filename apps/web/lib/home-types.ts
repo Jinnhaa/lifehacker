@@ -24,6 +24,7 @@ export type HomeWeekDay = {
 };
 
 export type HomeViewModel = {
+  readonly outcomePriority?: { readonly judgment: import("@amber/core").OutcomeJudgment; readonly decisionId: string } | null;
   readonly configured: boolean;
   readonly error: string | null;
   readonly date: string;

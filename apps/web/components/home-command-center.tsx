@@ -51,11 +51,14 @@ function OfficeStation({ id, label, detail, x, y, width, characterY, characterWi
 }
 
 function QuestHud({ data }: { data: HomeViewModel }) {
-  return <aside className="quest-hud" aria-label="오늘의 핵심 목표">
-    <div className="hud-eyebrow"><span>TODAY QUEST</span><b>{data.goals.length}</b></div>
-    <div className="quest-list">{data.goals.length ? data.goals.slice(0, 3).map((goal, index) => <div className="quest-line" key={`${goal.name}:${index}`}>
-      <span>0{index + 1}</span><strong>{goal.name}</strong><i />
-    </div>) : <p className="hud-empty">활성 Goal 없음</p>}</div>
+  const judgment=data.outcomePriority?.judgment;
+  return <aside className="quest-hud" aria-label="오늘 끝낼 핵심 결과">
+    <div className="hud-eyebrow"><span>TODAY PRIORITY</span><b>{judgment?.todayPriority.length ?? 0}</b></div>
+    <div className="quest-list">{judgment?.todayPriority.length ? judgment.todayPriority.map((item,index)=><details key={item.taskId}><summary className="quest-line"><span>0{index+1}</span><strong>{item.outcome}</strong></summary><p>{item.rationale}</p></details>) : <p className="hud-empty">{judgment?.capacityKnown ? "확인된 시간에 완료할 핵심 결과가 없습니다" : "Morning에서 오늘 작업 가능 시간을 알려 주세요"}</p>}</div>
+    <div className="hud-eyebrow"><span>FUTURE RELIEF</span></div>
+    {judgment?.futureRelief ? <details><summary>{judgment.futureRelief.outcome}</summary><p>{judgment.futureRelief.rationale}</p></details> : <p className="hud-empty">근거가 확인된 항목 없음</p>}
+    {!!judgment?.risks.length && <details><summary>마감·약속 위험 {judgment.risks.length}개</summary>{judgment.risks.map(item=><p key={item.taskId}>{item.outcome} — {item.rationale}</p>)}</details>}
+    {!!judgment?.notToday.length && <details><summary>NOT TODAY</summary>{judgment.notToday.slice(0,3).map(item=><p key={item.taskId}>{item.outcome} — {item.rationale}</p>)}</details>}
   </aside>;
 }
 
@@ -176,6 +179,7 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
 
     <div className="office-stage">
       <div className="office-world">
+        <QuestHud data={initialData} />
         <OfficeStation id="project-pm" label="Project PM · 토토" detail={projectState === "working" ? "작업 중" : "대기 중"} x={245} y={330} width={360} characterY={285} characterWidth={118} state={projectState} />
         <OfficeStation id="university" label="University · 포포" detail="대기 중" x={1330} y={330} width={350} characterY={285} characterWidth={118} />
         <OfficeStation id="owner" label="Owner · 한교동" detail={initialData.currentAction?.source === "focus_session" ? "집중 중" : "대기 중"} x={250} y={675} width={360} characterY={605} characterWidth={122} state={initialData.currentAction?.source === "focus_session" ? "working" : "idle"} />
@@ -206,12 +210,12 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
           <span className="review-caption">REVIEW / INBOX {initialData.decisionCount > 0 && <b>{initialData.decisionCount}</b>}</span>
         </button>
 
-        <QuestHud data={initialData} />
         {initialData.proposal && <ProposalPanel proposal={initialData.proposal} action={submitDecision} pending={decisionPending} />}
       </div>
     </div>
 
     <CurrentMission data={initialData} openChief={openChief} focusAction={submitFocus} focusPending={focusPending} focusFeedback={focusState} morningAction={submitMorning} morningPending={morningPending} morningFeedback={morningState} />
+    {!initialData.currentAction && initialData.outcomePriority?.judgment.currentMission && <p className="mission-feedback">Chief 추천: {initialData.outcomePriority.judgment.currentMission.title} · Morning 계획 승인 후 실행하세요.</p>}
     {weekOpen && <WeekCalendarOverlay days={initialData.week} today={initialData.date} timeZone={initialData.timeZone} onClose={() => setWeekOpen(false)} />}
     {reviewOpen && <ReviewOverlay data={initialData} action={submitReview} pending={reviewPending} feedback={reviewState} onClose={() => setReviewOpen(false)} />}
   </main>;

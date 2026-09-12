@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { loadOutcomeEvidence, persistOutcomeJudgment } from "../chief/supabase-outcome-priority.js";
+import type { OutcomeInput, OutcomeJudgment } from "../chief/outcome-priority.js";
 import { zonedDateTimeToUtc, type UserId } from "@amber/shared";
 import type { JSONValue, Sql } from "postgres";
 import type { Task, TaskExecutionMode, TaskStatus } from "../task/task.js";
@@ -185,6 +187,7 @@ export class SupabaseMorningRepository implements MorningRepository {
     const carryover = carryoverRows[0] ? asRecord(carryoverRows[0].result) : null;
     return {
       timeZone,
+      outcomeEvidence: await loadOutcomeEvidence(this.sql,userId,planDate),
       planningBufferMinutes: setting.planning_buffer_minutes,
       planningPolicy: asRecord(setting.planning_policy),
       constraints,
@@ -228,6 +231,10 @@ export class SupabaseMorningRepository implements MorningRepository {
   }
 
   async createProposal(run: MorningWorkflowRun, draft: MorningPlanDraft, now: Date, messageId: string): Promise<MorningPlan> {
+    if (draft.inputSnapshot.chiefJudgment && draft.inputSnapshot.chiefInput) {
+      const decisionId = await persistOutcomeJudgment(this.sql,run.userId,draft.inputSnapshot.chiefInput as OutcomeInput,draft.inputSnapshot.chiefJudgment as OutcomeJudgment);
+      draft = { ...draft, inputSnapshot: { ...draft.inputSnapshot, chiefDecisionId: decisionId } };
+    }
     return this.sql.begin(async (tx) => {
       const locked = await tx<WorkflowRow[]>`select * from public.workflow_runs where id=${run.id} and user_id=${run.userId} for update`;
       const current = mapWorkflow(locked[0]!);
