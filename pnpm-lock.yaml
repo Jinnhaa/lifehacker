@@ -44,6 +44,9 @@ importers:
       '@amber/input':
         specifier: workspace:*
         version: link:../../packages/input
+      '@amber/notion':
+        specifier: workspace:*
+        version: link:../../packages/notion
       '@amber/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -153,6 +156,24 @@ importers:
       openai:
         specifier: 7.9.0
         version: 7.9.0(undici@6.28.0)(ws@8.21.3)(zod@4.1.5)
+      postgres:
+        specifier: 3.4.7
+        version: 3.4.7
+      zod:
+        specifier: 4.1.5
+        version: 4.1.5
+
+  packages/notion:
+    dependencies:
+      '@amber/core':
+        specifier: workspace:*
+        version: link:../core
+      '@amber/input':
+        specifier: workspace:*
+        version: link:../input
+      '@amber/shared':
+        specifier: workspace:*
+        version: link:../shared
       postgres:
         specifier: 3.4.7
         version: 3.4.7
