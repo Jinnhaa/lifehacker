@@ -15,7 +15,7 @@ export interface OutcomeEvidence {
   approvedAction: { taskId: string | null; title: string; startsAt: string; endsAt: string } | null;
 }
 
-export const reasonCodeSchema = z.enum(["OVERDUE", "DUE_TODAY", "COMMITMENT", "IMPORTANT", "GOAL", "UNBLOCKS", "REVIEW_NEXT", "CONTINUITY", "SCHEDULE_FIT", "BLOCKED", "CAPACITY", "UNKNOWN_EFFORT", "NOT_SELECTED", "ACTIVE_FOCUS", "APPROVED_PLAN"]);
+export const reasonCodeSchema = z.enum(["OVERDUE", "DUE_TODAY", "COMMITMENT", "IMPORTANT", "GOAL", "UNBLOCKS", "REVIEW_NEXT", "CONTINUITY", "SCHEDULE_FIT", "BLOCKED", "CAPACITY", "UNKNOWN_EFFORT", "NOT_SELECTED", "ACTIVE_FOCUS", "APPROVED_PLAN", "CARRYOVER", "ESTIMATE_HISTORY", "BLOCKER_HISTORY", "USER_FEEDBACK"]);
 const choiceSchema = z.object({ taskId: z.string(), outcome: z.string(), reasonCodes: z.array(reasonCodeSchema).min(1), rationale: z.string(), evidenceRefs: z.array(z.string()), minutes: z.number().nonnegative() });
 export const outcomeJudgmentSchema = z.object({
   version: z.literal("chief-outcome-v1"),
@@ -24,6 +24,7 @@ export const outcomeJudgmentSchema = z.object({
   currentMission: z.object({ taskId: z.string().nullable(), title: z.string(), source: z.enum(["focus_session", "plan_item", "chief_recommendation"]), reasonCodes: z.array(reasonCodeSchema).min(1) }).nullable(),
   selectedTaskIds: z.array(z.string()), eligibleTaskIds: z.array(z.string()),
   approvedPlan: z.object({ id: z.string(), revisionNo: z.number() }).nullable(),
+  contextRefs: z.array(z.string()).optional(),
   capacityKnown: z.boolean()
 });
 export type OutcomeJudgment = z.infer<typeof outcomeJudgmentSchema>;
@@ -31,6 +32,10 @@ type Choice = z.infer<typeof choiceSchema>;
 export interface OutcomeInput { observation: MorningObservation; now: Date; workUntil: Date | null; privateIntervals: readonly TimeInterval[]; localWeekday: number }
 
 const labels: Record<z.infer<typeof reasonCodeSchema>, string> = {
+  CARRYOVER: "이전 Day Close에서 미완료로 확인되어 다시 검토합니다",
+  ESTIMATE_HISTORY: "같은 작업 범위의 소요시간 오차가 여러 날 관찰되어 예상시간 확인이 필요합니다",
+  BLOCKER_HISTORY: "같은 작업 범위의 막힘이 여러 날 관찰되어 시작 전 준비를 확인합니다",
+  USER_FEEDBACK: "이 Task에 대한 이전 사용자 판단 이유를 함께 검토합니다",
   OVERDUE: "마감이 지났습니다", DUE_TODAY: "오늘 마감입니다", COMMITMENT: "명시적으로 승인한 약속입니다",
   IMPORTANT: "중요도가 높은 일입니다", GOAL: "활성 목표에 연결됩니다", UNBLOCKS: "실제 후속 Task의 선행 조건입니다",
   REVIEW_NEXT: "다음 단계가 명시된 사용자 검토입니다", CONTINUITY: "이미 진행하던 일입니다", SCHEDULE_FIT: "남은 가용시간에 완료 분량이 들어갑니다",
@@ -52,6 +57,11 @@ export function judgeOutcomes(input: OutcomeInput): OutcomeJudgment {
   const choices = candidates.map(task => {
     const codes: Choice["reasonCodes"] = [];
     const refs = [`task:${task.id}`];
+    if(observation.carryoverContext?.taskIds.includes(task.id)) { codes.push("CARRYOVER"); refs.push(`day-close:${observation.carryoverContext.sourceDate}`); }
+    for(const p of observation.learningContext?.patterns ?? []) if(p.scope===task.workContextId || p.scope===`task:${task.id}`) {
+      codes.push(["underestimated","overestimated","matched"].includes(p.signal) ? "ESTIMATE_HISTORY" : "BLOCKER_HISTORY"); refs.push(`pattern:${p.id}`);
+    }
+    for(const f of observation.learningContext?.feedback ?? []) if(f.taskIds.includes(task.id) && f.reason) { codes.push("USER_FEEDBACK"); refs.push(`decision-feedback:${f.id}`); }
     const deadline = [task.officialDeadline, task.internalDeadline].filter((d): d is Date => d !== null).sort((a,b)=>a.getTime()-b.getTime())[0] ?? null;
     const days = getDaysUntilDeadline(deadline, now, observation.timeZone);
     if (deadline && deadline < now) codes.push("OVERDUE"); else if (days === 0) codes.push("DUE_TODAY");
@@ -76,7 +86,7 @@ export function judgeOutcomes(input: OutcomeInput): OutcomeJudgment {
   });
   // Ordered policy bands, not a weighted score. Calendar only validates fit.
   const band = (c: typeof choices[number]) => c.reasonCodes.includes("OVERDUE") ? 0 : c.reasonCodes.includes("DUE_TODAY") ? 1 : c.reasonCodes.includes("COMMITMENT") ? 2 : c.reasonCodes.includes("UNBLOCKS") ? 3 : c.reasonCodes.includes("IMPORTANT") ? 4 : c.reasonCodes.includes("GOAL") ? 5 : 6;
-  choices.sort((a,b)=>band(a)-band(b) || a.deadline-b.deadline || b.unlocks-a.unlocks || b.importance-a.importance || a.taskId.localeCompare(b.taskId));
+  choices.sort((a,b)=>band(a)-band(b) || a.deadline-b.deadline || b.unlocks-a.unlocks || b.importance-a.importance || Number(b.reasonCodes.includes("CARRYOVER"))-Number(a.reasonCodes.includes("CARRYOVER")) || a.taskId.localeCompare(b.taskId));
   const eligible = choices.filter(c=>!blocked.has(c.taskId) && c.minutes > 0);
   const selected: typeof choices = [];
   const fit = (next: typeof choices[number]): boolean => {
@@ -108,7 +118,7 @@ export function judgeOutcomes(input: OutcomeInput): OutcomeJudgment {
     if (!occupied && action && new Date(action.startsAt)<=now && new Date(action.endsAt)>now && (!action.taskId || eligible.some(c=>c.taskId===action.taskId))) currentMission={ taskId:action.taskId,title:action.title,source:"plan_item",reasonCodes:["APPROVED_PLAN"] };
     else if (!occupied && !evidence?.approvedPlan && selected[0]) currentMission={taskId:selected[0].taskId,title:selected[0].outcome,source:"chief_recommendation",reasonCodes:["SCHEDULE_FIT"]};
   }
-  return outcomeJudgmentSchema.parse({ version:"chief-outcome-v1",todayPriority:today.map(c=>finish(c,"SCHEDULE_FIT")),futureRelief:relief ? finish(relief,"SCHEDULE_FIT") : null,notToday,risks:notToday.filter(c=>c.reasonCodes.some(r=>["OVERDUE","DUE_TODAY","COMMITMENT"].includes(r))),currentMission,selectedTaskIds:selected.map(c=>c.taskId),eligibleTaskIds:eligible.map(c=>c.taskId),approvedPlan:evidence?.approvedPlan ?? null,capacityKnown:input.workUntil!==null });
+  return outcomeJudgmentSchema.parse({ contextRefs:observation.learningContext?.workstyle.map(p=>`workstyle:${p.id}:v${p.revision}`) ?? [], version:"chief-outcome-v1",todayPriority:today.map(c=>finish(c,"SCHEDULE_FIT")),futureRelief:relief ? finish(relief,"SCHEDULE_FIT") : null,notToday,risks:notToday.filter(c=>c.reasonCodes.some(r=>["OVERDUE","DUE_TODAY","COMMITMENT"].includes(r))),currentMission,selectedTaskIds:selected.map(c=>c.taskId),eligibleTaskIds:eligible.map(c=>c.taskId),approvedPlan:evidence?.approvedPlan ?? null,capacityKnown:input.workUntil!==null });
 }
 
 export function outcomeFingerprint(input: unknown): string {

@@ -399,3 +399,7 @@ pending_review Artifact
 - accepted 또는 legacy canonical Artifact만 Project projection에 포함한다. pending/rejected Artifact는 snapshot 근거에서 제외한다.
 - accept 후 기존 ProjectLeadershipService를 새 idempotent iteration으로 실행해 snapshot, gap analysis, backlog proposal을 다시 만든다. Task 완료만으로 gap을 닫지 않고 `project-state-review`가 갱신된 evidence를 재평가한다.
 - Objective와 Project 완료는 자동화하지 않는다.
+
+### Day Close → next Morning (execution learning V1)
+
+`오늘 끝` → existing Focus confirmation if needed → deterministic result + execution evidence → atomic LearningCase/Outcome persistence → existing Decision/Pattern collector → Wake follow-up. Repeated closes reuse the date's result and do not duplicate observations. Next Morning rechecks carryover status, loads scoped repeated observations/explicit feedback, and Chief incorporates evidence refs and grounded reason codes without changing recorded estimates or prior plans. An absent previous Day Close yields empty learning context.

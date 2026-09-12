@@ -56,7 +56,7 @@ export class SupabasePrincipleApprovalRepository implements PrincipleApprovalRep
         select p.id,p.condition,
           (select count(*)::int from public.pattern_evidence e where e.pattern_id=p.id) evidence_count
         from public.patterns p
-        where p.user_id=${userId} and p.status='candidate' and p.evidence_count>=${MIN_PATTERN_EVIDENCE}
+        where p.user_id=${userId} and p.status='candidate' and p.pattern_type<>'execution_observation' and p.evidence_count>=${MIN_PATTERN_EVIDENCE}
           and (select count(*) from public.pattern_evidence e where e.pattern_id=p.id)>=${MIN_PATTERN_EVIDENCE}
           and not exists(select 1 from public.principles r where r.user_id=p.user_id and r.source_pattern_id=p.id)
         order by p.evidence_count desc,p.first_observed_at limit 1 for update

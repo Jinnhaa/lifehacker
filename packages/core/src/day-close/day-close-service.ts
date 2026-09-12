@@ -25,7 +25,7 @@ export const calculateDayCloseResult = (observation: DayCloseObservation, date: 
     ...completedItems.flatMap((item) => item.taskId ? [item.taskId] : [])
   ]);
   const incompleteTaskIds = unique([
-    ...incompleteItems.flatMap((item) => item.taskId && item.taskStatus !== "DONE" ? [item.taskId] : []),
+    ...incompleteItems.flatMap((item) => item.taskId && item.taskStatus !== "DONE" && item.taskStatus !== "CANCELLED" ? [item.taskId] : []),
     ...observation.taskOutcomes.flatMap((item) => ["INBOX", "PLANNED", "IN_PROGRESS", "BLOCKED", "WAITING_FOR_USER"].includes(item.status)
       ? [item.taskId] : [])
   ]);
@@ -33,6 +33,7 @@ export const calculateDayCloseResult = (observation: DayCloseObservation, date: 
   const plannedMinutes = actionable.reduce((sum, item) => sum + item.plannedMinutes, 0);
   return {
     date,
+    ...(observation.executionEvidence ? { executionEvidence: observation.executionEvidence } : {}),
     completedTaskIds,
     incompleteTaskIds,
     blockedTaskIds,

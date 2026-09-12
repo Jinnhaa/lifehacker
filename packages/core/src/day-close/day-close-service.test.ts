@@ -35,6 +35,14 @@ describe("Day Close deterministic aggregation", () => {
     expect(result.taskOutcomes[0]).toMatchObject({ estimatedMinutes: 30, actualMinutes: 40, deltaMinutes: 10 });
   });
 
+  it("does not carry completed or cancelled tasks into tomorrow", () => {
+    const result = calculateDayCloseResult({...observation,planItems:[...observation.planItems,
+      {itemType:"task",status:"planned",plannedMinutes:30,taskId:"cancelled",taskStatus:"CANCELLED",recurringActivityId:null,recurringTitle:null,occurrenceStatus:null}]
+    },"2026-09-04",now);
+    expect(result.carryoverTaskIds).not.toContain("done");
+    expect(result.carryoverTaskIds).not.toContain("cancelled");
+  });
+
   it("supports a no-plan day", () => {
     const result = calculateDayCloseResult({ ...observation, planId: null, planItems: [] }, "2026-09-04", now);
     expect(result).toMatchObject({ plannedItemCount: 0, plannedMinutes: 0, actualMinutes: 70 });
