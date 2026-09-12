@@ -76,6 +76,17 @@ describe("SupabaseMorningRepository workflow", () => {
       select item_type,planned_start_at,planned_end_at,planned_minutes from public.plan_items where user_id=${userA} and daily_plan_id=${planOne[0]!.id}
     `;
     expect(planOne[0]?.input_snapshot.constraintIds).toHaveLength(1);
+    const chiefRuns = await sql<{ workflow_type: string; count: number }[]>`
+      select workflow_type,count(*)::int count from public.workflow_runs
+      where user_id=${userA} and workflow_type='chief_outcome_priority' group by workflow_type
+    `;
+    expect(chiefRuns).toEqual([{ workflow_type: "chief_outcome_priority", count: 1 }]);
+    const chiefDecisions = await sql<{ count: number }[]>`
+      select count(*)::int count from public.decisions d
+      join public.workflow_runs w on w.id=d.workflow_run_id
+      where d.user_id=${userA} and w.workflow_type='chief_outcome_priority'
+    `;
+    expect(chiefDecisions[0]?.count).toBe(1);
     expect(itemsOne.some((item) => item.item_type === "routine")).toBe(true);
     expect(itemsOne.some((item) => item.item_type === "buffer" && item.planned_minutes === 30)).toBe(true);
     expect(itemsOne.every((item) => item.planned_end_at <= fixedStart || item.planned_start_at >= fixedEnd)).toBe(true);

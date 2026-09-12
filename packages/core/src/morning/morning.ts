@@ -62,6 +62,8 @@ export interface MorningStrategicDirective {
 }
 
 export interface MorningObservation {
+  readonly outcomeEvidence?: import("../chief/outcome-priority.js").OutcomeEvidence;
+  readonly chiefTaskOrder?: readonly string[];
   readonly timeZone: string;
   readonly planningBufferMinutes: number;
   readonly planningPolicy: Readonly<Record<string, unknown>>;

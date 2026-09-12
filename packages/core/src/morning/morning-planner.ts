@@ -167,7 +167,12 @@ export const createMorningPlan = (input: CreateMorningPlanInput): MorningPlanDra
     input.now,
     input.observation.timeZone
   );
-  const candidates = principleResult.candidates;
+  const orderedTasks = principleResult.candidates.filter(c=>c.type==='task').sort((a,b)=>
+    (input.observation.chiefTaskOrder?.indexOf(a.id) ?? -1) - (input.observation.chiefTaskOrder?.indexOf(b.id) ?? -1));
+  let taskIndex = 0;
+  const candidates = input.observation.chiefTaskOrder
+    ? principleResult.candidates.map(c=>c.type==='task' ? orderedTasks[taskIndex++]! : c)
+    : principleResult.candidates;
   for (const candidate of candidates) {
     if (workBudget <= 0) break;
     const allocated = allocate(intervals, candidate, workBudget);
