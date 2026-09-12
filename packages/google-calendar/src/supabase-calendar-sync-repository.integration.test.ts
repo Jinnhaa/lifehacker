@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { CalendarSyncService } from "./calendar-sync-service.js";
 import type { CalendarIntegrationAccount, GoogleCalendarClient, NormalizedCalendarEvent } from "./contracts.js";
 import { SupabaseCalendarSyncRepository } from "./supabase-calendar-sync-repository.js";
+import { syncGoogleCalendarForUser } from "./runtime-sync.js";
 
 const sql = postgres(process.env.TEST_DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres", { max: 10 });
 const userA = randomUUID();
@@ -35,6 +36,10 @@ afterAll(async () => {
 });
 
 describe("Supabase Google Calendar reconciliation", () => {
+  it("returns a safe no-op before loading credentials when no active account exists", async () => {
+    await expect(syncGoogleCalendarForUser({ sql, userId: userB, environment: {} })).resolves.toBeNull();
+  });
+
   it("creates, deduplicates, updates, tombstones, restores, and isolates fixed constraints", async () => {
     const repository = new SupabaseCalendarSyncRepository(sql);
     const account = await repository.getActiveAccount(userA) as CalendarIntegrationAccount;

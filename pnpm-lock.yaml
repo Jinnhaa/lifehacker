@@ -35,6 +35,12 @@ importers:
       '@amber/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@amber/google-calendar':
+        specifier: workspace:*
+        version: link:../../packages/google-calendar
+      '@amber/icloud-calendar':
+        specifier: workspace:*
+        version: link:../../packages/icloud-calendar
       '@amber/input':
         specifier: workspace:*
         version: link:../../packages/input
@@ -56,6 +62,9 @@ importers:
       '@amber/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@amber/input':
+        specifier: workspace:*
+        version: link:../../packages/input
       '@amber/shared':
         specifier: workspace:*
         version: link:../../packages/shared

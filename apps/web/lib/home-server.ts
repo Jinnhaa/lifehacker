@@ -1,6 +1,25 @@
 import "server-only";
 
-import { deriveCurrentAction, DynamicReplanningService, SupabaseMorningRepository, SupabaseReplanRepository } from "@amber/core";
+import {
+  AiTaskExecutionService,
+  ArtifactReviewService,
+  deriveCurrentAction,
+  DynamicReplanningService,
+  FocusWorkflowService,
+  MorningWorkflowService,
+  ProjectLeadershipService,
+  SupabaseAiTaskExecutionRepository,
+  SupabaseArtifactReviewRepository,
+  SupabaseFocusRepository,
+  SupabaseMorningRepository,
+  SupabaseProjectLeadershipRepository,
+  SupabaseProjectPmRepository,
+  SupabaseReplanRepository,
+  documentDraftArtifactContentSchema,
+  type AiTaskExecutor,
+  type ProjectLeadershipAnalysisProvider
+} from "@amber/core";
+import { OpenAIAiTaskExecutor, OpenAIProjectAnalysisProvider, SupabaseAIExecutionRecorder } from "@amber/input";
 import { SystemClock, zonedDateTimeToUtc, type UserId } from "@amber/shared";
 import postgres, { type Sql } from "postgres";
 import type { HomeProposalChange, HomeTimelineItem, HomeViewModel, HomeWeekDay } from "./home-types";
@@ -31,11 +50,15 @@ const time = (value: Date, timeZone: string): string => new Intl.DateTimeFormat(
   timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23"
 }).format(value);
 
-type PlanRow = { id: string; plan_date?: string; revision_no: number; input_snapshot: unknown };
+type PlanRow = { id: string; plan_date?: string; revision_no: number; input_snapshot: unknown; status?: string };
 type ItemRow = {
   id: string; item_type: "task" | "routine" | "rest" | "buffer"; task_id: string | null;
   activity_occurrence_id: string | null; title: string; planned_start_at: Date; planned_end_at: Date;
   planned_minutes: number; status: string; context_title: string | null;
+};
+type PendingReviewRow = {
+  id: string; title: string | null; work_context_id: string; project_title: string;
+  content_text: string; content_hash: string;
 };
 
 const record = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value)
@@ -166,6 +189,46 @@ export const createWebReplanService = (sql: Sql) => new DynamicReplanningService
   clock: new SystemClock()
 });
 
+export const createWebMorningService = (sql: Sql) => new MorningWorkflowService({
+  repository: new SupabaseMorningRepository(sql), clock: new SystemClock()
+});
+
+export const createWebFocusService = (sql: Sql) => new FocusWorkflowService({
+  repository: new SupabaseFocusRepository(sql), clock: new SystemClock(), replanner: createWebReplanService(sql)
+});
+
+const lazyAnalysisProvider = (sql: Sql): ProjectLeadershipAnalysisProvider => ({
+  reviewProjectState: (input) => OpenAIProjectAnalysisProvider.fromEnvironment(process.env, {
+    executionRecorder: new SupabaseAIExecutionRecorder(sql)
+  }).reviewProjectState(input),
+  refineBacklog: (input) => OpenAIProjectAnalysisProvider.fromEnvironment(process.env, {
+    executionRecorder: new SupabaseAIExecutionRecorder(sql)
+  }).refineBacklog(input)
+});
+
+const lazyTaskExecutor = (sql: Sql): AiTaskExecutor => ({
+  executeDocumentDraft: (input) => OpenAIAiTaskExecutor.fromEnvironment(process.env, {
+    executionRecorder: new SupabaseAIExecutionRecorder(sql)
+  }).executeDocumentDraft(input)
+});
+
+export const createWebArtifactReviewService = (sql: Sql) => {
+  const clock = new SystemClock();
+  const projectRepository = new SupabaseProjectPmRepository(sql);
+  return new ArtifactReviewService({
+    repository: new SupabaseArtifactReviewRepository(sql),
+    aiExecutionService: new AiTaskExecutionService({
+      repository: new SupabaseAiTaskExecutionRepository(sql), projectRepository,
+      executor: lazyTaskExecutor(sql), clock
+    }),
+    projectLeadershipService: new ProjectLeadershipService({
+      projectRepository, workflowRepository: new SupabaseProjectLeadershipRepository(sql),
+      analysisProvider: lazyAnalysisProvider(sql), clock
+    }),
+    clock
+  });
+};
+
 export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
   const now = new Date();
   try {
@@ -176,9 +239,11 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
     const timeZone = profiles[0].timezone;
     const date = localDate(now, timeZone);
     const dates = weekDates(date);
-    const [plans, currentAction, goals, agents, decisionRows, pendingRuns, week] = await Promise.all([
+    const [plans, planStates, currentAction, focus, goals, agents, decisionRows, pendingRuns, week, integrations, reviews] = await Promise.all([
       sql<PlanRow[]>`select id,revision_no,input_snapshot from public.daily_plans where user_id=${userId} and plan_date=${date} and status='approved' order by revision_no desc limit 1`,
+      sql<PlanRow[]>`select id,revision_no,input_snapshot,status from public.daily_plans where user_id=${userId} and plan_date=${date} and status in ('approved','pending_approval') order by revision_no desc limit 1`,
       deriveCurrentAction(sql, userId, date),
+      new SupabaseFocusRepository(sql).findCurrentWorkflow(userId),
       sql<{ name: string; status: string }[]>`select title name,status from public.goals where user_id=${userId} and status='active' order by importance desc,created_at limit 3`,
       sql<{ name: string; run_status: string | null }[]>`
         select i.name,r.status run_status from public.agent_instances i
@@ -193,12 +258,22 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
           and status='waiting_for_user' and current_step='awaiting_approval' and checkpoint_state->>'planDate'=${date}
         order by updated_at desc limit 1
       `,
-      readWeek(sql, userId, dates, timeZone)
+      readWeek(sql, userId, dates, timeZone),
+      sql<{ provider: string; last_sync_at: Date | null }[]>`
+        select provider,last_sync_at from public.integration_accounts
+        where user_id=${userId} and status='active' and provider in ('google_calendar','icloud_calendar') order by provider
+      `,
+      sql<PendingReviewRow[]>`
+        select a.id,a.title,a.work_context_id,w.title project_title,a.content_text,a.content_hash
+        from public.artifacts a join public.work_contexts w on w.id=a.work_context_id and w.user_id=a.user_id
+        where a.user_id=${userId} and a.artifact_type='document_draft'
+          and a.verification_status='verified' and a.review_status='pending_review'
+          and a.content_text is not null and a.content_hash is not null
+        order by a.created_at desc
+      `
     ]);
     const approved = plans[0] ?? null;
     const approvedItems = approved ? await readItems(sql, userId, approved.id) : [];
-    const fixedEvents = approved ? (Array.isArray(record(approved.input_snapshot).fixedEvents)
-      ? record(approved.input_snapshot).fixedEvents as Record<string, unknown>[] : []) : [];
     const currentItem = currentAction?.planItemId ? approvedItems.find((item) => item.id === currentAction.planItemId) : null;
     const timeline: HomeTimelineItem[] = [
       ...approvedItems.map((item) => ({
@@ -207,15 +282,7 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
         minutes: item.planned_minutes, status: item.status, context: item.context_title,
         current: currentAction?.planItemId === item.id
       })),
-      ...fixedEvents.flatMap((item) => {
-        const start = new Date(String(item.start));
-        const end = new Date(String(item.end));
-        return Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) ? [] : [{
-          id: String(item.id), kind: "calendar" as const, title: typeof item.title === "string" ? item.title : "고정 일정",
-          startsAt: start.toISOString(), endsAt: end.toISOString(), minutes: Math.max(0, Math.round((end.getTime() - start.getTime()) / 60_000)),
-          status: "fixed", context: "Calendar", current: false
-        }];
-      })
+      ...(week.find((day) => day.date === date)?.items.filter((item) => item.kind === "calendar") ?? [])
     ].sort((left, right) => left.startsAt.localeCompare(right.startsAt));
     let proposal: HomeViewModel["proposal"] = null;
     const pending = pendingRuns[0];
@@ -237,13 +304,44 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
         };
       }
     }
+    const newestPlan = approved ?? planStates.find((plan) => plan.status === "pending_approval") ?? null;
+    const reviewArtifacts = reviews.map((artifact) => {
+      let parsed: unknown;
+      try { parsed = JSON.parse(artifact.content_text); } catch { parsed = null; }
+      const content = documentDraftArtifactContentSchema.safeParse(parsed);
+      return {
+        id: artifact.id, workContextId: artifact.work_context_id, projectTitle: artifact.project_title,
+        title: artifact.title ?? (content.success ? content.data.title : "검토가 필요한 Artifact"),
+        summary: content.success ? content.data.summary : "Artifact 본문 형식을 확인해 주세요.",
+        body: content.success ? content.data.body : artifact.content_text, contentHash: artifact.content_hash
+      };
+    });
+    const calendarItems = week.flatMap((day) => day.items.filter((item) => item.kind === "calendar"));
+    const latestSync = integrations.flatMap((item) => item.last_sync_at ? [item.last_sync_at] : [])
+      .sort((left, right) => right.getTime() - left.getTime())[0] ?? null;
     return {
       configured: true, error: null, date, timeZone,
       currentAction: currentAction ? {
+        kind: currentAction.kind, taskId: currentAction.kind === "task" ? currentAction.taskId : null,
         title: currentAction.title, minutes: currentItem?.planned_minutes ?? null,
         context: currentItem?.context_title ?? null, source: currentAction.source
       } : null,
       approvedPlan: approved ? { id: approved.id, revisionNo: approved.revision_no } : null,
+      planState: newestPlan ? {
+        status: newestPlan.status === "pending_approval" ? "pending_approval" : "approved",
+        revisionNo: newestPlan.revision_no,
+        message: newestPlan.status === "pending_approval" ? "오늘 계획이 승인 대기 중입니다." : null
+      } : { status: "no_plan", revisionNo: null, message: "오늘 계획을 아직 만들지 않았습니다." },
+      calendar: {
+        activeProviders: integrations.map((item) => item.provider),
+        lastSyncedAt: latestSync?.toISOString() ?? null,
+        fixedCommitmentCount: new Set(calendarItems.map((item) => `${item.id}:${item.startsAt}:${item.endsAt}`)).size
+      },
+      focus: focus && focus.currentStep !== "completed" ? {
+        step: focus.currentStep, taskId: focus.checkpoint.taskId,
+        category: focus.checkpoint.blockCategory ?? null
+      } : null,
+      reviewArtifacts,
       timeline,
       week: week.map((day) => ({ ...day, items: day.items.map((item) => ({
         ...item, current: day.date === date && currentAction?.planItemId === item.id
@@ -253,13 +351,15 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
         name: item.name, status: item.run_status === "running" ? "working" : "idle",
         detail: item.run_status === "running" ? "작업 중" : "대기 중"
       })),
-      decisionCount: decisionRows[0]?.count ?? 0,
+      decisionCount: (decisionRows[0]?.count ?? 0) + reviewArtifacts.length,
       proposal
     };
   } catch (error) {
     return {
       configured: false, error: error instanceof Error ? error.message : "Home 데이터를 불러오지 못했습니다.",
       date: localDate(now, "Asia/Seoul"), timeZone: "Asia/Seoul", currentAction: null, approvedPlan: null,
+      planState: { status: "no_plan", revisionNo: null, message: null },
+      calendar: { activeProviders: [], lastSyncedAt: null, fixedCommitmentCount: 0 }, focus: null, reviewArtifacts: [],
       timeline: [], week: weekDates(localDate(now, "Asia/Seoul")).map((date) => ({ date, items: [] })), goals: [], agents: [], decisionCount: 0, proposal: null
     };
   }

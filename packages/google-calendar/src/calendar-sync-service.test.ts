@@ -61,4 +61,11 @@ describe("CalendarSyncService", () => {
     expect(requests[1]?.syncToken).toBeUndefined();
     expect(requests[1]?.timeMin).toBeDefined();
   });
+
+  it("does not alter persisted constraints when provider read fails", async () => {
+    const repository = new FakeRepository();
+    const client: GoogleCalendarClient = { listEvents: async () => { throw new Error("provider unavailable"); } };
+    await expect(new CalendarSyncService(client, repository, new FixedClock(new Date())).sync(account())).rejects.toThrow("provider unavailable");
+    expect(repository.applied).toEqual([]);
+  });
 });

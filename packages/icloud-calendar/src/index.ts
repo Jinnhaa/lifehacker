@@ -5,4 +5,5 @@ export * from "./contracts.js";
 export * from "./ical-normalizer.js";
 export * from "./icloud-caldav-adapter.js";
 export * from "./integration-account-setup.js";
+export * from "./runtime-sync.js";
 export * from "./supabase-calendar-sync-repository.js";

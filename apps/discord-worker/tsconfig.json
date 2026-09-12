@@ -9,7 +9,9 @@
   "references": [
     { "path": "../../packages/shared" },
     { "path": "../../packages/core" },
-    { "path": "../../packages/input" }
+    { "path": "../../packages/input" },
+    { "path": "../../packages/google-calendar" },
+    { "path": "../../packages/icloud-calendar" }
   ],
   "include": ["src/**/*.ts"]
 }

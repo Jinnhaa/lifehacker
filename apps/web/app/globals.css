@@ -13,7 +13,7 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--ink); font-family: Inter, "Pretendard Variable", "Apple SD Gothic Neo", system-ui, sans-serif; }
-button, input { font: inherit; }
+button, input, textarea { font: inherit; }
 button { color: inherit; }
 
 .tycoon-shell {
@@ -242,7 +242,7 @@ button { color: inherit; }
 .command-feedback { margin: 9px 0 0; padding: 7px 10px; border-radius: 7px; background: #e7f2eb; color: #36745b; font-size: 8px; }
 .command-feedback.error { background: #f8e5e1; color: #9d4e44; }
 
-.review-station { z-index: 28; }
+.review-station { z-index: 28; padding: 0; border: 0; background: transparent; cursor: pointer; }
 .review-caption { position: absolute; z-index: 4; left: 50%; bottom: 2%; display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 8px; background: rgba(255, 253, 248, .88); box-shadow: 0 4px 12px rgba(67, 53, 38, .1); color: #68635c; font-size: 6px; font-weight: 900; letter-spacing: .08em; transform: translateX(-50%); white-space: nowrap; }
 .review-caption b { display: grid; place-items: center; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 8px; background: var(--amber); color: #59401d; animation: badge-pulse 2s ease-in-out infinite; }
 
@@ -291,9 +291,44 @@ button { color: inherit; }
 .mission-meta strong { font-size: 9px; }
 .mission-actions { display: flex; gap: 7px; }
 .mission-actions button { height: 38px; padding: 0 13px; border: 1px solid rgba(66, 57, 46, .13); border-radius: 9px; cursor: pointer; font-size: 8px; font-weight: 800; }
-.mission-actions .focus-button { background: #e5e0d6; color: #8c857a; cursor: not-allowed; }
+.mission-actions .focus-button { background: #e5e0d6; color: #6f695f; }
+.mission-actions .focus-button.is-ready { background: #dcece2; color: var(--green-deep); }
 .mission-actions .chief-button { background: #3f5e50; color: white; box-shadow: 0 6px 13px rgba(48, 91, 72, .16); }
 .mission-actions button:disabled { opacity: .62; }
+.mission-inline-panel,
+.mission-feedback { grid-column: 1 / -1; margin: 0; }
+.runtime-input { display: flex; gap: 7px; }
+.runtime-input input { min-width: 0; flex: 1; height: 34px; padding: 0 10px; border: 1px solid #d5cec2; border-radius: 8px; background: white; font-size: 9px; }
+.runtime-input button,
+.block-choices button { padding: 7px 10px; border: 1px solid rgba(66, 57, 46, .13); border-radius: 8px; background: #ebe6dc; cursor: pointer; font-size: 8px; font-weight: 800; }
+.block-choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.mission-feedback { padding: 7px 10px; border-radius: 8px; background: #e5f1e9; color: var(--green-deep); font-size: 8px; white-space: pre-line; }
+.mission-feedback.error { background: #f8e5e1; color: #9d4e44; }
+
+.runtime-overlay { position: fixed; z-index: 240; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(37, 32, 26, .48); backdrop-filter: blur(6px); }
+.review-panel { width: min(920px, 96vw); max-height: 88vh; overflow: hidden; border: 1px solid rgba(67, 58, 47, .16); border-radius: 18px; background: #f9f6ef; box-shadow: 0 35px 90px rgba(34, 28, 22, .35); }
+.review-panel > header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--line); background: #fffdf8; }
+.review-panel > header small { color: var(--green-deep); font-size: 8px; font-weight: 900; letter-spacing: .16em; }
+.review-panel > header h2 { margin: 3px 0 0; font-size: 20px; }
+.review-panel > header button { width: 32px; height: 32px; border: 1px solid #d7d0c4; border-radius: 8px; background: #f0ebe2; cursor: pointer; font-size: 18px; }
+.review-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: 420px; max-height: calc(88vh - 72px); }
+.review-layout nav { padding: 12px; overflow: auto; border-right: 1px solid var(--line); }
+.review-layout nav button { display: block; width: 100%; margin-bottom: 6px; padding: 10px; border: 1px solid transparent; border-radius: 9px; background: transparent; text-align: left; cursor: pointer; }
+.review-layout nav button.selected { border-color: #b9d6c7; background: #e7f1eb; }
+.review-layout nav strong, .review-layout nav small { display: block; }
+.review-layout nav strong { font-size: 10px; }
+.review-layout nav small { margin-top: 3px; color: var(--muted); font-size: 8px; }
+.review-layout article { padding: 20px; overflow: auto; }
+.review-layout article > small { color: var(--green-deep); font-size: 8px; font-weight: 900; }
+.review-layout article h3 { margin: 5px 0 8px; font-size: 22px; }
+.review-layout article > p { color: var(--muted); font-size: 10px; }
+.artifact-body { max-height: 230px; padding: 14px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: white; font-size: 10px; line-height: 1.65; white-space: pre-wrap; }
+.review-actions { display: grid; gap: 8px; margin-top: 12px; }
+.review-actions textarea { min-height: 70px; padding: 10px; resize: vertical; border: 1px solid #d5cec2; border-radius: 9px; background: white; font-size: 9px; }
+.review-actions > div { display: flex; justify-content: flex-end; gap: 7px; }
+.review-actions button { padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: #ebe6dc; cursor: pointer; font-size: 8px; font-weight: 800; }
+.review-actions button.approve { background: var(--green-deep); color: white; }
+.runtime-empty { padding: 50px 20px; color: var(--muted); text-align: center; font-size: 11px; }
 
 .week-overlay { position: fixed; z-index: 200; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(37, 32, 26, .48); backdrop-filter: blur(6px); }
 .week-panel { display: flex; flex-direction: column; width: min(1400px, 97vw); max-height: 91vh; overflow: hidden; border: 1px solid rgba(67, 58, 47, .16); border-radius: 18px; background: #f9f6ef; box-shadow: 0 35px 90px rgba(34, 28, 22, .35); }
@@ -350,6 +385,9 @@ button { color: inherit; }
   .mission-owner .world-character { width: 52px; height: 52px; }
   .mission-actions { grid-column: 1 / -1; }
   .mission-actions button { flex: 1; }
+  .review-layout { grid-template-columns: 1fr; }
+  .review-layout nav { display: flex; gap: 6px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .review-layout nav button { min-width: 160px; }
   .mission-copy h1 { font-size: 16px; }
   .week-overlay { padding: 8px; }
   .week-panel { width: 100%; max-height: 94vh; }

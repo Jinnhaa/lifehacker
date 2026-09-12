@@ -35,6 +35,9 @@ import {
   SupabaseInputRepository
 } from "@amber/input";
 import { SystemClock } from "@amber/shared";
+import { syncGoogleCalendarForUser } from "@amber/google-calendar";
+import { syncICloudCalendarForUser } from "@amber/icloud-calendar";
+import { CalendarSyncScheduler, type CalendarSyncTask } from "./calendar-sync-scheduler.js";
 import { loadDiscordWorkerConfig } from "./config.js";
 import { DiscordMessageAdapter } from "./discord-message-adapter.js";
 import { SupabaseDiscordUserResolver } from "./discord-user-resolver.js";
@@ -114,9 +117,22 @@ const wakeScheduler = new WakeScheduler(
   clock,
   config.wakePollIntervalMs
 );
+const calendarTasks: CalendarSyncTask[] = config.calendarUserId ? [
+  {
+    provider: "google_calendar",
+    sync: () => syncGoogleCalendarForUser({ sql, userId: config.calendarUserId!, environment: process.env, clock })
+  },
+  {
+    provider: "icloud_calendar",
+    sync: () => syncICloudCalendarForUser({ sql, userId: config.calendarUserId!, environment: process.env, clock })
+  }
+] : [];
+const calendarSyncScheduler = new CalendarSyncScheduler(calendarTasks, config.calendarSyncIntervalMs);
 
 client.once(Events.ClientReady, () => {
   wakeScheduler.start();
+  if (config.calendarUserId) calendarSyncScheduler.start();
+  else console.info("Calendar sync disabled: AMBER_USER_ID is not configured");
   console.info("Discord worker ready");
 });
 
@@ -146,6 +162,7 @@ const shutdown = async (): Promise<void> => {
   if (shuttingDown) return;
   shuttingDown = true;
   wakeScheduler.stop();
+  calendarSyncScheduler.stop();
   client.destroy();
   await sql.end();
   console.info("Discord worker stopped");
