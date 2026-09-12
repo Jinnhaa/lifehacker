@@ -18,7 +18,16 @@ export interface DayCloseTaskOutcome {
   readonly deltaMinutes: number | null;
 }
 
+export interface DayCloseExecutionEvidence {
+  readonly events: readonly { id: string; type: string; taskId: string | null; occurredAt: string; actor: string; payload: Record<string, unknown> }[];
+  readonly plans: readonly { id: string; revision: number; status: string }[];
+  readonly estimates: readonly { taskId: string; workContextId: string | null; estimatedMinutes: number | null; actualMinutes: number | null; deltaMinutes: number | null; completed: boolean; sessionIds: string[]; deadlineAt: string | null; overdueByNextMorning: boolean }[];
+  readonly chief: readonly { decisionId: string; selectedTaskIds: string[]; completedTaskIds: string[]; futureReliefTaskId: string | null; executedTaskIds: string[]; notTodayExecutedTaskIds: string[]; alternativeTaskIds: string[]; sessionIds: string[]; reason: null }[];
+  readonly corrections: readonly { decisionId: string; feedbackId: string; userChoice: unknown; userReason: string | null }[];
+}
+
 export interface DayCloseResult {
+  readonly executionEvidence?: DayCloseExecutionEvidence;
   readonly date: string;
   readonly completedTaskIds: readonly string[];
   readonly incompleteTaskIds: readonly string[];
@@ -48,6 +57,7 @@ export interface DayClosePlanItem {
 }
 
 export interface DayCloseObservation {
+  readonly executionEvidence?: DayCloseExecutionEvidence;
   readonly planId: string | null;
   readonly planItems: readonly DayClosePlanItem[];
   readonly completedTaskIds: readonly string[];

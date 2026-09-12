@@ -55,3 +55,11 @@ describe("deterministic Pattern Learning", () => {
     expect(behavior).not.toMatch(/항상|성향|게으/);
   });
 });
+
+it('requires distinct days and distinct completed tasks for estimate patterns',()=>{
+  const observations=['1','2','3'].map(id=>item(id,{decisionType:'execution_estimate',situation:{reasons:['project']},userChoice:{action:'observed'},userReason:null,observedOutcome:{signal:'underestimated',date:`2026-09-0${id}`,taskId:'same-task'}}));
+  expect(derivePatternCandidates(observations)).toEqual([]);
+  const distinct=observations.map((entry,index)=>({...entry,observedOutcome:{...entry.observedOutcome,taskId:`task-${index}`}}));
+  expect(derivePatternCandidates(distinct)).toHaveLength(1);
+  expect(derivePatternCandidates(distinct.map(entry=>({...entry,observedOutcome:{...entry.observedOutcome,date:'2026-09-01'}})))).toEqual([]);
+});

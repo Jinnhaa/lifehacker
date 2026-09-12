@@ -990,3 +990,7 @@ AI Gateway는 최소한 다음을 기록할 수 있어야 한다.
 8. 실제 생활에서 계속 쓸 수 있는가?
 
 대부분에 `아니오`라면 Amber HQ의 핵심 기능으로 만들지 않는다.
+
+### Day Close learning evidence
+
+Recorded Focus duration is distinguished from missing data. Completed Task lifetime recorded Focus totals may be compared to the original estimate; partial-day totals are not treated as completed-task estimate errors. Estimates are never overwritten. Repeated scoped estimate/blocker observations need three distinct days before a candidate pattern is created. Candidates prompt preparation or estimate review in the next Chief rationale; they do not assert personality or automatically change priorities. An alternative execution without explicit feedback has an unknown cause and is not labeled an ignored recommendation. Existing `오늘 끝` / `잘게` and optional decision-reason replies remain the user interface.

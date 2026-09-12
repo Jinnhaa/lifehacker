@@ -1,3 +1,4 @@
+import { readGroundedLearning } from "../day-close/execution-learning.js";
 import { createHash } from "node:crypto";
 import { loadOutcomeEvidence, persistOutcomeJudgment } from "../chief/supabase-outcome-priority.js";
 import type { OutcomeInput, OutcomeJudgment } from "../chief/outcome-priority.js";
@@ -148,7 +149,7 @@ export class SupabaseMorningRepository implements MorningRepository {
     const setting = settings[0] ?? { planning_buffer_minutes: 0, planning_policy: {}, week_starts_on: 1 };
     const week = weekRange(planDate, setting.week_starts_on);
     const [taskRows, constraintRows, activityRows, directiveRows, carryoverRows, principles] = await Promise.all([
-      this.sql<Record<string, unknown>[]>`select * from public.tasks where user_id=${userId} and status<>'DONE' order by created_at`,
+      this.sql<Record<string, unknown>[]>`select * from public.tasks where user_id=${userId} and status in ('INBOX','PLANNED','IN_PROGRESS','BLOCKED','WAITING_FOR_USER') order by created_at`,
       this.sql<{ id: string; constraint_type: string; value: unknown; hardness: string; valid_from: Date; valid_until: Date | null; origin: string }[]>`
         select id,constraint_type,value,hardness,valid_from,valid_until,origin from public.constraints
         where user_id=${userId} and valid_from<${dayEnd} and (valid_until is null or valid_until>${dayStart})
@@ -184,6 +185,9 @@ export class SupabaseMorningRepository implements MorningRepository {
         start: row.valid_from, end: row.valid_until ?? dayEnd
       };
     });
+    const tasks = taskRows.map(mapTask);
+    const liveIds = new Set(tasks.map(t=>String(t.id)));
+    const learningContext = await readGroundedLearning(this.sql,userId,dayStart,tasks.map(t=>t.id),tasks.flatMap(t=>t.workContextId ? [t.workContextId] : []));
     const carryover = carryoverRows[0] ? asRecord(carryoverRows[0].result) : null;
     return {
       timeZone,
@@ -191,7 +195,8 @@ export class SupabaseMorningRepository implements MorningRepository {
       planningBufferMinutes: setting.planning_buffer_minutes,
       planningPolicy: asRecord(setting.planning_policy),
       constraints,
-      tasks: taskRows.map(mapTask),
+      tasks,
+      learningContext,
       recurringActivities: activityRows.map((row) => ({
         id: row.id, title: row.title, targetCount: row.target_count,
         expectedMinutes: row.expected_minutes, minimumMinutes: row.minimum_minutes,
@@ -203,9 +208,9 @@ export class SupabaseMorningRepository implements MorningRepository {
       carryoverContext: carryoverRows[0] && carryover ? {
         sourceDate: carryoverRows[0].source_date,
         taskIds: Array.isArray(carryover.carryoverTaskIds)
-          ? carryover.carryoverTaskIds.filter((id): id is string => typeof id === "string") : [],
+          ? carryover.carryoverTaskIds.filter((id): id is string => typeof id === "string" && liveIds.has(id)) : [],
         blockedTaskIds: Array.isArray(carryover.blockedTaskIds)
-          ? carryover.blockedTaskIds.filter((id): id is string => typeof id === "string") : []
+          ? carryover.blockedTaskIds.filter((id): id is string => typeof id === "string" && tasks.some(t=>t.id===id && t.status==='BLOCKED')) : []
       } : null
     };
   }

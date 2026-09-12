@@ -1289,3 +1289,12 @@ UI 구현은 이 순서의 Core 기능을 대체하지 않는다.
 - Project observation workflow는 `WorkflowRun → ContextPackage → project_state_snapshot → gap_analysis → backlog_proposal` provenance chain을 유지한다.
 - AI TaskStep 실행은 `WorkflowRun → ContextPackage → AgentRun attempt → AIExecution → verified Artifact(pending_review)` chain을 유지하며 사용자 검토 전 Task를 완료하지 않는다.
 - Artifact review는 `Artifact → Decision/Feedback → DomainEvent → Task state → Project Leadership iteration N+1`로 이어진다. accepted Artifact만 projection에 들어가며 revision은 immutable successor Artifact를 만든다.
+
+### Day Close execution feedback loop V1
+
+Day Close retains its date-scoped WorkflowRun/checkpoint and `day_closed` event. The result now carries execution evidence: plan revisions, recorded Focus totals/session refs, blocker and recovery events, replan trigger provenance, Chief decision outcomes, and explicit DecisionFeedback refs. It never infers the reason for choosing a different Task. A confirmed close still uses the existing active-Focus guard and approved → closed lifecycle; past revisions and estimates are not rewritten.
+
+Within the same close transaction, execution observations use existing LearningCase (`estimate`, `intervention`, `planning`), Outcome, and LearningCaseEvent records. The checkpoint lock and observation key prevent same-date duplicates. Finalized days retain the existing immutable-result behavior; late facts require a future explicit revision feature rather than overwriting history.
+
+The existing Pattern evaluator accepts scoped execution observations as well as decision cases. Execution candidates require at least three distinct observed dates. They remain `candidate`; no automatic Principle or Workstyle mutation occurs. Morning reads relevant scoped patterns and explicit feedback, revalidates carryover against current Task status, and passes this grounded context to Chief. Chief records preparation/estimate-review reasons and uses carryover only as an otherwise-equal tie-break. Calendar capacity and current explicit priorities remain authoritative. Active Workstyle revision refs are provenance, not inferred scheduling preferences.
+Estimate candidates additionally require three distinct completed Tasks; the same Task estimate observation is stored once, so re-closing or replanning the same completed work cannot inflate evidence. Carryover evidence includes the actual deadline and whether it will already be overdue at the next day boundary.

@@ -21,6 +21,11 @@ const object = (value: unknown): Record<string, unknown> => value !== null && ty
 
 const mapCase = (row: LearningCaseRow): PatternLearningCase => {
   const snapshot = object(row.context_snapshot);
+  if (typeof snapshot.observationKey === "string") return {
+    id:row.id, decisionType:row.decision_type,
+    situation:{reasons:[String(snapshot.scope)]},userChoice:{action:"observed"},userReason:null,
+    observedOutcome:{signal:snapshot.signal, date:snapshot.date, taskId:snapshot.taskId},observedAt:row.observed_at
+  };
   return {
     id: row.id,
     decisionType: row.decision_type,
@@ -39,11 +44,11 @@ export class SupabasePatternLearningRepository implements PatternLearningEvaluat
     return this.sql.begin(async (tx) => {
       await tx`select pg_advisory_xact_lock(hashtextextended(${`${userId}:pattern-learning`},0))`;
       const rows = await tx<LearningCaseRow[]>`
-        select l.id,l.context_snapshot,d.impact->>'decisionType' decision_type,
+        select l.id,l.context_snapshot,coalesce(d.impact->>'decisionType','execution_' || l.case_type) decision_type,
           coalesce(l.closed_at,l.created_at) observed_at
         from public.learning_cases l
-        join public.decisions d on d.id=l.decision_id and d.user_id=l.user_id
-        where l.user_id=${userId} and l.case_type='decision' and l.status='closed'
+        left join public.decisions d on d.id=l.decision_id and d.user_id=l.user_id
+        where l.user_id=${userId} and l.case_type in ('decision','estimate','intervention') and l.status='closed'
         order by coalesce(l.closed_at,l.created_at),l.id
       `;
       const candidates = derivePatternCandidates(rows.map(mapCase));
@@ -63,7 +68,7 @@ export class SupabasePatternLearningRepository implements PatternLearningEvaluat
               user_id,pattern_type,condition,observed_behavior,confidence,evidence_count,
               evaluator_version,status,first_observed_at,last_observed_at
             ) values(
-              ${userId},'decision_preference',${tx.json({
+              ${userId},${candidate.decisionType.startsWith('execution_') ? 'execution_observation' : 'decision_preference'},${tx.json({
                 signature: candidate.signature,
                 decisionType: candidate.decisionType,
                 situationType: candidate.situationType,
