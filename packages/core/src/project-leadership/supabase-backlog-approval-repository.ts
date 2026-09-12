@@ -266,6 +266,23 @@ export class SupabaseBacklogApprovalRepository implements BacklogApprovalReposit
         on conflict(user_id,idempotency_key) do nothing
       `;
       const taskIds = decision.acceptedItems.map((item) => stableUuid(`backlog-task:${decision.proposalArtifactId}:${item.proposalItemKey}`));
+      const taskIdByKey = new Map(decision.acceptedItems.map((item) => [
+        item.proposalItemKey,
+        stableUuid(`backlog-task:${decision.proposalArtifactId}:${item.proposalItemKey}`)
+      ]));
+      for (const selection of decision.acceptedItems) {
+        const item = proposal.items.find((candidate) => candidate.key === selection.proposalItemKey)!;
+        for (const prerequisiteKey of item.dependencies) {
+          const prerequisiteTaskId = taskIdByKey.get(prerequisiteKey);
+          const taskId = taskIdByKey.get(selection.proposalItemKey);
+          if (!prerequisiteTaskId || !taskId) continue;
+          await tx`
+            insert into public.task_dependencies(user_id,task_id,prerequisite_task_id)
+            values(${decision.userId},${taskId},${prerequisiteTaskId})
+            on conflict(user_id,task_id,prerequisite_task_id) do nothing
+          `;
+        }
+      }
       const dependenciesByItem = Object.fromEntries(decision.acceptedItems.map((selection) => {
         const item = proposal.items.find((candidate) => candidate.key === selection.proposalItemKey)!;
         return [item.key, item.dependencies];

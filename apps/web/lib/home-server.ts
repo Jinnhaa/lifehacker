@@ -4,6 +4,7 @@ import {
   AiTaskExecutionService,
   ArtifactReviewService,
   deriveCurrentAction,
+  getHomeOutcome,
   DynamicReplanningService,
   FocusWorkflowService,
   MorningWorkflowService,
@@ -238,6 +239,7 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
     if (!profiles[0]) throw new Error("AMBER_USER_ID에 해당하는 profile을 찾지 못했습니다.");
     const timeZone = profiles[0].timezone;
     const date = localDate(now, timeZone);
+    const outcomePriority = await getHomeOutcome(sql,userId,date,await new SupabaseMorningRepository(sql).loadObservation(userId,date,timeZone),now);
     const dates = weekDates(date);
     const [plans, planStates, currentAction, focus, goals, agents, decisionRows, pendingRuns, week, integrations, reviews] = await Promise.all([
       sql<PlanRow[]>`select id,revision_no,input_snapshot from public.daily_plans where user_id=${userId} and plan_date=${date} and status='approved' order by revision_no desc limit 1`,
@@ -321,6 +323,7 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
       .sort((left, right) => right.getTime() - left.getTime())[0] ?? null;
     return {
       configured: true, error: null, date, timeZone,
+      outcomePriority,
       currentAction: currentAction ? {
         kind: currentAction.kind, taskId: currentAction.kind === "task" ? currentAction.taskId : null,
         title: currentAction.title, minutes: currentItem?.planned_minutes ?? null,
@@ -357,7 +360,7 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
   } catch (error) {
     return {
       configured: false, error: error instanceof Error ? error.message : "Home 데이터를 불러오지 못했습니다.",
-      date: localDate(now, "Asia/Seoul"), timeZone: "Asia/Seoul", currentAction: null, approvedPlan: null,
+      date: localDate(now, "Asia/Seoul"), timeZone: "Asia/Seoul", outcomePriority: null, currentAction: null, approvedPlan: null,
       planState: { status: "no_plan", revisionNo: null, message: null },
       calendar: { activeProviders: [], lastSyncedAt: null, fixedCommitmentCount: 0 }, focus: null, reviewArtifacts: [],
       timeline: [], week: weekDates(localDate(now, "Asia/Seoul")).map((date) => ({ date, items: [] })), goals: [], agents: [], decisionCount: 0, proposal: null
