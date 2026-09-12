@@ -968,9 +968,12 @@ Business logic을 포함하지 않는다.
 
 - 관련 문서 검색
 - 문서 fetch
+- 명시적으로 연결한 data source의 업무 후보를 read-only로 발견
 - 필요 시 문서 생성/업데이트
 
 Notion Task DB와 Amber Task DB를 이중 Source of Truth로 만들지 않는다.
+업무 후보는 기존 InboxItem → ParsedEntity → DomainCommand 경로를 거쳐 Amber Task로 물질화하며,
+낮은 신뢰도의 후보는 사용자 확인 전까지 Task를 만들지 않는다.
 
 ### Snowboard Adapter
 

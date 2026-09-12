@@ -18,7 +18,9 @@
     "discord:dev": "pnpm --filter @amber/discord-worker dev",
     "calendar:auth": "pnpm --filter @amber/google-calendar auth",
     "calendar:sync": "pnpm --filter @amber/google-calendar sync",
-    "calendar:icloud:sync": "pnpm --filter @amber/icloud-calendar sync"
+    "calendar:icloud:sync": "pnpm --filter @amber/icloud-calendar sync",
+    "notion:connect": "pnpm --filter @amber/notion connect",
+    "notion:sync": "pnpm --filter @amber/notion sync"
   },
   "devDependencies": {
     "@eslint/js": "9.35.0",

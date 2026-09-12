@@ -12,7 +12,8 @@ describe("Discord worker config", () => {
       databaseUrl: LOCAL_SUPABASE_DATABASE_URL,
       wakePollIntervalMs: 30_000,
       calendarUserId: null,
-      calendarSyncIntervalMs: 900_000
+      calendarSyncIntervalMs: 900_000,
+      workDiscoverySyncIntervalMs: 900_000
     });
   });
 

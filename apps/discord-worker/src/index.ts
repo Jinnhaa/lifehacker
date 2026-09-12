@@ -34,14 +34,16 @@ import {
   SupabaseAIExecutionRecorder,
   SupabaseInputRepository
 } from "@amber/input";
-import { SystemClock } from "@amber/shared";
+import { SystemClock, type UserId } from "@amber/shared";
 import { syncGoogleCalendarForUser } from "@amber/google-calendar";
 import { syncICloudCalendarForUser } from "@amber/icloud-calendar";
+import { syncNotionForUser } from "@amber/notion";
 import { CalendarSyncScheduler, type CalendarSyncTask } from "./calendar-sync-scheduler.js";
 import { loadDiscordWorkerConfig } from "./config.js";
 import { DiscordMessageAdapter } from "./discord-message-adapter.js";
 import { SupabaseDiscordUserResolver } from "./discord-user-resolver.js";
 import { WakeScheduler } from "./wake-scheduler.js";
+import { WorkDiscoveryScheduler } from "./work-discovery-scheduler.js";
 
 const config = loadDiscordWorkerConfig();
 const sql = postgres(config.databaseUrl, { max: 10 });
@@ -128,11 +130,17 @@ const calendarTasks: CalendarSyncTask[] = config.calendarUserId ? [
   }
 ] : [];
 const calendarSyncScheduler = new CalendarSyncScheduler(calendarTasks, config.calendarSyncIntervalMs);
+const workDiscoveryScheduler = new WorkDiscoveryScheduler({
+  sync: () => config.calendarUserId
+    ? syncNotionForUser({ sql, userId: config.calendarUserId as UserId, processor: inputService, environment: process.env })
+    : Promise.resolve(null)
+}, config.workDiscoverySyncIntervalMs);
 
 client.once(Events.ClientReady, () => {
   wakeScheduler.start();
   if (config.calendarUserId) calendarSyncScheduler.start();
   else console.info("Calendar sync disabled: AMBER_USER_ID is not configured");
+  workDiscoveryScheduler.start();
   console.info("Discord worker ready");
 });
 
@@ -163,6 +171,7 @@ const shutdown = async (): Promise<void> => {
   shuttingDown = true;
   wakeScheduler.stop();
   calendarSyncScheduler.stop();
+  workDiscoveryScheduler.stop();
   client.destroy();
   await sql.end();
   console.info("Discord worker stopped");
