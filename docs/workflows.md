@@ -400,6 +400,24 @@ pending_review Artifact
 - accept 후 기존 ProjectLeadershipService를 새 idempotent iteration으로 실행해 snapshot, gap analysis, backlog proposal을 다시 만든다. Task 완료만으로 gap을 닫지 않고 `project-state-review`가 갱신된 evidence를 재평가한다.
 - Objective와 Project 완료는 자동화하지 않는다.
 
+## 25. Project AI Runtime Entry
+
+Home의 Project PM station은 등록된 Project WorkContext를 선택하고 `ProjectRuntimeSummary`에서 다음 행동을 결정한다.
+
+```text
+Project 선택
+→ existing iteration/proposal/approval/run/review 확인
+→ 필요한 경우에만 Project Leadership 실행
+→ Backlog Approval
+→ AI-owned executable TaskStep dispatch
+→ existing Artifact Review
+```
+
+- 같은 Project에 pending proposal, pending ApprovalRequest, active AgentRun, pending-review Artifact가 있으면 새 iteration을 만들지 않는다.
+- start idempotency key는 현재 Project projection fingerprint에 결합한다.
+- 승인된 AI-owned executable step만 기존 AI execution service로 전달한다. human-owned 및 dependency-waiting step은 자동 실행하지 않는다.
+- Home은 durable state를 표시하고 action을 전달하며 Project workflow 상태를 별도로 저장하지 않는다.
+
 ### Day Close → next Morning (execution learning V1)
 
 `오늘 끝` → existing Focus confirmation if needed → deterministic result + execution evidence → atomic LearningCase/Outcome persistence → existing Decision/Pattern collector → Wake follow-up. Repeated closes reuse the date's result and do not duplicate observations. Next Morning rechecks carryover status, loads scoped repeated observations/explicit feedback, and Chief incorporates evidence refs and grounded reason codes without changing recorded estimates or prior plans. An absent previous Day Close yields empty learning context.

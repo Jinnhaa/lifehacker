@@ -1,8 +1,8 @@
 "use client";
 
 import { useActionState, useCallback, useEffect, useRef, useState } from "react";
-import type { CSSProperties } from "react";
-import { decideChiefReplan, requestChiefReplan, reviewArtifactAction, runFocusAction, runMorningAction } from "../app/actions";
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from "react";
+import { decideChiefReplan, decideProjectBacklogAction, requestChiefReplan, reviewArtifactAction, runFocusAction, runMorningAction, runProjectRuntimeAction } from "../app/actions";
 import type { ChiefActionState, HomeViewModel } from "../lib/home-types";
 import { TodayCalendar, WeekCalendarOverlay } from "./calendar-views";
 
@@ -28,7 +28,7 @@ function CharacterSprite({ role, state, label }: { role: StationId | "chief"; st
   return <img className={`world-character is-${state}`} src={`/assets/tycoon/characters/${role}/${state}.webp`} alt={label} />;
 }
 
-function OfficeStation({ id, label, detail, x, y, width, characterY, characterWidth, state = "idle" }: {
+function OfficeStation({ id, label, detail, x, y, width, characterY, characterWidth, state = "idle", onActivate }: {
   id: StationId;
   label: string;
   detail: string;
@@ -38,9 +38,13 @@ function OfficeStation({ id, label, detail, x, y, width, characterY, characterWi
   characterY: number;
   characterWidth: number;
   state?: AssetState;
+  onActivate?: () => void;
 }) {
   const characterTop = 50 + ((characterY - y) / width) * 100;
-  return <section className={`world-entity station-${id}`} data-station={id} style={worldStyle(x, y, width, 20)} aria-label={`${label}, ${detail}`}>
+  return <section className={`world-entity station-${id}${onActivate ? " is-interactive" : ""}`} data-station={id} style={worldStyle(x, y, width, 20)} aria-label={`${label}, ${detail}`}
+    {...(onActivate ? { role: "button", tabIndex: 0, onClick: onActivate, onKeyDown: (event: ReactKeyboardEvent) => {
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onActivate(); }
+    } } : {})}>
     <img className="station-shadow" src="/assets/tycoon/ui/station-contact-shadow.png" alt="" />
     <img className="station-sprite" src={stationAssets[id]} alt="" />
     <span className="station-character" style={{ width: `${(characterWidth / width) * 100}%`, top: `${characterTop}%` }}>
@@ -130,15 +134,55 @@ function ReviewOverlay({ data, action, pending, feedback, onClose }: {
   </div>;
 }
 
+function ProjectRuntimeOverlay({ data, action, decisionAction, pending, decisionPending, feedback, onClose, onOpenReview }: {
+  data: HomeViewModel;
+  action: (payload: FormData) => void;
+  decisionAction: (payload: FormData) => void;
+  pending: boolean;
+  decisionPending: boolean;
+  feedback: ChiefActionState;
+  onClose: () => void;
+  onOpenReview: () => void;
+}) {
+  const [selectedId, setSelectedId] = useState(data.projectRuntime[0]?.project.id ?? "");
+  const selected = data.projectRuntime.find((item) => item.project.id === selectedId) ?? data.projectRuntime[0] ?? null;
+  return <div className="runtime-overlay" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
+    <section className="project-runtime-panel" role="dialog" aria-modal="true" aria-labelledby="project-runtime-title">
+      <header><div><small>PROJECT PM · RUNTIME</small><h2 id="project-runtime-title">프로젝트 다음 단계</h2></div><button type="button" onClick={onClose} aria-label="Project PM 닫기">×</button></header>
+      {!selected ? <div className="project-runtime-empty"><strong>프로젝트가 아직 연결되지 않음</strong><p>등록된 Project WorkContext가 생기면 여기에서 분석을 시작할 수 있습니다.</p></div> : <div className="project-runtime-content">
+        <label className="project-picker">PROJECT<select value={selected.project.id} onChange={(event) => setSelectedId(event.target.value)}>{data.projectRuntime.map((item) => <option value={item.project.id} key={item.project.id}>{item.project.title}</option>)}</select></label>
+        <div className="project-runtime-heading"><div><span className={`project-state state-${selected.iterationState}`}>{selected.stateLabel}</span><h3>{selected.project.title}</h3></div><p>{selected.currentGap?.description ?? (selected.snapshot ? "최신 프로젝트 상태를 기준으로 다음 행동을 확인했습니다." : "아직 Project AI iteration이 없습니다.")}</p></div>
+        <div className="project-runtime-facts">
+          <div><small>LATEST SNAPSHOT</small><strong>{selected.snapshot ? new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short", timeZone: data.timeZone }).format(new Date(selected.snapshot.generatedAt)) : "없음"}</strong></div>
+          <div><small>CURRENT GAP</small><strong>{selected.currentGap?.title ?? "확인된 Gap 없음"}</strong></div>
+          <div><small>STATUS</small><strong>{selected.pendingReviewCount ? `검토 ${selected.pendingReviewCount}건` : selected.runningWorkCount ? `AI 실행 ${selected.runningWorkCount}건` : selected.waitingForUserCount ? `사용자 확인 ${selected.waitingForUserCount}건` : selected.nextActionLabel}</strong></div>
+        </div>
+        {selected.nextAction === "review_proposal" && selected.proposal ? <form action={decisionAction} className="project-proposal-form">
+          <input type="hidden" name="workContextId" value={selected.project.id} />
+          <div className="project-proposal-list">{selected.proposal.items.map((item) => <label key={item.key}><input type="checkbox" name="acceptedItemKey" value={item.key} defaultChecked /><span><strong>{item.title}</strong><small>{item.owner.toUpperCase()} · {item.priority.toUpperCase()}{item.dependencies.length ? ` · 선행 ${item.dependencies.length}` : ""}</small><p>{item.description}</p></span></label>)}</div>
+          <div className="project-runtime-actions"><button name="decision" value="reject" type="submit" disabled={decisionPending}>거절</button><button className="approve" name="decision" value="approve" type="submit" disabled={decisionPending}>{decisionPending ? "반영 중…" : "선택 승인"}</button></div>
+        </form> : <div className="project-next-action"><small>NEXT ACTION</small><strong>{selected.nextActionLabel}</strong>
+          {(["start_iteration", "request_approval", "run_ai"] as const).includes(selected.nextAction as "start_iteration" | "request_approval" | "run_ai") && <form action={action}><input type="hidden" name="workContextId" value={selected.project.id} /><button className="approve" type="submit" disabled={pending}>{pending ? "처리 중…" : selected.nextActionLabel}</button></form>}
+          {selected.nextAction === "review_artifact" && <button className="approve" type="button" onClick={onOpenReview}>Review Inbox 열기</button>}
+        </div>}
+        {feedback.message && <p className={`command-feedback ${feedback.status}`} role="status">{feedback.message}</p>}
+      </div>}
+    </section>
+  </div>;
+}
+
 export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel }) {
   const [actionState, submitAction, pending] = useActionState(requestChiefReplan, initialActionState);
   const [decisionState, submitDecision, decisionPending] = useActionState(decideChiefReplan, initialActionState);
   const [morningState, submitMorning, morningPending] = useActionState(runMorningAction, initialActionState);
   const [focusState, submitFocus, focusPending] = useActionState(runFocusAction, initialActionState);
   const [reviewState, submitReview, reviewPending] = useActionState(reviewArtifactAction, initialActionState);
+  const [projectState, submitProject, projectPending] = useActionState(runProjectRuntimeAction, initialActionState);
+  const [projectDecisionState, submitProjectDecision, projectDecisionPending] = useActionState(decideProjectBacklogAction, initialActionState);
   const [chiefOpen, setChiefOpen] = useState(false);
   const [weekOpen, setWeekOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [projectOpen, setProjectOpen] = useState(false);
   const commandRef = useRef<HTMLInputElement>(null);
   const chiefRef = useRef<HTMLDivElement>(null);
   const openChief = useCallback(() => {
@@ -167,8 +211,7 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
   const calendarCount = initialData.calendar.fixedCommitmentCount;
   const feedback = decisionState.message || actionState.message;
   const feedbackStatus = decisionState.message ? decisionState.status : actionState.status;
-  const projectAgent = initialData.agents.find((agent) => /project|pm|프로젝트/i.test(agent.name));
-  const projectState: AssetState = projectAgent?.status === "working" ? "working" : "idle";
+  const projectAssetState: AssetState = projectPending || initialData.projectRuntime.some((item) => item.iterationState === "ai_running" || item.iterationState === "analyzing") ? "working" : "idle";
   const chiefState: AssetState = pending ? "working" : chiefOpen ? "planning" : "idle";
 
   return <main className="tycoon-shell">
@@ -180,7 +223,7 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
     <div className="office-stage">
       <div className="office-world">
         <QuestHud data={initialData} />
-        <OfficeStation id="project-pm" label="Project PM · 토토" detail={projectState === "working" ? "작업 중" : "대기 중"} x={245} y={330} width={360} characterY={285} characterWidth={118} state={projectState} />
+        <OfficeStation id="project-pm" label="Project PM · 토토" detail={initialData.projectRuntime.some((item) => ["approval_required", "review_required", "waiting_for_user"].includes(item.iterationState)) ? "확인 필요" : projectAssetState === "working" ? "작업 중" : "대기 중"} x={245} y={330} width={360} characterY={285} characterWidth={118} state={projectAssetState} onActivate={() => setProjectOpen(true)} />
         <OfficeStation id="university" label="University · 포포" detail="대기 중" x={1330} y={330} width={350} characterY={285} characterWidth={118} />
         <OfficeStation id="owner" label="Owner · 한교동" detail={initialData.currentAction?.source === "focus_session" ? "집중 중" : "대기 중"} x={250} y={675} width={360} characterY={605} characterWidth={122} state={initialData.currentAction?.source === "focus_session" ? "working" : "idle"} />
         <OfficeStation id="career" label="Career · 코코" detail="대기 중" x={1340} y={675} width={350} characterY={620} characterWidth={120} />
@@ -218,5 +261,6 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
     {!initialData.currentAction && initialData.outcomePriority?.judgment.currentMission && <p className="mission-feedback">Chief 추천: {initialData.outcomePriority.judgment.currentMission.title} · Morning 계획 승인 후 실행하세요.</p>}
     {weekOpen && <WeekCalendarOverlay days={initialData.week} today={initialData.date} timeZone={initialData.timeZone} onClose={() => setWeekOpen(false)} />}
     {reviewOpen && <ReviewOverlay data={initialData} action={submitReview} pending={reviewPending} feedback={reviewState} onClose={() => setReviewOpen(false)} />}
+    {projectOpen && <ProjectRuntimeOverlay data={initialData} action={submitProject} decisionAction={submitProjectDecision} pending={projectPending} decisionPending={projectDecisionPending} feedback={projectDecisionState.message ? projectDecisionState : projectState} onClose={() => setProjectOpen(false)} onOpenReview={() => { setProjectOpen(false); setReviewOpen(true); }} />}
   </main>;
 }
