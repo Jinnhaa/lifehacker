@@ -67,6 +67,7 @@ export type HomeViewModel = {
   readonly goals: readonly { readonly name: string; readonly status: string }[];
   readonly agents: readonly { readonly name: string; readonly status: string; readonly detail: string }[];
   readonly decisionCount: number;
+  readonly projectRuntime: readonly import("@amber/core").ProjectRuntimeSummary[];
   readonly proposal: null | {
     readonly planId: string;
     readonly revisionNo: number;

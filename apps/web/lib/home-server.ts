@@ -3,18 +3,22 @@ import "server-only";
 import {
   AiTaskExecutionService,
   ArtifactReviewService,
+  BacklogApprovalService,
   deriveCurrentAction,
   getHomeOutcome,
   DynamicReplanningService,
   FocusWorkflowService,
   MorningWorkflowService,
   ProjectLeadershipService,
+  ProjectRuntimeService,
   SupabaseAiTaskExecutionRepository,
   SupabaseArtifactReviewRepository,
+  SupabaseBacklogApprovalRepository,
   SupabaseFocusRepository,
   SupabaseMorningRepository,
   SupabaseProjectLeadershipRepository,
   SupabaseProjectPmRepository,
+  SupabaseProjectRuntimeRepository,
   SupabaseReplanRepository,
   documentDraftArtifactContentSchema,
   type AiTaskExecutor,
@@ -230,6 +234,30 @@ export const createWebArtifactReviewService = (sql: Sql) => {
   });
 };
 
+export const createWebProjectRuntimeService = (sql: Sql) => {
+  const clock = new SystemClock();
+  const projectRepository = new SupabaseProjectPmRepository(sql);
+  const executionService = new AiTaskExecutionService({
+    repository: new SupabaseAiTaskExecutionRepository(sql), projectRepository,
+    executor: lazyTaskExecutor(sql), clock
+  });
+  return new ProjectRuntimeService({
+    projectRepository,
+    runtimeRepository: new SupabaseProjectRuntimeRepository(sql),
+    leadershipService: new ProjectLeadershipService({
+      projectRepository,
+      workflowRepository: new SupabaseProjectLeadershipRepository(sql),
+      analysisProvider: lazyAnalysisProvider(sql),
+      clock
+    }),
+    approvalService: new BacklogApprovalService({
+      repository: new SupabaseBacklogApprovalRepository(sql), projectRepository, clock
+    }),
+    executionService,
+    clock
+  });
+};
+
 export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
   const now = new Date();
   try {
@@ -241,7 +269,7 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
     const date = localDate(now, timeZone);
     const outcomePriority = await getHomeOutcome(sql,userId,date,await new SupabaseMorningRepository(sql).loadObservation(userId,date,timeZone),now);
     const dates = weekDates(date);
-    const [plans, planStates, currentAction, focus, goals, agents, decisionRows, pendingRuns, week, integrations, reviews] = await Promise.all([
+    const [plans, planStates, currentAction, focus, goals, agents, decisionRows, pendingRuns, week, integrations, reviews, projectRuntime] = await Promise.all([
       sql<PlanRow[]>`select id,revision_no,input_snapshot from public.daily_plans where user_id=${userId} and plan_date=${date} and status='approved' order by revision_no desc limit 1`,
       sql<PlanRow[]>`select id,revision_no,input_snapshot,status from public.daily_plans where user_id=${userId} and plan_date=${date} and status in ('approved','pending_approval') order by revision_no desc limit 1`,
       deriveCurrentAction(sql, userId, date),
@@ -272,7 +300,8 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
           and a.verification_status='verified' and a.review_status='pending_review'
           and a.content_text is not null and a.content_hash is not null
         order by a.created_at desc
-      `
+      `,
+      createWebProjectRuntimeService(sql).list(userId)
     ]);
     const approved = plans[0] ?? null;
     const approvedItems = approved ? await readItems(sql, userId, approved.id) : [];
@@ -355,7 +384,8 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
         detail: item.run_status === "running" ? "작업 중" : "대기 중"
       })),
       decisionCount: (decisionRows[0]?.count ?? 0) + reviewArtifacts.length,
-      proposal
+      proposal,
+      projectRuntime
     };
   } catch (error) {
     return {
@@ -363,7 +393,8 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
       date: localDate(now, "Asia/Seoul"), timeZone: "Asia/Seoul", outcomePriority: null, currentAction: null, approvedPlan: null,
       planState: { status: "no_plan", revisionNo: null, message: null },
       calendar: { activeProviders: [], lastSyncedAt: null, fixedCommitmentCount: 0 }, focus: null, reviewArtifacts: [],
-      timeline: [], week: weekDates(localDate(now, "Asia/Seoul")).map((date) => ({ date, items: [] })), goals: [], agents: [], decisionCount: 0, proposal: null
+      timeline: [], week: weekDates(localDate(now, "Asia/Seoul")).map((date) => ({ date, items: [] })), goals: [], agents: [], decisionCount: 0, proposal: null,
+      projectRuntime: []
     };
   }
 };

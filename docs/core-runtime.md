@@ -267,3 +267,17 @@ Repository:
 - Supabase local test PASS
 - AI dependency 0
 - UI dependency 0
+
+# Local development
+
+Start the local Supabase runtime, Core watch, Web, and configured Discord worker:
+
+```bash
+pnpm dev:local
+```
+
+Open [http://localhost:3000](http://localhost:3000). Stop managed app processes and local Supabase with:
+
+```bash
+pnpm dev:stop
+```

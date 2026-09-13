@@ -6,6 +6,7 @@ import {
   createWebArtifactReviewService,
   createWebFocusService,
   createWebMorningService,
+  createWebProjectRuntimeService,
   createWebReplanService,
   getWebSql,
   getWebUserId
@@ -108,5 +109,50 @@ export const reviewArtifactAction = async (_previous: RuntimeActionState, formDa
     return { status: "success", message };
   } catch (error) {
     return runtimeError(error, "Artifact 검토에 실패했습니다.");
+  }
+};
+
+export const runProjectRuntimeAction = async (_previous: RuntimeActionState, formData: FormData): Promise<RuntimeActionState> => {
+  try {
+    const workContextId = String(formData.get("workContextId") ?? "");
+    if (!workContextId) return { status: "error", message: "프로젝트를 선택해 주세요." };
+    const result = await createWebProjectRuntimeService(getWebSql()).startOrContinue({
+      userId: getWebUserId(), workContextId, timeZone: await profileTimeZone()
+    });
+    revalidatePath("/");
+    const message = result.executions.some((item) => item.status === "waiting_for_review")
+      ? "AI 산출물이 Review Inbox에 도착했습니다."
+      : result.summary.nextAction === "review_proposal" ? "Backlog 제안을 검토해 주세요."
+        : `${result.summary.project.title}: ${result.summary.stateLabel}`;
+    return { status: "success", message };
+  } catch (error) {
+    return runtimeError(error, "Project AI 실행을 시작하지 못했습니다.");
+  }
+};
+
+export const decideProjectBacklogAction = async (_previous: RuntimeActionState, formData: FormData): Promise<RuntimeActionState> => {
+  try {
+    const workContextId = String(formData.get("workContextId") ?? "");
+    const decision = formData.get("decision");
+    if (!workContextId || (decision !== "approve" && decision !== "reject")) {
+      return { status: "error", message: "Project backlog 결정을 확인할 수 없습니다." };
+    }
+    const acceptedItemKeys = decision === "approve"
+      ? formData.getAll("acceptedItemKey").map(String)
+      : [];
+    const result = await createWebProjectRuntimeService(getWebSql()).decideBacklog({
+      userId: getWebUserId(), workContextId, timeZone: await profileTimeZone(), acceptedItemKeys,
+      userReason: decision === "reject" ? "Home Project PM에서 제안 거절" : "Home Project PM에서 선택 승인"
+    });
+    revalidatePath("/");
+    const reviewReady = result.executions.some((item) => item.status === "waiting_for_review");
+    return {
+      status: "success",
+      message: decision === "reject" ? "Backlog 제안을 반영하지 않았습니다."
+        : reviewReady ? "승인한 AI 작업의 산출물이 Review Inbox에 도착했습니다."
+          : "선택한 Backlog를 Task와 TaskStep으로 반영했습니다."
+    };
+  } catch (error) {
+    return runtimeError(error, "Project backlog 결정에 실패했습니다.");
   }
 };

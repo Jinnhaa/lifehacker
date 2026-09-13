@@ -1289,6 +1289,7 @@ UI 구현은 이 순서의 Core 기능을 대체하지 않는다.
 - Project observation workflow는 `WorkflowRun → ContextPackage → project_state_snapshot → gap_analysis → backlog_proposal` provenance chain을 유지한다.
 - AI TaskStep 실행은 `WorkflowRun → ContextPackage → AgentRun attempt → AIExecution → verified Artifact(pending_review)` chain을 유지하며 사용자 검토 전 Task를 완료하지 않는다.
 - Artifact review는 `Artifact → Decision/Feedback → DomainEvent → Task state → Project Leadership iteration N+1`로 이어진다. accepted Artifact만 projection에 들어가며 revision은 immutable successor Artifact를 만든다.
+- Project Runtime Entry는 기존 durable state를 `ProjectRuntimeSummary`로 읽고, 현재 가능한 한 단계만 기존 Leadership, Approval, AI Execution, Artifact Review 서비스로 전달한다. UI가 별도 상태 머신을 소유하지 않는다.
 
 ### Day Close execution feedback loop V1
 
