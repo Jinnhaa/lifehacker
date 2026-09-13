@@ -100,7 +100,7 @@ const ensureDatabase = () => {
 
 const runPrerequisites = () => {
   log("dev", "Building Core and Input prerequisites...");
-  const build = command("pnpm", ["--filter", "@amber/core", "--filter", "@amber/input", "build"]);
+  const build = command("pnpm", ["--filter", "@amber/core", "--filter", "@amber/input", "build", "--force"]);
   if (build.status !== 0) throw new Error("Core/Input prerequisite build failed.");
 };
 
