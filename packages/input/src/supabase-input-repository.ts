@@ -125,11 +125,12 @@ implements InboxItemRepository, ParsedEntityRepository, DomainCommandRepository 
       order by p.created_at
     `;
     return rows.map((row) => {
-      const structured = row.structured_data as { data: ParsedTaskDraft; provenance: Record<string, Provenance>; clarificationQuestions?: string[] };
+      const structured = row.structured_data as { data: ParsedTaskDraft; provenance: Record<string, Provenance>; resolution?: TaskContextResolution; clarificationQuestions?: string[] };
       return {
         inboxItem: mapInbox({ ...row, id: row.inbox_id }), parsedEntityId: row.parsed_id,
         draft: structured.data, provenance: structured.provenance, confidence: Number(row.confidence),
-        clarificationQuestions: structured.clarificationQuestions ?? [], createdAt: new Date(row.parsed_created_at)
+        clarificationQuestions: structured.clarificationQuestions ?? [], resolution: structured.resolution ?? { workContextId: null, objectiveId: null, ambiguous: false, ambiguity: null },
+        createdAt: new Date(row.parsed_created_at)
       };
     });
   }

@@ -60,7 +60,7 @@ AI는 의미 해석, 복합 판단, 생성이 필요한 경우에만 호출한�
 | Daily Plan | Supabase |
 | Decision / Memory | Supabase |
 | Execution Event | Supabase |
-| Fixed-time Schedule | iCloud Calendar (primary) |
+| Fixed-time Schedule | 해당 일정을 소유한 authoritative external source |
 | Human-readable Project Knowledge | Notion |
 | Source code | GitHub repository |
 

@@ -115,6 +115,56 @@ describe("SupabaseTaskRepository", () => {
 });
 
 describe("TaskService", () => {
+  it("updates a personal target without changing the official deadline and records the correction", async () => {
+    const clock = new FixedClock(new Date("2026-09-03T01:30:00.000Z"));
+    const service = new TaskService(repository, clock, ids);
+    const officialDeadline = new Date("2026-09-22T14:59:00.000Z");
+    const firstTarget = new Date("2026-09-20T09:00:00.000Z");
+    const nextTarget = new Date("2026-09-21T09:00:00.000Z");
+    const task = await service.createTask({
+      userId: userA,
+      title: "Deadline semantics",
+      officialDeadline,
+      internalDeadline: firstTarget,
+      importance: 3,
+      source: "snowboard"
+    });
+
+    clock.set(new Date("2026-09-03T01:35:00.000Z"));
+    const updated = await service.updateTask({
+      userId: userA,
+      taskId: task.id,
+      internalDeadline: nextTarget,
+      source: "work_board"
+    });
+
+    expect(updated.officialDeadline).toEqual(officialDeadline);
+    expect(updated.internalDeadline).toEqual(nextTarget);
+    await expect(service.updateTask({
+      userId: userA,
+      taskId: task.id,
+      officialDeadline: new Date("2026-09-30T14:59:00.000Z"),
+      source: "work_board"
+    } as never)).rejects.toMatchObject({ code: "INVALID_INPUT" });
+    expect((await repository.getTaskById(userA, task.id))?.officialDeadline).toEqual(officialDeadline);
+    const events = await admin<{ event_type: string; actor_type: string; payload: { changes: Record<string, unknown> } }[]>`
+      select event_type,actor_type,payload from public.domain_events
+      where aggregate_id=${task.id} order by occurred_at
+    `;
+    expect(events.map((event) => event.event_type)).toEqual(["task_created", "task_updated"]);
+    expect(events[1]).toMatchObject({
+      actor_type: "work_board",
+      payload: {
+        changes: {
+          internal_deadline: {
+            previous: firstTarget.toISOString(),
+            next: nextTarget.toISOString()
+          }
+        }
+      }
+    });
+  });
+
   it("validates, transitions, and emits exactly one event per successful state change", async () => {
     const clock = new FixedClock(new Date("2026-09-03T02:00:00.000Z"));
     const service = new TaskService(repository, clock, ids);

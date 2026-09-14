@@ -3,6 +3,7 @@ import type { TaskStatus } from "./task.js";
 
 export type TaskEventType =
   | "task_created"
+  | "task_updated"
   | "task_planned"
   | "task_started"
   | "task_blocked"
@@ -16,6 +17,10 @@ export interface TaskEventPayload {
   readonly reason?: string;
   readonly source: string;
   readonly changed_at: string;
+  readonly changes?: Readonly<Record<string, {
+    readonly previous: string | number | null;
+    readonly next: string | number | null;
+  }>>;
 }
 
 export interface TaskDomainEventInput {

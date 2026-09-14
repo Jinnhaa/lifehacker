@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { TaskService } from "@amber/core";
-import { DomainError, SystemIdGenerator, type CorrelationId, type IdGenerator, type TaskId, type UserId } from "@amber/shared";
-import { ZodError } from "zod";
+import { DomainError, SystemIdGenerator, userIdSchema, type CorrelationId, type IdGenerator, type TaskId, type UserId } from "@amber/shared";
+import { z, ZodError } from "zod";
 import type { AIInterpreter } from "./ai-interpreter.js";
 import { manualTextInputSchema, parsedTaskDraftSchema, parseResultSchema, textInputSchema, type DiscoveredWorkItem, type ManualTextInputValue, type ParsedTaskDraft, type Provenance, type TextInput, type TextInputValue } from "./contracts.js";
 import { resolveTaskContext, type TaskContextResolution } from "./context-resolution.js";
@@ -23,6 +23,21 @@ export type WorkDiscoveryResult =
   | { readonly status: "needs_confirmation"; readonly inboxItemId: string; readonly parsedEntityId: string; readonly duplicate: boolean }
   | { readonly status: "materialized"; readonly inboxItemId: string; readonly parsedEntityId: string; readonly taskId: TaskId; readonly duplicate: boolean }
   | { readonly status: "dismissed"; readonly inboxItemId: string; readonly parsedEntityId: string; readonly duplicate: boolean };
+
+const candidateDecisionSchema = z.object({
+  userId: userIdSchema,
+  parsedEntityId: z.uuid(),
+  decision: z.enum(["confirm", "dismiss"]),
+  title: z.string().trim().min(1).optional(),
+  officialDeadline: z.date().nullable().optional(),
+  estimatedMinutes: z.number().int().positive().nullable().optional(),
+  workContextId: z.uuid().nullable().optional()
+}).strict();
+
+export type CandidateDecisionInput = z.input<typeof candidateDecisionSchema>;
+export type CandidateDecisionResult =
+  | { readonly status: "dismissed" }
+  | { readonly status: "applied"; readonly taskId: TaskId; readonly duplicate: boolean };
 
 const EMPTY_RESOLUTION: TaskContextResolution = { workContextId: null, objectiveId: null, ambiguous: false, ambiguity: null };
 const CONFIRMATION_MAX_AGE_MS = 86_400_000;
@@ -72,6 +87,79 @@ export class InputService {
     await this.repositories.updateTaskEntity({ userId: input.userId, entityId: candidate.parsedEntityId, ...corrected, requiresConfirmation: false, clarificationQuestions: [] });
     const result = await this.materialize({ userId: input.userId, inboxItemId: candidate.inboxItem.id, parsedEntityId: candidate.parsedEntityId, ...corrected, commandKey: key, correlationId: candidate.inboxItem.correlationId, source: candidate.inboxItem.source });
     return { handled: true, status: "applied", taskId: result.taskId, duplicate: result.duplicate, message: "확인 내용을 반영했어." };
+  }
+
+  async decideTaskCandidate(rawInput: CandidateDecisionInput): Promise<CandidateDecisionResult> {
+    const result = candidateDecisionSchema.safeParse(rawInput);
+    if (!result.success) throw new DomainError("INVALID_INPUT", "Candidate decision validation failed", { issues: result.error.issues });
+    const input = result.data;
+    const candidate = (await this.repositories.listPendingTaskConfirmations(input.userId))
+      .find((value) => value.parsedEntityId === input.parsedEntityId);
+    if (!candidate) throw new DomainError("INVALID_INPUT", "Pending Task candidate was not found");
+    if (input.decision === "dismiss") {
+      await this.dismissCandidate(input.userId, candidate);
+      return { status: "dismissed" };
+    }
+
+    const contexts = await this.repositories.getContextCandidates(input.userId);
+    const selectedContext = input.workContextId === undefined || input.workContextId === null
+      ? null
+      : contexts.workContexts.find((value) => value.id === input.workContextId);
+    if (input.workContextId && !selectedContext) throw new DomainError("INVALID_INPUT", "WorkContext was not found");
+    const contextChanged = input.workContextId !== undefined && input.workContextId !== candidate.resolution.workContextId;
+    const selectedObjective = !contextChanged && candidate.resolution.objectiveId
+      ? contexts.objectives.find((value) => value.id === candidate.resolution.objectiveId) ?? null
+      : null;
+    const resolution: TaskContextResolution = input.workContextId === undefined
+      ? candidate.resolution
+      : {
+          workContextId: input.workContextId,
+          objectiveId: selectedObjective?.workContextId === input.workContextId ? selectedObjective.id : null,
+          ambiguous: false,
+          ambiguity: null
+        };
+    const {
+      officialDeadline: previousDeadline,
+      estimatedMinutes: previousEstimate,
+      workContextHint: previousContextHint,
+      ...candidateBase
+    } = candidate.draft;
+    const draft: ParsedTaskDraft = {
+      ...candidateBase,
+      title: input.title ?? candidate.draft.title,
+      inferredFields: candidate.draft.inferredFields.filter((field) => ![
+        input.title !== undefined ? "title" : "",
+        input.officialDeadline !== undefined ? "officialDeadline" : "",
+        input.estimatedMinutes !== undefined ? "estimatedMinutes" : "",
+        input.workContextId !== undefined ? "workContextHint" : ""
+      ].includes(field)),
+      ...(input.officialDeadline === undefined
+        ? previousDeadline ? { officialDeadline: previousDeadline } : {}
+        : input.officialDeadline ? { officialDeadline: input.officialDeadline.toISOString() } : {}),
+      ...(input.estimatedMinutes === undefined
+        ? previousEstimate ? { estimatedMinutes: previousEstimate } : {}
+        : input.estimatedMinutes ? { estimatedMinutes: input.estimatedMinutes } : {}),
+      ...(input.workContextId !== undefined
+        ? selectedContext ? { workContextHint: selectedContext.title } : {}
+        : previousContextHint ? { workContextHint: previousContextHint } : {})
+    };
+    const provenance: Record<string, Provenance> = {
+      ...candidate.provenance,
+      ...(input.title !== undefined && { title: "user_explicit" }),
+      ...(input.officialDeadline !== undefined && { officialDeadline: "user_explicit" }),
+      ...(input.estimatedMinutes !== undefined && { estimatedMinutes: "user_explicit" }),
+      ...(input.workContextId !== undefined && { workContextHint: "user_explicit" })
+    };
+    await this.repositories.updateTaskEntity({
+      userId: input.userId, entityId: candidate.parsedEntityId, draft, provenance, resolution,
+      requiresConfirmation: false, clarificationQuestions: []
+    });
+    const applied = await this.materialize({
+      userId: input.userId, inboxItemId: candidate.inboxItem.id, parsedEntityId: candidate.parsedEntityId,
+      draft, provenance, resolution, commandKey: `work-board:${candidate.parsedEntityId}:CONFIRM_TASK`,
+      correlationId: candidate.inboxItem.correlationId, source: candidate.inboxItem.source
+    });
+    return { status: "applied", taskId: applied.taskId, duplicate: applied.duplicate };
   }
 
   async processDiscoveredWorkItem(userId: UserId, item: DiscoveredWorkItem): Promise<WorkDiscoveryResult> {

@@ -30,6 +30,7 @@ export interface PendingTaskConfirmation {
   readonly provenance: Record<string, Provenance>;
   readonly confidence: number;
   readonly clarificationQuestions: readonly string[];
+  readonly resolution: TaskContextResolution;
   readonly createdAt: Date;
 }
 

@@ -37,6 +37,21 @@ const createTaskSchema = z.object({
 
 export type CreateTaskInput = z.input<typeof createTaskSchema>;
 
+const updateTaskSchema = z.object({
+  userId: userIdSchema,
+  taskId: taskIdSchema,
+  workContextId: z.uuid().nullable().optional(),
+  objectiveId: z.uuid().nullable().optional(),
+  title: z.string().trim().min(1).optional(),
+  internalDeadline: nullableDate,
+  estimatedMinutes: z.number().int().positive().nullable().optional(),
+  source: z.string().trim().min(1).default("user"),
+  correlationId: correlationIdSchema.optional(),
+  idempotencyKey: z.string().trim().min(1).max(500).optional()
+}).strict();
+
+export type UpdateTaskInput = z.input<typeof updateTaskSchema>;
+
 export interface TransitionOptions {
   readonly userId: string;
   readonly taskId: string;
@@ -85,6 +100,55 @@ export class TaskService {
         changed_at: changedAt.toISOString()
       }
     });
+  }
+
+  async updateTask(input: UpdateTaskInput): Promise<Task> {
+    const parsed = this.parse(updateTaskSchema, input);
+    const current = await this.repository.getTaskById(parsed.userId, parsed.taskId);
+    if (!current) throw this.notFound(parsed.taskId);
+    if (parsed.objectiveId !== undefined && parsed.objectiveId !== current.objectiveId) {
+      throw new DomainError("INVALID_INPUT", "Objective cannot be reassigned through Task correction");
+    }
+    const changedAt = this.clock.now();
+    const changes: Record<string, { previous: string | number | null; next: string | number | null }> = {};
+    if (parsed.workContextId !== undefined) {
+      changes.work_context_id = { previous: current.workContextId, next: parsed.workContextId };
+    }
+    if (parsed.title !== undefined) changes.title = { previous: current.title, next: parsed.title };
+    if (parsed.internalDeadline !== undefined) {
+      changes.internal_deadline = {
+        previous: current.internalDeadline?.toISOString() ?? null,
+        next: parsed.internalDeadline?.toISOString() ?? null
+      };
+    }
+    if (parsed.estimatedMinutes !== undefined) {
+      changes.estimated_minutes = { previous: current.estimatedMinutes, next: parsed.estimatedMinutes };
+    }
+    const updated = await this.repository.updateTask(parsed.userId, parsed.taskId, {
+      ...(parsed.workContextId !== undefined && {
+        workContextId: parsed.workContextId,
+        ...(parsed.workContextId !== current.workContextId && { objectiveId: null })
+      }),
+      ...(parsed.title !== undefined && { title: parsed.title }),
+      ...(parsed.internalDeadline !== undefined && { internalDeadline: parsed.internalDeadline }),
+      ...(parsed.estimatedMinutes !== undefined && { estimatedMinutes: parsed.estimatedMinutes })
+    }, {
+      userId: parsed.userId,
+      eventType: "task_updated",
+      actorType: parsed.source,
+      occurredAt: changedAt,
+      correlationId: parsed.correlationId ?? this.ids.generateCorrelationId(),
+      ...(parsed.idempotencyKey && { idempotencyKey: parsed.idempotencyKey }),
+      payload: {
+        previous_status: current.status,
+        next_status: current.status,
+        source: parsed.source,
+        changed_at: changedAt.toISOString(),
+        changes
+      }
+    });
+    if (!updated) throw this.notFound(parsed.taskId);
+    return updated;
   }
 
   planTask(options: TransitionOptions): Promise<Task> {
