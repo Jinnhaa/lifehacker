@@ -36,6 +36,8 @@ Amber HQ는 사용자의 일정, 학업, 프로젝트, 장기 목표를 통합�
 > 사용자가 더 많은 일을 하게 만드는 것이 아니라, 중요한 일을 하면서 더 적은 것을 생각하게 만든다.
 
 제품 정책의 자세한 내용은 `docs/product-rules.md`가 존재하면 그 문서를 따른다.  
+Task, Deadline, Schedule, external work source, completion sync, workload planning 관련 작업은 `docs/work-schedule-policy.md`를 canonical policy로 따른다.  
+관련 구현 전에 해당 문서를 확인하며, 구현이 정책과 충돌하면 임의로 우회하지 않고 충돌을 보고한다.  
 시스템 구조는 `docs/architecture.md`를 따른다.
 
 ---
