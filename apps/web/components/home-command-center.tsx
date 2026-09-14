@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { decideChiefReplan, decideProjectBacklogAction, requestChiefReplan, reviewArtifactAction, runFocusAction, runMorningAction, runProjectRuntimeAction } from "../app/actions";
 import type { ChiefActionState, HomeViewModel } from "../lib/home-types";
@@ -172,6 +173,7 @@ function ProjectRuntimeOverlay({ data, action, decisionAction, pending, decision
 }
 
 export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel }) {
+  const router = useRouter();
   const [actionState, submitAction, pending] = useActionState(requestChiefReplan, initialActionState);
   const [decisionState, submitDecision, decisionPending] = useActionState(decideChiefReplan, initialActionState);
   const [morningState, submitMorning, morningPending] = useActionState(runMorningAction, initialActionState);
@@ -217,7 +219,7 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
   return <main className="tycoon-shell">
     <header className="world-header">
       <div className="brand"><span className="brand-mark">A</span><div><strong>Amber HQ</strong><small>{date}</small></div></div>
-      <div className="world-status"><span className={initialData.configured ? "online" : "offline"}><i />{initialData.configured ? "HQ ONLINE" : "SETUP NEEDED"}</span><button type="button" onClick={() => setWeekOpen(true)} title={initialData.calendar.activeProviders.length ? `${initialData.calendar.activeProviders.join(", ")} 동기화 상태` : "연결된 Calendar 없음"}>CALENDAR <b>{calendarCount}</b></button><button type="button" onClick={() => setReviewOpen(true)}>REVIEW <b>{initialData.decisionCount}</b></button></div>
+      <div className="world-status"><span className={initialData.configured ? "online" : "offline"}><i />{initialData.configured ? "HQ ONLINE" : "SETUP NEEDED"}</span><button type="button" onClick={() => setWeekOpen(true)} title={initialData.calendar.activeProviders.length ? `${initialData.calendar.activeProviders.join(", ")} 동기화 상태` : "연결된 Calendar 없음"}>CALENDAR <b>{calendarCount}</b></button><button type="button" onClick={() => setReviewOpen(true)}>REVIEW <b>{initialData.decisionCount}</b></button><button type="button" onClick={() => router.push("/settings/integrations")}>SETTINGS</button></div>
     </header>
 
     <div className="office-stage">
@@ -225,7 +227,7 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
         <QuestHud data={initialData} />
         <OfficeStation id="project-pm" label="Project PM · 토토" detail={initialData.projectRuntime.some((item) => ["approval_required", "review_required", "waiting_for_user"].includes(item.iterationState)) ? "확인 필요" : projectAssetState === "working" ? "작업 중" : "대기 중"} x={245} y={330} width={360} characterY={285} characterWidth={118} state={projectAssetState} onActivate={() => setProjectOpen(true)} />
         <OfficeStation id="university" label="University · 포포" detail="대기 중" x={1330} y={330} width={350} characterY={285} characterWidth={118} />
-        <OfficeStation id="owner" label="Owner · 한교동" detail={initialData.currentAction?.source === "focus_session" ? "집중 중" : "대기 중"} x={250} y={675} width={360} characterY={605} characterWidth={122} state={initialData.currentAction?.source === "focus_session" ? "working" : "idle"} />
+        <OfficeStation id="owner" label="Owner · 한교동" detail={initialData.currentAction?.source === "focus_session" ? "집중 중" : "할 일 보기"} x={250} y={675} width={360} characterY={605} characterWidth={122} state={initialData.currentAction?.source === "focus_session" ? "working" : "idle"} onActivate={() => router.push("/work")} />
         <OfficeStation id="career" label="Career · 코코" detail="대기 중" x={1340} y={675} width={350} characterY={620} characterWidth={120} />
 
         <section className="today-world-board" data-station="today" style={worldStyle(800, 128, 500, 30)} onClick={(event) => { if (!(event.target instanceof Element) || !event.target.closest("button")) setWeekOpen(true); }}>

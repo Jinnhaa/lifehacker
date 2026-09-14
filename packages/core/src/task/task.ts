@@ -53,6 +53,8 @@ export interface CreateTaskRecord {
 }
 
 export interface UpdateTaskRecord {
+  readonly workContextId?: string | null;
+  readonly objectiveId?: string | null;
   readonly title?: string;
   readonly description?: string | null;
   readonly officialDeadline?: Date | null;

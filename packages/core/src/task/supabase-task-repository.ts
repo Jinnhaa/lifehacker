@@ -105,25 +105,36 @@ export class SupabaseTaskRepository implements TaskRepository {
     });
   }
 
-  async updateTask(userId: UserId, taskId: TaskId, patch: UpdateTaskRecord): Promise<Task | null> {
-    const current = await this.getTaskById(userId, taskId);
-    if (!current) return null;
-    const rows = await this.sql<TaskRow[]>`
-      update public.tasks set
-        title=${patch.title ?? current.title},
-        description=${patch.description === undefined ? current.description : patch.description},
-        official_deadline=${patch.officialDeadline === undefined ? current.officialDeadline : patch.officialDeadline},
-        internal_deadline=${patch.internalDeadline === undefined ? current.internalDeadline : patch.internalDeadline},
-        estimated_minutes=${patch.estimatedMinutes === undefined ? current.estimatedMinutes : patch.estimatedMinutes},
-        estimated_user_minutes=${patch.estimatedUserMinutes === undefined ? current.estimatedUserMinutes : patch.estimatedUserMinutes},
-        importance=${patch.importance ?? current.importance},
-        next_action=${patch.nextAction === undefined ? current.nextAction : patch.nextAction},
-        completion_criteria=${patch.completionCriteria === undefined ? current.completionCriteria : patch.completionCriteria},
-        updated_at=now()
-      where id=${taskId} and user_id=${userId}
-      returning *
-    `;
-    return rows[0] ? mapTask(rows[0]) : null;
+  async updateTask(
+    userId: UserId,
+    taskId: TaskId,
+    patch: UpdateTaskRecord,
+    event?: Omit<TaskDomainEventInput, "aggregateId">
+  ): Promise<Task | null> {
+    return this.sql.begin(async (tx) => {
+      const currentRows = await tx<TaskRow[]>`select * from public.tasks where id=${taskId} and user_id=${userId}`;
+      const current = currentRows[0] ? mapTask(currentRows[0]) : null;
+      if (!current) return null;
+      const rows = await tx<TaskRow[]>`
+        update public.tasks set
+          work_context_id=${patch.workContextId === undefined ? current.workContextId : patch.workContextId},
+          objective_id=${patch.objectiveId === undefined ? current.objectiveId : patch.objectiveId},
+          title=${patch.title ?? current.title},
+          description=${patch.description === undefined ? current.description : patch.description},
+          official_deadline=${patch.officialDeadline === undefined ? current.officialDeadline : patch.officialDeadline},
+          internal_deadline=${patch.internalDeadline === undefined ? current.internalDeadline : patch.internalDeadline},
+          estimated_minutes=${patch.estimatedMinutes === undefined ? current.estimatedMinutes : patch.estimatedMinutes},
+          estimated_user_minutes=${patch.estimatedUserMinutes === undefined ? current.estimatedUserMinutes : patch.estimatedUserMinutes},
+          importance=${patch.importance ?? current.importance},
+          next_action=${patch.nextAction === undefined ? current.nextAction : patch.nextAction},
+          completion_criteria=${patch.completionCriteria === undefined ? current.completionCriteria : patch.completionCriteria},
+          updated_at=coalesce(${event?.occurredAt ?? null},now())
+        where id=${taskId} and user_id=${userId}
+        returning *
+      `;
+      if (rows[0] && event) await appendEvent(tx, { ...event, aggregateId: taskId });
+      return rows[0] ? mapTask(rows[0]) : null;
+    });
   }
 
   async transitionTask(
