@@ -93,7 +93,7 @@ const calendarItem = (item: Record<string, unknown>, fallbackId: string): HomeTi
     kind: "calendar", title: typeof item.title === "string" ? item.title : "고정 일정",
     startsAt: start.toISOString(), endsAt: end.toISOString(),
     minutes: Math.max(0, Math.round((end.getTime() - start.getTime()) / 60_000)),
-    status: "fixed", context: "Calendar", current: false
+    status: "fixed", context: "Calendar", current: false, source: "fixed"
   };
 };
 
@@ -102,7 +102,8 @@ const planTimeline = async (sql: Sql, userId: UserId, plan: PlanRow): Promise<Ho
   return items.map((item) => ({
     id: item.id, kind: item.item_type, title: item.title,
     startsAt: item.planned_start_at.toISOString(), endsAt: item.planned_end_at.toISOString(),
-    minutes: item.planned_minutes, status: item.status, context: item.context_title, current: false
+    minutes: item.planned_minutes, status: item.status, context: item.context_title, current: false,
+    source: "chief"
   } satisfies HomeTimelineItem)).sort((left, right) => left.startsAt.localeCompare(right.startsAt));
 };
 
@@ -255,11 +256,12 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
     const date = localDate(now, timeZone);
     const outcomePriority = await getHomeOutcome(sql,userId,date,await new SupabaseMorningRepository(sql).loadObservation(userId,date,timeZone),now);
     const dates = weekDates(date);
-    const [plans, planStates, currentAction, focus, goals, agents, decisionRows, pendingRuns, week, integrations, reviews, projectRuntime] = await Promise.all([
+    const [plans, planStates, currentAction, focus, focusSessions, goals, agents, decisionRows, pendingRuns, week, integrations, reviews, projectRuntime] = await Promise.all([
       sql<PlanRow[]>`select id,revision_no,input_snapshot from public.daily_plans where user_id=${userId} and plan_date=${date} and status='approved' order by revision_no desc limit 1`,
       sql<PlanRow[]>`select id,revision_no,input_snapshot,status from public.daily_plans where user_id=${userId} and plan_date=${date} and status in ('approved','pending_approval') order by revision_no desc limit 1`,
       deriveCurrentAction(sql, userId, date),
       new SupabaseFocusRepository(sql).findCurrentWorkflow(userId),
+      sql<{ started_at: Date }[]>`select started_at from public.focus_sessions where user_id=${userId} and status='active' order by started_at desc limit 1`,
       sql<{ name: string; status: string }[]>`select title name,status from public.goals where user_id=${userId} and status='active' order by importance desc,created_at limit 3`,
       sql<{ name: string; run_status: string | null }[]>`
         select i.name,r.status run_status from public.agent_instances i
@@ -290,14 +292,33 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
       createWebProjectRuntimeService(sql).list(userId)
     ]);
     const approved = plans[0] ?? null;
-    const approvedItems = approved ? await readItems(sql, userId, approved.id) : [];
+    const pendingPlan = planStates.find((plan) => plan.status === "pending_approval") ?? null;
+    const [approvedItems, pendingItems] = await Promise.all([
+      approved ? readItems(sql, userId, approved.id) : [],
+      pendingPlan ? readItems(sql, userId, pendingPlan.id) : []
+    ]);
     const currentItem = currentAction?.planItemId ? approvedItems.find((item) => item.id === currentAction.planItemId) : null;
+    const approvedByKey = new Map(approvedItems.map((item) => [itemKey(item), item]));
+    const pendingChanges = pendingItems.filter((item) => {
+      const previous = approvedByKey.get(itemKey(item));
+      return !previous
+        || previous.planned_start_at.getTime() !== item.planned_start_at.getTime()
+        || previous.planned_end_at.getTime() !== item.planned_end_at.getTime()
+        || previous.status !== item.status;
+    });
     const timeline: HomeTimelineItem[] = [
       ...approvedItems.map((item) => ({
         id: item.id, kind: item.item_type, title: item.title,
         startsAt: item.planned_start_at.toISOString(), endsAt: item.planned_end_at.toISOString(),
         minutes: item.planned_minutes, status: item.status, context: item.context_title,
-        current: currentAction?.planItemId === item.id
+        current: currentAction?.planItemId === item.id,
+        source: currentAction?.planItemId === item.id ? "current" as const : "chief" as const
+      })),
+      ...pendingChanges.map((item) => ({
+        id: `pending:${item.id}`, kind: item.item_type, title: item.title,
+        startsAt: item.planned_start_at.toISOString(), endsAt: item.planned_end_at.toISOString(),
+        minutes: item.planned_minutes, status: item.status, context: item.context_title,
+        current: false, source: "pending" as const
       })),
       ...(week.find((day) => day.date === date)?.items.filter((item) => item.kind === "calendar") ?? [])
     ].sort((left, right) => left.startsAt.localeCompare(right.startsAt));
@@ -306,7 +327,7 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
     if (pending) {
       const [proposalPlans, proposedItems, triggers] = await Promise.all([
         sql<{ revision_no: number; input_snapshot: unknown }[]>`select revision_no,input_snapshot from public.daily_plans where id=${pending.plan_id} and user_id=${userId} and status='pending_approval'`,
-        readItems(sql, userId, pending.plan_id),
+        pendingPlan?.id === pending.plan_id ? Promise.resolve(pendingItems) : readItems(sql, userId, pending.plan_id),
         sql<{ payload: unknown }[]>`select payload from public.domain_events where id=${pending.trigger_id} and user_id=${userId}`
       ]);
       if (proposalPlans[0]) {
@@ -342,7 +363,10 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
       currentAction: currentAction ? {
         kind: currentAction.kind, taskId: currentAction.kind === "task" ? currentAction.taskId : null,
         title: currentAction.title, minutes: currentItem?.planned_minutes ?? null,
-        context: currentItem?.context_title ?? null, source: currentAction.source
+        context: currentItem?.context_title ?? null, source: currentAction.source,
+        reason: currentAction.source === "focus_session" ? "진행 중인 FocusSession을 유지합니다."
+          : outcomePriority.judgment.todayPriority.find((item) => item.taskId === (currentAction.kind === "task" ? currentAction.taskId : null))?.rationale
+            ?? "승인된 오늘 계획에 포함된 실행 항목입니다."
       } : null,
       approvedPlan: approved ? { id: approved.id, revisionNo: approved.revision_no } : null,
       planState: newestPlan ? {
@@ -357,7 +381,8 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
       },
       focus: focus && focus.currentStep !== "completed" ? {
         step: focus.currentStep, taskId: focus.checkpoint.taskId,
-        category: focus.checkpoint.blockCategory ?? null
+        category: focus.checkpoint.blockCategory ?? null,
+        startedAt: focusSessions[0]?.started_at.toISOString() ?? null
       } : null,
       reviewArtifacts,
       timeline,

@@ -8,6 +8,9 @@ const HOUR_HEIGHT = 34;
 const kindLabel: Record<HomeTimelineItem["kind"], string> = {
   task: "업무", routine: "루틴", rest: "휴식", buffer: "버퍼", calendar: "고정 일정"
 };
+const sourceLabel: Record<HomeTimelineItem["source"], string> = {
+  fixed: "고정 일정", chief: "Chief 계획", current: "현재", pending: "승인 대기"
+};
 
 const parts = (value: string, timeZone: string) => {
   const fields = new Intl.DateTimeFormat("en-US", {
@@ -82,15 +85,15 @@ export function TodayCalendar({ items, timeZone, onOpenWeek }: {
   timeZone: string;
   onOpenWeek: () => void;
 }) {
-  const range = useMemo(() => zonedRangeFor(items, timeZone), [items, timeZone]);
   return <section className="today-board" data-testid="today-flow" aria-labelledby="today-board-title">
-    <span className="board-clip left" /><span className="board-clip right" />
-    <header><div><small>LIVE PLAN</small><h2 id="today-board-title">오늘 흐름</h2></div><button type="button" onClick={onOpenWeek}>이번 주 ↗</button></header>
-    <div className="board-rule" />
-    <div className="day-calendar-scroll">{items.length
-      ? <CalendarGrid items={items} timeZone={timeZone} range={range} />
-      : <><CalendarGrid items={[]} timeZone={timeZone} range={range} /><p className="board-empty">승인 계획에 표시할 항목이 없습니다.</p></>}
+    <header><div><small>TODAY FLOW</small><h2 id="today-board-title">오늘 흐름</h2></div><button type="button" onClick={onOpenWeek}>상세 Calendar ↗</button></header>
+    <div className="today-flow-legend" aria-label="흐름 구분">
+      {(["fixed", "chief", "current", "pending"] as const).map((source) => <span key={source} className={source}>{sourceLabel[source]}</span>)}
     </div>
+    {items.length ? <ol className="today-flow-list">{items.map((item) => <li className={`flow-item ${item.source}`} key={`${item.source}:${item.id}`}>
+      <time>{timeLabel(item.startsAt, timeZone)}</time><i aria-hidden="true" />
+      <article><div><span>{sourceLabel[item.source]}</span><strong>{item.title}</strong>{item.current && <b>NOW</b>}</div><small>{item.context ?? kindLabel[item.kind]} · {item.minutes}분</small></article>
+    </li>)}</ol> : <p className="board-empty">오늘 표시할 고정 일정이나 계획 항목이 없습니다.</p>}
   </section>;
 }
 

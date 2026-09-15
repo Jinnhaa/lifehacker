@@ -8,6 +8,7 @@ export type HomeTimelineItem = {
   readonly status: string;
   readonly context: string | null;
   readonly current: boolean;
+  readonly source: "fixed" | "chief" | "current" | "pending";
 };
 
 export type HomeProposalChange = {
@@ -36,6 +37,7 @@ export type HomeViewModel = {
     readonly minutes: number | null;
     readonly context: string | null;
     readonly source: string;
+    readonly reason: string | null;
   };
   readonly approvedPlan: null | { readonly id: string; readonly revisionNo: number };
   readonly planState: {
@@ -52,6 +54,7 @@ export type HomeViewModel = {
     readonly step: "active" | "awaiting_block_reason" | "awaiting_missing_detail" | "awaiting_other_detail" | "recovery_ready" | "awaiting_switch_confirmation";
     readonly taskId: string;
     readonly category: string | null;
+    readonly startedAt: string | null;
   };
   readonly reviewArtifacts: readonly {
     readonly id: string;
