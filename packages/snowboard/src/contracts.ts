@@ -48,6 +48,19 @@ export interface SnowboardAcademicScheduleClient {
   listAcademicSchedules(config: SnowboardCollectorConfig): Promise<readonly SnowboardAcademicSchedule[]>;
 }
 
+export interface SnowboardCourseProgress {
+  readonly courseId: string;
+  readonly courseTitle: string;
+  readonly completedLectureCount: number;
+  readonly remainingLectureCount: number;
+  readonly remainingLectureMinutes: number;
+  readonly observedAt: Date;
+}
+
+export interface SnowboardCourseProgressClient {
+  listCourseProgress(config: SnowboardCollectorConfig): Promise<readonly SnowboardCourseProgress[]>;
+}
+
 export interface SnowboardWorkItemProcessor {
   processDiscoveredWorkItem(userId: UserId, item: DiscoveredWorkItem): Promise<{ readonly status: string }>;
 }

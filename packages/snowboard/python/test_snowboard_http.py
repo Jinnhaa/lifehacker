@@ -12,6 +12,7 @@ from snowboard_http import (
     normalize_quiz,
     parse_courses,
     parse_quiz_activities,
+    parse_lecture_progress,
     select_regular_courses,
 )
 
@@ -124,6 +125,15 @@ class SnowboardHttpTest(unittest.TestCase):
         self.assertIsNotNone(schedule)
         self.assertEqual(schedule["start"], "2026-10-15T04:30:00Z")
         self.assertEqual(schedule["end"], "2026-10-15T05:45:00Z")
+
+    def test_aggregates_only_video_lecture_completion_without_creating_tasks(self):
+        html = '''
+          <li id="module-1" class="activity xncommons modtype_xncommons"><span class="instancename">강의 28분18초</span><span class="badge badge-completion-auto-y" title="완료함: 강의"></span></li>
+          <li id="module-2" class="activity xncommons modtype_xncommons"><span class="instancename">다음 강의</span><span class="badge badge-completion-auto-n" title="완료하지 못함: 다음 강의"></span></li>
+          <li id="module-3" class="activity ubfile modtype_ubfile"><span class="instancename">강의자료</span><span class="badge badge-completion-auto-n" title="완료하지 못함: 강의자료"></span></li>
+        '''
+        progress = parse_lecture_progress(html)
+        self.assertEqual([(item.module_id, item.completed, item.estimated_minutes) for item in progress], [("1", True, 29), ("2", False, 30)])
 
 
 if __name__ == "__main__":

@@ -139,4 +139,22 @@ describe("createMorningPlan", () => {
     expect(plan.inputSnapshot.usedPrincipleIds).toEqual(["principle"]);
     expect(plan.items.every((item) => item.end <= new Date("2026-09-04T00:30:00.000Z") || item.start >= new Date("2026-09-04T01:00:00.000Z"))).toBe(true);
   });
+
+  it("places capped course study workload as a routine and protects fixed time", () => {
+    const plan = createMorningPlan({
+      observation: observation({
+        tasks: [], planningBufferMinutes: 0,
+        recurringActivities: [{
+          id: "course-study", title: "알고리즘입문 학습", targetCount: 4, completedCount: 0,
+          expectedMinutes: 45, minimumMinutes: 15, preferredDays: [5], importance: 5, occurrenceId: null,
+          courseStudy: { workContextId: "course-context", weeklyMinutes: 180, todayMinutes: 45, priorityRank: 0, reasons: ["3일 내 퀴즈"], signals: { remainingLectureCount: 2 } }
+        }]
+      }),
+      now: new Date("2026-09-04T00:00:00.000Z"), workUntil: new Date("2026-09-04T03:00:00.000Z"),
+      privateIntervals: [], localWeekday: 5
+    });
+    expect(plan.items).toEqual([expect.objectContaining({ itemType: "routine", recurringActivityId: "course-study", plannedMinutes: 45 })]);
+    expect(plan.items[0]!.end <= new Date("2026-09-04T01:00:00.000Z") || plan.items[0]!.start >= new Date("2026-09-04T02:30:00.000Z")).toBe(true);
+    expect(plan.inputSnapshot.courseStudyWorkload).toEqual([expect.objectContaining({ workContextId: "course-context", weeklyMinutes: 180, todayMinutes: 45, plannedMinutes: 45 })]);
+  });
 });

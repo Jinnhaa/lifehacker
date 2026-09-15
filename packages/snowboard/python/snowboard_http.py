@@ -229,6 +229,14 @@ class QuizActivity:
     text: str
 
 
+@dataclass(frozen=True)
+class LectureProgress:
+    module_id: str
+    title: str
+    completed: bool
+    estimated_minutes: int
+
+
 class CourseCardParser(HTMLParser):
     def __init__(self, base_url: str) -> None:
         super().__init__()
@@ -381,6 +389,65 @@ def parse_quiz_activities(html: str, base_url: str) -> list[QuizActivity]:
     by_id: dict[str, QuizActivity] = {}
     for activity in parser.activities:
         by_id.setdefault(activity.module_id, activity)
+    return list(by_id.values())
+
+
+class LectureProgressParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.lectures: list[LectureProgress] = []
+        self._depth = 0
+        self._module_id: str | None = None
+        self._title_parts: list[str] = []
+        self._title_depth = 0
+        self._completed: bool | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        values = dict(attrs)
+        classes = (values.get("class") or "").split()
+        if self._depth == 0 and tag == "li" and "activity" in classes and "modtype_xncommons" in classes:
+            raw_id = values.get("id") or ""
+            self._module_id = raw_id.removeprefix("module-") if raw_id.startswith("module-") else None
+            self._title_parts = []
+            self._completed = None
+            self._depth = 1
+            return
+        if self._depth == 0:
+            return
+        if tag not in ("area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"):
+            self._depth += 1
+        if tag == "span" and "instancename" in classes:
+            self._title_depth = self._depth
+        title = normalized_text(values.get("title") or "")
+        if "badge-completion-auto-y" in classes or title.casefold().startswith("완료함:"):
+            self._completed = True
+        elif "badge-completion-auto-n" in classes or title.casefold().startswith("완료하지 못함:"):
+            self._completed = False
+
+    def handle_data(self, data: str) -> None:
+        if self._depth and self._title_depth:
+            self._title_parts.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if self._depth == 0:
+            return
+        if tag == "span" and self._title_depth == self._depth:
+            self._title_depth = 0
+        self._depth -= 1
+        if self._depth == 0 and self._module_id and self._completed is not None:
+            title = normalized_text("".join(self._title_parts))
+            duration = re.search(r"(\d+)\s*분(?:\s*(\d+)\s*초)?", title)
+            estimated_minutes = int(duration.group(1)) + (1 if duration.group(2) and int(duration.group(2)) > 0 else 0) if duration else 30
+            self.lectures.append(LectureProgress(self._module_id, title, self._completed, estimated_minutes))
+            self._module_id = None
+
+
+def parse_lecture_progress(html: str) -> list[LectureProgress]:
+    parser = LectureProgressParser()
+    parser.feed(html)
+    by_id: dict[str, LectureProgress] = {}
+    for lecture in parser.lectures:
+        by_id.setdefault(lecture.module_id, lecture)
     return list(by_id.values())
 
 
@@ -628,6 +695,23 @@ def collect_academic_schedules(session: SnowboardSession, regular_course_ids: se
     return schedules
 
 
+def collect_course_progress(session: SnowboardSession, regular_course_ids: set[str], observed_at: datetime) -> list[dict[str, object]]:
+    result: list[dict[str, object]] = []
+    for course in current_regular_courses(session, regular_course_ids):
+        course_html, _ = session.get_text(course.url)
+        lectures = parse_lecture_progress(course_html)
+        remaining = [lecture for lecture in lectures if not lecture.completed]
+        result.append({
+            "courseId": course.course_id,
+            "courseTitle": course.title,
+            "completedLectureCount": sum(1 for lecture in lectures if lecture.completed),
+            "remainingLectureCount": len(remaining),
+            "remainingLectureMinutes": sum(lecture.estimated_minutes for lecture in remaining),
+            "observedAt": observed_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+        })
+    return result
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Collect read-only Snowboard assignments as canonical intake JSON")
     parser.add_argument("--base-url", default="https://snowboard.sookmyung.ac.kr/")
@@ -635,6 +719,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--regular-course-ids", required=True)
     parser.add_argument("--discover-courses", action="store_true")
     parser.add_argument("--discover-academic-schedules", action="store_true")
+    parser.add_argument("--discover-course-progress", action="store_true")
     return parser.parse_args(argv)
 
 
@@ -667,6 +752,11 @@ def main(argv: list[str]) -> int:
     if args.discover_academic_schedules:
         schedules = collect_academic_schedules(session, course_ids, args.current_term, datetime.now(timezone.utc))
         json.dump(schedules, sys.stdout, ensure_ascii=False)
+        sys.stdout.write("\n")
+        return 0
+    if args.discover_course_progress:
+        progress = collect_course_progress(session, course_ids, datetime.now(timezone.utc))
+        json.dump(progress, sys.stdout, ensure_ascii=False)
         sys.stdout.write("\n")
         return 0
     items = collect_assignments(session, course_ids, args.current_term, datetime.now(timezone.utc))

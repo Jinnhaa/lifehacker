@@ -91,4 +91,14 @@ describe("PythonSnowboardClient", () => {
       end: new Date("2026-10-15T05:45:00Z")
     });
   });
+
+  it("normalizes aggregate course progress without exposing lecture items as Tasks", async () => {
+    const runner = vi.fn(async () => JSON.stringify([{
+      courseId: "101", courseTitle: "Algorithms", completedLectureCount: 2,
+      remainingLectureCount: 3, remainingLectureMinutes: 90, observedAt: "2026-09-15T00:00:00Z"
+    }]));
+    const progress = await new PythonSnowboardClient(runner).listCourseProgress(config);
+    expect(progress[0]).toMatchObject({ courseId: "101", completedLectureCount: 2, remainingLectureCount: 3, remainingLectureMinutes: 90 });
+    expect(runner).toHaveBeenCalledWith(expect.objectContaining({ args: expect.arrayContaining(["--discover-course-progress"]) }));
+  });
 });

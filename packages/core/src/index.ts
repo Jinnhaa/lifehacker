@@ -16,6 +16,8 @@ export * from "./chief/outcome-priority.js";
 export * from "./chief/supabase-outcome-priority.js";
 export * from "./chief/chief-service.js";
 export * from "./chief/supabase-chief-context-reader.js";
+export * from "./course-study/course-study-planning.js";
+export * from "./course-study/supabase-course-study-planning-repository.js";
 export * from "./execution/current-action.js";
 export * from "./day-close/day-close.js";
 export * from "./day-close/day-close-service.js";

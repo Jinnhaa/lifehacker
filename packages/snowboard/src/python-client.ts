@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import type { DiscoveredWorkItem } from "@amber/input";
 import { z } from "zod";
-import type { SnowboardAcademicSchedule, SnowboardAcademicScheduleClient, SnowboardAssignmentClient, SnowboardCollectorConfig, SnowboardCourse, SnowboardCourseClient } from "./contracts.js";
+import type { SnowboardAcademicSchedule, SnowboardAcademicScheduleClient, SnowboardAssignmentClient, SnowboardCollectorConfig, SnowboardCourse, SnowboardCourseClient, SnowboardCourseProgress, SnowboardCourseProgressClient } from "./contracts.js";
 
 const collectorItemSchema = z.object({
   source: z.literal("snowboard"),
@@ -44,6 +44,15 @@ const academicScheduleSchema = z.object({
   currentTerm: z.string().trim().min(1)
 }).strict();
 
+const courseProgressSchema = z.object({
+  courseId: z.string().trim().min(1),
+  courseTitle: z.string().trim().min(1),
+  completedLectureCount: z.number().int().nonnegative(),
+  remainingLectureCount: z.number().int().nonnegative(),
+  remainingLectureMinutes: z.number().int().nonnegative(),
+  observedAt: z.iso.datetime({ offset: true })
+}).strict();
+
 type PythonRunInput = {
   readonly binary: string;
   readonly scriptPath: string;
@@ -67,7 +76,7 @@ const runPython: PythonRunner = ({ binary, scriptPath, args, environment }) => n
   });
 });
 
-export class PythonSnowboardClient implements SnowboardAssignmentClient, SnowboardCourseClient, SnowboardAcademicScheduleClient {
+export class PythonSnowboardClient implements SnowboardAssignmentClient, SnowboardCourseClient, SnowboardAcademicScheduleClient, SnowboardCourseProgressClient {
   constructor(
     private readonly runner: PythonRunner = runPython,
     private readonly scriptPath = fileURLToPath(new URL("../python/snowboard_http.py", import.meta.url))
@@ -96,6 +105,11 @@ export class PythonSnowboardClient implements SnowboardAssignmentClient, Snowboa
       start: new Date(schedule.start),
       end: new Date(schedule.end)
     }));
+  }
+
+  async listCourseProgress(config: SnowboardCollectorConfig): Promise<readonly SnowboardCourseProgress[]> {
+    const stdout = await this.collect(config, ["--discover-course-progress"]);
+    return z.array(courseProgressSchema).parse(JSON.parse(stdout)).map((progress) => ({ ...progress, observedAt: new Date(progress.observedAt) }));
   }
 
   private collect(config: SnowboardCollectorConfig, extraArgs: readonly string[]): Promise<string> {

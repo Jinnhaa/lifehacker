@@ -23,6 +23,7 @@ interface Candidate {
   readonly deadline: Date | null;
   readonly risk?: RecurringActivityRisk;
   readonly workload?: TaskWorkload;
+  readonly courseStudy?: MorningRecurringActivity["courseStudy"];
 }
 
 export interface TaskWorkload {
@@ -136,20 +137,26 @@ const buildCandidates = (observation: MorningObservation, now: Date, localWeekda
       completedCount: activity.completedCount,
       remainingSuitableDays: remainingSuitableDays(activity, localWeekday)
     });
-    if (result.remainingCount === 0 || result.risk === "LOW") return [];
+    if (result.remainingCount === 0 || (!activity.courseStudy && result.risk === "LOW")) return [];
+    const minutes = activity.courseStudy?.todayMinutes ?? activity.expectedMinutes;
     return [{
       type: "routine" as const,
       id: activity.id,
       title: activity.title,
-      minutes: activity.expectedMinutes,
-      minimumMinutes: activity.minimumMinutes ?? activity.expectedMinutes,
-      rank: result.risk === "HIGH" ? 2 : 4,
+      minutes,
+      minimumMinutes: activity.courseStudy ? Math.min(minutes, activity.minimumMinutes ?? 15) : activity.minimumMinutes ?? activity.expectedMinutes,
+      rank: activity.courseStudy?.priorityRank ?? (result.risk === "HIGH" ? 2 : 4),
       importance: activity.importance,
       deadline: null,
-      risk: result.risk
+      risk: result.risk,
+      ...(activity.courseStudy ? { courseStudy: activity.courseStudy } : {})
     }];
   });
-  return [...tasks, ...routines];
+  return [...tasks, ...routines].sort((left, right) =>
+    left.rank - right.rank
+    || (left.deadline?.getTime() ?? Number.MAX_SAFE_INTEGER) - (right.deadline?.getTime() ?? Number.MAX_SAFE_INTEGER)
+    || right.importance - left.importance
+    || left.title.localeCompare(right.title, "ko-KR"));
 };
 
 const allocate = (
@@ -249,6 +256,12 @@ export const createMorningPlan = (input: CreateMorningPlanInput): MorningPlanDra
     highlights.push(`${routine.title}: 이번 주 ${Math.max(source.targetCount - source.completedCount, 0)}회 남음`);
   }
   if (principleResult.explanation) highlights.push(principleResult.explanation);
+  for (const candidate of candidates.filter((value) => value.type === "routine" && value.courseStudy)) {
+    const planned = items.filter((item) => item.recurringActivityId === candidate.id).reduce((sum, item) => sum + item.plannedMinutes, 0);
+    if (planned < candidate.courseStudy!.todayMinutes) {
+      highlights.push(`${candidate.title}: 학습량 미배치 · 오늘 추천 ${candidate.courseStudy!.todayMinutes}분 / 배치 ${planned}분`);
+    }
+  }
   return {
     items,
     fixedEvents,
@@ -272,6 +285,16 @@ export const createMorningPlan = (input: CreateMorningPlanInput): MorningPlanDra
         weekRequiredMinutes: candidate.workload.weekRequiredMinutes,
         plannedMinutes: taskAllocations.get(candidate.id) ?? 0,
         deadlineRisk: (taskAllocations.get(candidate.id) ?? 0) < candidate.workload.todayRequiredMinutes
+      }] : []),
+      courseStudyWorkload: candidates.flatMap((candidate) => candidate.type === "routine" && candidate.courseStudy ? [{
+        recurringActivityId: candidate.id,
+        workContextId: candidate.courseStudy.workContextId,
+        weeklyMinutes: candidate.courseStudy.weeklyMinutes,
+        todayMinutes: candidate.courseStudy.todayMinutes,
+        plannedMinutes: items.filter((item) => item.recurringActivityId === candidate.id).reduce((sum, item) => sum + item.plannedMinutes, 0),
+        priorityRank: candidate.courseStudy.priorityRank,
+        reasons: candidate.courseStudy.reasons,
+        signals: candidate.courseStudy.signals
       }] : []),
       workUntil: input.workUntil.toISOString(),
       privateIntervals: input.privateIntervals.map((value) => ({ start: value.start.toISOString(), end: value.end.toISOString() }))
