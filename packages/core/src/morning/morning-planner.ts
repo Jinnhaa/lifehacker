@@ -1,6 +1,7 @@
 import { calculateRecurringActivityRisk, type RecurringActivityRisk } from "../rules/recurring-activity.js";
 import { getDaysUntilDeadline } from "../rules/deadline.js";
 import { applyApprovedPrinciples } from "../principle-application/principle-application.js";
+import type { Task } from "../task/task.js";
 import type {
   MorningObservation,
   MorningPlanDraft,
@@ -21,7 +22,46 @@ interface Candidate {
   readonly importance: number;
   readonly deadline: Date | null;
   readonly risk?: RecurringActivityRisk;
+  readonly workload?: TaskWorkload;
 }
+
+export interface TaskWorkload {
+  readonly remainingMinutes: number;
+  readonly targetDeadline: Date | null;
+  readonly targetSource: "internal" | "official_default" | "none";
+  readonly todayRequiredMinutes: number;
+  readonly weekRequiredMinutes: number;
+}
+
+const DAY = 86_400_000;
+
+export const calculateTaskWorkload = (
+  task: Task,
+  now: Date,
+  timeZone: string,
+  localWeekday: number
+): TaskWorkload => {
+  const remainingMinutes = Math.max((task.estimatedUserMinutes ?? task.estimatedMinutes ?? 0) - task.actualMinutes, 0);
+  let targetDeadline: Date | null = task.internalDeadline;
+  let targetSource: TaskWorkload["targetSource"] = targetDeadline ? "internal" : "none";
+  if (targetDeadline && task.officialDeadline && targetDeadline > task.officialDeadline) {
+    const officialDays = getDaysUntilDeadline(task.officialDeadline, now, timeZone) ?? 0;
+    const leadDays = officialDays >= 2 ? 2 : officialDays >= 1 ? 1 : 0;
+    targetDeadline = new Date(task.officialDeadline.getTime() - leadDays * DAY);
+    targetSource = "official_default";
+  } else if (!targetDeadline && task.officialDeadline) {
+    const officialDays = getDaysUntilDeadline(task.officialDeadline, now, timeZone) ?? 0;
+    const leadDays = officialDays >= 2 ? 2 : officialDays >= 1 ? 1 : 0;
+    targetDeadline = new Date(task.officialDeadline.getTime() - leadDays * DAY);
+    targetSource = "official_default";
+  }
+  const targetDays = getDaysUntilDeadline(targetDeadline, now, timeZone);
+  const planningDays = targetDays === null ? 1 : Math.max(1, targetDays + 1);
+  const todayRequiredMinutes = remainingMinutes === 0 ? 0 : Math.ceil(remainingMinutes / planningDays);
+  const daysRemainingThisWeek = Math.max(1, 8 - localWeekday);
+  const weekRequiredMinutes = Math.min(remainingMinutes, todayRequiredMinutes * Math.min(planningDays, daysRemainingThisWeek));
+  return { remainingMinutes, targetDeadline, targetSource, todayRequiredMinutes, weekRequiredMinutes };
+};
 
 const minutesBetween = (interval: TimeInterval): number =>
   Math.max(0, Math.floor((interval.end.getTime() - interval.start.getTime()) / MINUTE));
@@ -71,10 +111,10 @@ const buildCandidates = (observation: MorningObservation, now: Date, localWeekda
   const directiveOrders = observation.strategicDirectives.map((value) => value.priorityOrder);
   const tasks: Candidate[] = observation.tasks.flatMap((task) => {
     if (task.status === "DONE" || task.status === "BLOCKED" || task.status === "WAITING_FOR_USER") return [];
-    const minutes = Math.max((task.estimatedUserMinutes ?? task.estimatedMinutes ?? 0) - task.actualMinutes, 0);
-    if (minutes === 0) return [];
-    const deadlines = [task.officialDeadline, task.internalDeadline].filter((value): value is Date => value !== null);
-    const deadline = deadlines.length > 0 ? new Date(Math.min(...deadlines.map((value) => value.getTime()))) : null;
+    const workload = calculateTaskWorkload(task, now, observation.timeZone, localWeekday);
+    if (workload.remainingMinutes === 0) return [];
+    const minutes = workload.todayRequiredMinutes;
+    const deadline = workload.targetDeadline;
     const days = getDaysUntilDeadline(deadline, now, observation.timeZone);
     const deadlineRank = days !== null && days < 0 ? 0 : days === 0 ? 1 : days !== null && days <= 3 ? 3 : 5;
     const directed = directiveOrders.some((order) => containsId(order, task.id));
@@ -86,7 +126,8 @@ const buildCandidates = (observation: MorningObservation, now: Date, localWeekda
       minimumMinutes: Math.min(minutes, 30),
       rank: directed ? Math.max(0, deadlineRank - 1) : deadlineRank,
       importance: task.importance,
-      deadline
+      deadline,
+      workload
     }];
   });
   const routines: Candidate[] = observation.recurringActivities.flatMap((activity) => {
@@ -161,6 +202,7 @@ export const createMorningPlan = (input: CreateMorningPlanInput): MorningPlanDra
   const bufferMinutes = Math.min(input.observation.planningBufferMinutes, availableMinutes);
   let workBudget = Math.min(availableMinutes - bufferMinutes, input.maximumWorkMinutes ?? Number.MAX_SAFE_INTEGER);
   const items: MorningPlanItemDraft[] = [];
+  const taskAllocations = new Map<string, number>();
   const principleResult = applyApprovedPrinciples(
     buildCandidates(input.observation, input.now, input.localWeekday),
     input.observation.principles ?? [],
@@ -177,6 +219,7 @@ export const createMorningPlan = (input: CreateMorningPlanInput): MorningPlanDra
     if (workBudget <= 0) break;
     const allocated = allocate(intervals, candidate, workBudget);
     items.push(...allocated.items);
+    if (candidate.type === "task") taskAllocations.set(candidate.id, allocated.used);
     workBudget -= allocated.used;
   }
   if (bufferMinutes > 0) {
@@ -193,6 +236,11 @@ export const createMorningPlan = (input: CreateMorningPlanInput): MorningPlanDra
   items.sort((a, b) => a.start.getTime() - b.start.getTime());
 
   const highlights: string[] = [];
+  const deadlineRisks = candidates.filter((value) => value.type === "task" && value.workload
+    && (taskAllocations.get(value.id) ?? 0) < value.workload.todayRequiredMinutes);
+  for (const candidate of deadlineRisks) {
+    highlights.push(`${candidate.title}: 마감 위험 · 오늘 필요 ${candidate.workload!.todayRequiredMinutes}분 / 배치 ${taskAllocations.get(candidate.id) ?? 0}분`);
+  }
   const urgent = candidates.find((value) => value.type === "task" && value.rank <= 1);
   if (urgent) highlights.push(`${urgent.title}: 마감 우선`);
   const routine = candidates.find((value) => value.type === "routine");
@@ -215,6 +263,16 @@ export const createMorningPlan = (input: CreateMorningPlanInput): MorningPlanDra
       usedPrincipleIds: principleResult.usedPrincipleIds,
       carryoverSourceDate: input.observation.carryoverContext?.sourceDate ?? null,
       carryoverTaskIds: input.observation.carryoverContext?.taskIds ?? [],
+      workload: candidates.flatMap((candidate) => candidate.type === "task" && candidate.workload ? [{
+        taskId: candidate.id,
+        remainingMinutes: candidate.workload.remainingMinutes,
+        targetDeadline: candidate.workload.targetDeadline?.toISOString() ?? null,
+        targetSource: candidate.workload.targetSource,
+        todayRequiredMinutes: candidate.workload.todayRequiredMinutes,
+        weekRequiredMinutes: candidate.workload.weekRequiredMinutes,
+        plannedMinutes: taskAllocations.get(candidate.id) ?? 0,
+        deadlineRisk: (taskAllocations.get(candidate.id) ?? 0) < candidate.workload.todayRequiredMinutes
+      }] : []),
       workUntil: input.workUntil.toISOString(),
       privateIntervals: input.privateIntervals.map((value) => ({ start: value.start.toISOString(), end: value.end.toISOString() }))
     }

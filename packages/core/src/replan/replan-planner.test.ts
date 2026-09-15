@@ -75,6 +75,24 @@ describe("Dynamic replanning deterministic planner", () => {
     expect(draft.items.some((item) => item.taskId === first.id)).toBe(true);
   });
 
+  it("rebalances an incomplete task using its remaining daily workload", () => {
+    const unfinished = { ...first, estimatedMinutes: 300, actualMinutes: 60, internalDeadline: new Date("2026-09-08T14:59:59.000Z") };
+    const draft = buildReplanDraft({
+      observation: { ...observation, planningBufferMinutes: 0, constraints: [], recurringActivities: [], tasks: [unfinished] },
+      previous: {
+        ...previous,
+        activeTaskId: first.id,
+        items: [{
+          ...previous.items[0]!, plannedMinutes: 180, start: now,
+          end: new Date("2026-09-04T06:00:00.000Z"), status: "in_progress"
+        }]
+      },
+      now
+    });
+
+    expect(draft.items.filter((item) => item.taskId === first.id).reduce((sum, item) => sum + item.plannedMinutes, 0)).toBe(48);
+  });
+
   it("uses the latest configured work-until instead of the Morning snapshot", () => {
     const draft = buildReplanDraft({
       observation: { ...observation, planningPolicy: { defaultWorkUntil: "13:00" } },
@@ -87,7 +105,7 @@ describe("Dynamic replanning deterministic planner", () => {
   it("uses the same approved preference and requires approval if a protected routine falls out", () => {
     const principled: MorningObservation = {
       ...observation,
-      tasks: [{ ...first, officialDeadline: new Date("2026-09-06T14:59:59.000Z") }],
+      tasks: [{ ...first, estimatedMinutes: 120, officialDeadline: new Date("2026-09-07T14:59:59.000Z") }],
       principles: [{
         id: "principle", statement: "마감이 가까운 일을 우선한다", origin: "pattern_observed",
         decisionType: "important_replan", situationType: "deadline_risk_increased", choiceAction: "approve",
