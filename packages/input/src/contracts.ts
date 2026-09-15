@@ -26,6 +26,7 @@ export const parsedTaskDraftSchema = z.object({
   title: z.string().trim().min(1),
   description: z.string().trim().optional(),
   officialDeadline: z.iso.datetime({ offset: true }).optional(),
+  internalDeadline: z.iso.datetime({ offset: true }).optional(),
   estimatedMinutes: z.number().int().positive().optional(),
   importance: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]).optional(),
   workContextHint: z.string().trim().min(1).optional(),
@@ -65,16 +66,21 @@ export interface ExplicitTaskFacts {
 }
 
 export interface DiscoveredWorkItem {
-  readonly source: "notion";
+  readonly source: "notion" | "snowboard";
+  readonly externalType?: "assignment" | "quiz";
   readonly sourceItemId: string;
   readonly sourceVersion: string | null;
   readonly sourceUrl: string | null;
   readonly observedAt: Date;
   readonly title: string;
   readonly officialDeadline: Date | null;
+  /** A source-owned personal target, never an external official deadline. */
+  readonly internalDeadline?: Date | null;
   readonly workContextHint: string | null;
   readonly objectiveHint: string | null;
   readonly status: "open" | "completed" | "deleted" | "unknown";
   readonly taskSemantics: "clear" | "unclear";
+  /** Explicit source-schema opt-in for a task which does not have a context. */
+  readonly allowUnscopedMaterialization?: boolean;
   readonly rawPayload: Readonly<Record<string, unknown>>;
 }

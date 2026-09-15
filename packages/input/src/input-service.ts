@@ -163,22 +163,39 @@ export class InputService {
   }
 
   async processDiscoveredWorkItem(userId: UserId, item: DiscoveredWorkItem): Promise<WorkDiscoveryResult> {
-    const dedupeKey = `${item.source}:${item.sourceItemId}`;
-    const contentHash = createHash("sha256").update(JSON.stringify({ title: item.title, deadline: item.officialDeadline?.toISOString() ?? null, context: item.workContextHint, objective: item.objectiveHint, status: item.status, semantics: item.taskSemantics })).digest("hex");
+    const dedupeKey = item.source === "snowboard" && item.externalType === "quiz"
+      ? `${item.source}:quiz:${item.sourceItemId}`
+      : `${item.source}:${item.sourceItemId}`;
+    const contentHash = createHash("sha256").update(JSON.stringify({ title: item.title, deadline: item.officialDeadline?.toISOString() ?? null, internalDeadline: item.internalDeadline?.toISOString() ?? null, context: item.workContextHint, objective: item.objectiveHint, status: item.status, semantics: item.taskSemantics })).digest("hex");
     const inbox = await this.repositories.createOrGetDiscoveredInbox({ userId, item, dedupeKey, correlationId: this.ids.generateCorrelationId(), contentHash });
     const existing = await this.repositories.getExistingInputResult(userId, inbox.item.id);
     if (existing.command?.status === "applied" && existing.command.resultEntityId && existing.parsedEntity) {
+      await this.taskService.updateOfficialDeadlineFromExternal({
+        userId,
+        taskId: existing.command.resultEntityId,
+        officialDeadline: item.officialDeadline,
+        source: item.source,
+        idempotencyKey: `${dedupeKey}:official-deadline:${item.sourceVersion ?? contentHash}`
+      });
       await this.repositories.upsertExternalReference({ userId, item, internalEntityType: "task", internalEntityId: existing.command.resultEntityId, contentHash });
+      if (item.status === "completed") {
+        await this.taskService.completeTaskFromExternal({
+          userId,
+          taskId: existing.command.resultEntityId,
+          source: item.source,
+          idempotencyKey: `${dedupeKey}:completion`
+        });
+      }
       return { status: "materialized", inboxItemId: inbox.item.id, parsedEntityId: existing.parsedEntity.id, taskId: existing.command.resultEntityId as TaskId, duplicate: true };
     }
-    const draft: ParsedTaskDraft = { title: item.title, ...(item.officialDeadline && { officialDeadline: item.officialDeadline.toISOString() }), ...(item.workContextHint && { workContextHint: item.workContextHint }), ...(item.objectiveHint && { objectiveHint: item.objectiveHint }), inferredFields: [] };
+    const draft: ParsedTaskDraft = { title: item.title, ...(item.officialDeadline && { officialDeadline: item.officialDeadline.toISOString() }), ...(item.internalDeadline && { internalDeadline: item.internalDeadline.toISOString() }), ...(item.workContextHint && { workContextHint: item.workContextHint }), ...(item.objectiveHint && { objectiveHint: item.objectiveHint }), inferredFields: [] };
     const provenance = Object.fromEntries(Object.keys(draft).filter((key) => key !== "inferredFields").map((key) => [key, "external"])) as Record<string, Provenance>;
     const resolution = await this.resolve(userId, draft);
     const questions = this.questionsForResolution(resolution);
-    const needsConfirmation = item.taskSemantics !== "clear" || item.status === "unknown" || resolution.ambiguous || resolution.workContextId === null;
+    const needsConfirmation = item.taskSemantics !== "clear" || item.status === "unknown" || resolution.ambiguous || (resolution.workContextId === null && !item.allowUnscopedMaterialization);
     const parsedEntity = existing.parsedEntity ?? await this.repositories.createTaskEntity({ userId, inboxItemId: inbox.item.id, draft, provenance, confidence: needsConfirmation ? 0.5 : 1, resolution, requiresConfirmation: needsConfirmation, clarificationQuestions: questions.length ? questions : ["이 항목을 할 일로 만들까요?"], status: "validated" });
     await this.repositories.upsertExternalReference({ userId, item, internalEntityType: "parsed_entity", internalEntityId: parsedEntity.id, contentHash });
-    if (item.status === "completed" || item.status === "deleted") {
+    if (item.status === "deleted") {
       await this.repositories.setParsedEntityStatus(userId, parsedEntity.id, "rejected");
       await this.repositories.setInboxStatus(userId, inbox.item.id, "applied");
       return { status: "dismissed", inboxItemId: inbox.item.id, parsedEntityId: parsedEntity.id, duplicate: !inbox.created };
@@ -189,6 +206,14 @@ export class InputService {
       return { status: "needs_confirmation", inboxItemId: inbox.item.id, parsedEntityId: parsedEntity.id, duplicate: !inbox.created };
     }
     const result = await this.materialize({ userId, inboxItemId: inbox.item.id, parsedEntityId: parsedEntity.id, draft, provenance, resolution, commandKey: `${dedupeKey}:CREATE_TASK:0`, correlationId: inbox.item.correlationId, source: item.source, external: { item, contentHash } });
+    if (item.status === "completed") {
+      await this.taskService.completeTaskFromExternal({
+        userId,
+        taskId: result.taskId,
+        source: item.source,
+        idempotencyKey: `${dedupeKey}:completion`
+      });
+    }
     return { status: "materialized", inboxItemId: inbox.item.id, parsedEntityId: parsedEntity.id, taskId: result.taskId, duplicate: result.duplicate };
   }
 
@@ -238,7 +263,7 @@ export class InputService {
       return { status: "applied", inboxItemId: input.inboxItemId, parsedEntityId: input.parsedEntityId, commandId: command.command.id, taskId: existingTask, duplicate: !command.created };
     }
     try {
-      const task = await this.taskService.createTask({ userId: input.userId, workContextId: input.resolution.workContextId, objectiveId: input.resolution.objectiveId, title: draft.title, description: draft.description, executionMode: draft.executionMode!, officialDeadline: draft.officialDeadline ? new Date(draft.officialDeadline) : undefined, estimatedMinutes: draft.estimatedMinutes, importance: draft.importance!, source: input.source, correlationId: input.correlationId, idempotencyKey: eventKey });
+      const task = await this.taskService.createTask({ userId: input.userId, workContextId: input.resolution.workContextId, objectiveId: input.resolution.objectiveId, title: draft.title, description: draft.description, executionMode: draft.executionMode!, officialDeadline: draft.officialDeadline ? new Date(draft.officialDeadline) : undefined, internalDeadline: draft.internalDeadline ? new Date(draft.internalDeadline) : undefined, estimatedMinutes: draft.estimatedMinutes, importance: draft.importance!, source: input.source, correlationId: input.correlationId, idempotencyKey: eventKey });
       await this.markApplied(input.userId, input.inboxItemId, input.parsedEntityId, command.command.id, task.id);
       await this.repositories.promoteExternalReferences(input.userId, input.parsedEntityId, task.id);
       if (input.external) await this.repositories.upsertExternalReference({ userId: input.userId, item: input.external.item, internalEntityType: "task", internalEntityId: task.id, contentHash: input.external.contentHash });
