@@ -187,10 +187,11 @@ implements InboxItemRepository, ParsedEntityRepository, DomainCommandRepository 
     userId: UserId; item: DiscoveredWorkItem; internalEntityType: "parsed_entity" | "task"; internalEntityId: string; contentHash: string;
   }): Promise<void> {
     const deleted = input.item.status === "deleted";
+    const externalType = input.item.source === "snowboard" ? input.item.externalType ?? "assignment" : "notion_page";
     await this.sql`
       insert into public.external_references(user_id,source,external_type,external_id,external_version,ownership,content_hash,
         internal_entity_type,internal_entity_id,sync_status,first_seen_at,last_seen_at,deleted_at)
-      values (${input.userId},${input.item.source},'notion_page',${input.item.sourceItemId},${input.item.sourceVersion},'external',
+      values (${input.userId},${input.item.source},${externalType},${input.item.sourceItemId},${input.item.sourceVersion},'external',
         ${input.contentHash},${input.internalEntityType},${input.internalEntityId},${deleted ? "deleted" : "active"},
         ${input.item.observedAt},${input.item.observedAt},${deleted ? input.item.observedAt : null})
       on conflict(user_id,source,external_type,external_id) do update set

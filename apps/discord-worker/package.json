@@ -15,6 +15,7 @@
     "@amber/icloud-calendar": "workspace:*",
     "@amber/input": "workspace:*",
     "@amber/notion": "workspace:*",
+    "@amber/snowboard": "workspace:*",
     "@amber/shared": "workspace:*",
     "discord.js": "14.27.0",
     "postgres": "3.4.7",

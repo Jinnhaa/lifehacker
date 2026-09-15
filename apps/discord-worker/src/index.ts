@@ -38,6 +38,7 @@ import { SystemClock, type UserId } from "@amber/shared";
 import { syncGoogleCalendarForUser } from "@amber/google-calendar";
 import { syncICloudCalendarForUser } from "@amber/icloud-calendar";
 import { syncNotionForUser } from "@amber/notion";
+import { loadSnowboardConfig, PythonSnowboardClient, SnowboardSyncService, SupabaseAcademicScheduleRepository } from "@amber/snowboard";
 import { CalendarSyncScheduler, type CalendarSyncTask } from "./calendar-sync-scheduler.js";
 import { loadDiscordWorkerConfig } from "./config.js";
 import { DiscordMessageAdapter } from "./discord-message-adapter.js";
@@ -130,6 +131,26 @@ const calendarTasks: CalendarSyncTask[] = config.calendarUserId ? [
   }
 ] : [];
 const calendarSyncScheduler = new CalendarSyncScheduler(calendarTasks, config.calendarSyncIntervalMs);
+const snowboardEnvironmentKeys = [
+  "SNOWBOARD_USERNAME", "SNOWBOARD_PASSWORD", "SNOWBOARD_CURRENT_TERM", "SNOWBOARD_REGULAR_COURSE_IDS"
+] as const;
+const snowboardSyncEnabled = config.calendarUserId !== null && snowboardEnvironmentKeys.every((key) => Boolean(process.env[key]));
+const snowboardSyncScheduler = new CalendarSyncScheduler(snowboardSyncEnabled ? [{
+  provider: "snowboard" as const,
+  sync: async () => {
+    const snowboard = loadSnowboardConfig(process.env);
+    const processor = new InputService(
+      inputRepository,
+      { parseInput: async () => { throw new Error("Natural-language parsing is unavailable in Snowboard sync"); } },
+      new TaskService(taskRepository, clock)
+    );
+    const client = new PythonSnowboardClient();
+    const result = await new SnowboardSyncService(client, processor).sync(snowboard.userId as UserId, snowboard.collector);
+    const schedules = await client.listAcademicSchedules(snowboard.collector);
+    const scheduleResult = await new SupabaseAcademicScheduleRepository(sql).applySchedules(snowboard.userId as UserId, schedules);
+    return { ...result, schedules: scheduleResult };
+  }
+}] : [], config.snowboardSyncIntervalMs);
 const workDiscoveryScheduler = new WorkDiscoveryScheduler({
   sync: () => config.calendarUserId
     ? syncNotionForUser({ sql, userId: config.calendarUserId as UserId, processor: inputService, environment: process.env })
@@ -140,6 +161,8 @@ client.once(Events.ClientReady, () => {
   wakeScheduler.start();
   if (config.calendarUserId) calendarSyncScheduler.start();
   else console.info("Calendar sync disabled: AMBER_USER_ID is not configured");
+  if (snowboardSyncEnabled) snowboardSyncScheduler.start();
+  else console.info("Snowboard sync disabled: credentials, current term, or regular course ids are not configured");
   workDiscoveryScheduler.start();
   console.info("Discord worker ready");
 });
@@ -171,6 +194,7 @@ const shutdown = async (): Promise<void> => {
   shuttingDown = true;
   wakeScheduler.stop();
   calendarSyncScheduler.stop();
+  snowboardSyncScheduler.stop();
   workDiscoveryScheduler.stop();
   client.destroy();
   await sql.end();
