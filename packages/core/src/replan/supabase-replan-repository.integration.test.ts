@@ -133,5 +133,47 @@ describe("Supabase dynamic replanning", () => {
     const persisted = await repository.loadPlanState(importantUser, "2026-09-04");
     expect(persisted).toMatchObject({ revisionNo: 3 });
     expect(await repository.deriveCurrentAction(importantUser, "2026-09-04")).toMatchObject({ source: "plan_item", title: "휴식" });
+
+    const editable = persisted!.items[0]!;
+    await service.editPlan({
+      userId: importantUser, planId: persisted!.planId, receivedAt: now, idempotencyKey: "direct-edit-reject",
+      edit: { kind: "exclude", itemId: editable.id }
+    });
+    expect(await sql<{ revision_no: number; status: string }[]>`
+      select revision_no,status from public.daily_plans where user_id=${importantUser} and revision_no in (3,4) order by revision_no
+    `).toEqual([{ revision_no: 3, status: "approved" }, { revision_no: 4, status: "pending_approval" }]);
+    await service.handleReplanMessage({
+      userId: importantUser, timeZone: "Asia/Seoul", text: "거절", messageId: "web:direct-reject", receivedAt: now
+    });
+    expect((await repository.loadPlanState(importantUser, "2026-09-04"))?.revisionNo).toBe(3);
+
+    await service.editPlan({
+      userId: importantUser, planId: persisted!.planId, receivedAt: now, idempotencyKey: "direct-edit-approve",
+      edit: { kind: "reschedule", itemId: editable.id, start: editable.start, durationMinutes: Math.max(5, editable.plannedMinutes - 5) }
+    });
+    await service.handleReplanMessage({
+      userId: importantUser, timeZone: "Asia/Seoul", text: "승인", messageId: "web:direct-approve", receivedAt: now
+    });
+    expect(await sql<{ revision_no: number; status: string }[]>`
+      select revision_no,status from public.daily_plans where user_id=${importantUser} and revision_no in (3,5) order by revision_no
+    `).toEqual([{ revision_no: 3, status: "superseded" }, { revision_no: 5, status: "approved" }]);
+
+    const approvedV5 = await repository.loadPlanState(importantUser, "2026-09-04");
+    const firstEdit = await service.editPlan({
+      userId: importantUser, planId: approvedV5!.planId, receivedAt: now, idempotencyKey: "direct-edit-first-proposal",
+      edit: { kind: "reschedule", itemId: approvedV5!.items[0]!.id, start: approvedV5!.items[0]!.start, durationMinutes: 20 }
+    });
+    const pendingState = await repository.loadEditablePlanState(importantUser, firstEdit.plan.id);
+    await service.editPlan({
+      userId: importantUser, planId: firstEdit.plan.id, receivedAt: now, idempotencyKey: "direct-edit-replace-proposal",
+      edit: { kind: "reschedule", itemId: pendingState!.items[0]!.id, start: pendingState!.items[0]!.start, durationMinutes: 15 }
+    });
+    expect(await sql<{ revision_no: number; status: string }[]>`
+      select revision_no,status from public.daily_plans where user_id=${importantUser} and revision_no in (5,6,7) order by revision_no
+    `).toEqual([
+      { revision_no: 5, status: "approved" },
+      { revision_no: 6, status: "superseded" },
+      { revision_no: 7, status: "pending_approval" }
+    ]);
   });
 });

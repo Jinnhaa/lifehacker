@@ -2,12 +2,58 @@
 
 import { useActionState, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { decideChiefReplan, decideProjectBacklogAction, requestChiefReplan, reviewArtifactAction, runFocusAction, runMorningAction, runProjectRuntimeAction } from "../app/actions";
+import { decideChiefReplan, decideProjectBacklogAction, editTodayPlan, requestChiefReplan, reviewArtifactAction, runFocusAction, runMorningAction, runProjectRuntimeAction } from "../app/actions";
 import type { ChiefActionState, HomeViewModel } from "../lib/home-types";
 import { TodayCalendar, WeekCalendarOverlay } from "./calendar-views";
 
 const initialActionState: ChiefActionState = { status: "idle", message: "" };
-const changeLabel = { kept: "유지", moved: "이동", deferred: "내일 후보", added: "추가" } as const;
+const changeLabel = { kept: "유지", moved: "이동", removed: "제외", added: "추가", duration_changed: "duration 변경" } as const;
+
+const itemTypeLabel = { task: "TASK", study: "STUDY", routine: "ROUTINE", rest: "REST", buffer: "BUFFER" } as const;
+const localTime = (iso: string, timeZone: string) => new Intl.DateTimeFormat("en-GB", {
+  timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+}).format(new Date(iso));
+
+function PlanReviewPanel({ data, morningAction, morningPending }: {
+  data: HomeViewModel; morningAction: (payload: FormData) => void; morningPending: boolean;
+}) {
+  const review = data.planReview;
+  const [state, submit, pending] = useActionState(editTodayPlan, initialActionState);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const selected = review?.items.find((item) => item.id === editingId) ?? null;
+  const [start, setStart] = useState("09:00");
+  const [duration, setDuration] = useState(30);
+  const [excluded, setExcluded] = useState(false);
+  const beginEdit = (item: NonNullable<typeof selected>) => {
+    setEditingId(item.id); setStart(localTime(item.startsAt, data.timeZone)); setDuration(item.minutes); setExcluded(false);
+  };
+  const startMinute = Number(start.slice(0, 2)) * 60 + Number(start.slice(3, 5));
+  const affected = !review || !selected || excluded ? [] : review.items.filter((item) => {
+    if (item.id === selected.id) return false;
+    const itemStart = Number(localTime(item.startsAt, data.timeZone).slice(0, 2)) * 60 + Number(localTime(item.startsAt, data.timeZone).slice(3, 5));
+    return itemStart < startMinute + duration && itemStart + item.minutes > startMinute;
+  });
+  if (!review) return <section className="plan-review"><header><div><small>TODAY PLAN REVIEW</small><h2>오늘 계획</h2></div></header><p className="runtime-empty">오늘 검토할 계획이 없습니다.</p></section>;
+  const delta = (excluded ? 0 : duration) - (selected?.minutes ?? 0);
+  return <section className="plan-review" id="today-plan-review" aria-labelledby="plan-review-title">
+    <header><div><small>TODAY PLAN REVIEW · v{review.revisionNo}</small><h2 id="plan-review-title">{review.status === "approved" ? "승인된 오늘 계획" : "승인 대기 계획"}</h2></div><strong>{review.totalMinutes}분</strong></header>
+    <div className="plan-review-list">{review.items.map((item) => <article className={item.current ? "is-now" : ""} key={item.id}>
+      <div className="plan-review-time"><strong>{localTime(item.startsAt, data.timeZone)}</strong><span>– {localTime(item.endsAt, data.timeZone)}</span></div>
+      <div><small>{itemTypeLabel[item.itemType]}{item.current ? " · NOW" : ""}</small><h3>{item.title}</h3><p>{item.context ?? "Context 없음"} · {item.minutes}분</p></div>
+      <button type="button" onClick={() => beginEdit(item)}>수정</button>
+    </article>)}</div>
+    {review.status === "pending_approval" && review.approvalKind === "morning" && <form action={morningAction} className="plan-review-approve"><input type="hidden" name="command" value="승인" /><button disabled={morningPending}>이 계획 승인</button></form>}
+    {selected && <form action={submit} className="interpretation-preview">
+      <input type="hidden" name="planId" value={review.planId} /><input type="hidden" name="itemId" value={selected.id} />
+      <input type="hidden" name="date" value={data.date} /><input type="hidden" name="editKind" value={excluded ? "exclude" : "reschedule"} />
+      <header><div><small>INTERPRETATION PREVIEW</small><h3>Lifehacker는 이렇게 이해했습니다</h3></div><button type="button" onClick={() => setEditingId(null)}>×</button></header>
+      <div className="edit-controls"><label>시작 시간<input name="localTime" type="time" value={start} onChange={(event) => setStart(event.target.value)} disabled={excluded} /></label><label>duration<input name="durationMinutes" type="number" min={5} max={720} step={5} value={duration} onChange={(event) => setDuration(Number(event.target.value))} disabled={excluded} /></label><label className="exclude-toggle"><input type="checkbox" checked={excluded} onChange={(event) => setExcluded(event.target.checked)} />오늘 계획에서 제외</label></div>
+      <dl><div><dt>항목</dt><dd>{selected.title} · {itemTypeLabel[selected.itemType]} · {selected.context ?? "Context 없음"}</dd></div><div><dt>시간</dt><dd>{localTime(selected.startsAt, data.timeZone)} → {excluded ? "오늘 계획 밖" : start}</dd></div><div><dt>duration</dt><dd>{selected.minutes}분 → {excluded ? "0분" : `${duration}분`}</dd></div><div><dt>하루 총 계획시간</dt><dd>{review.totalMinutes}분 → {review.totalMinutes + delta}분 ({delta >= 0 ? "+" : ""}{delta}분)</dd></div><div><dt>영향 항목</dt><dd>{affected.length ? affected.map((item) => item.title).join(", ") : "없음"}</dd></div></dl>
+      <button className="approve" type="submit" disabled={pending || affected.length > 0}>{affected.length ? "겹치는 항목을 먼저 조정하세요" : pending ? "변경안 생성 중…" : "새 revision으로 저장"}</button>
+      {state.message && <p className={`command-feedback ${state.status}`}>{state.message}</p>}
+    </form>}
+  </section>;
+}
 
 function QuestHud({ data }: { data: HomeViewModel }) {
   const judgment=data.outcomePriority?.judgment;
@@ -31,11 +77,12 @@ function ProposalPanel({ proposal, action, pending }: {
   return <section className="chief-proposal" aria-labelledby="proposal-title">
     <header><span><i /> CHIEF PROPOSAL</span><small>DAILY PLAN · v{proposal.revisionNo}</small></header>
     <h2 id="proposal-title">{proposal.summary}</h2><p>{proposal.reason}</p>
-    <div className="proposal-scroll">{(["kept", "moved", "deferred", "added"] as const).map((kind) => {
+    <div className="proposal-total"><span>총 계획시간</span><strong>{proposal.totalMinutesBefore}분 → {proposal.totalMinutesAfter}분 ({proposal.totalMinutesAfter - proposal.totalMinutesBefore >= 0 ? "+" : ""}{proposal.totalMinutesAfter - proposal.totalMinutesBefore}분)</strong></div>
+    <div className="proposal-scroll">{(["kept", "moved", "duration_changed", "removed", "added"] as const).map((kind) => {
       const changes = proposal.changes.filter((item) => item.change === kind);
-      return changes.length ? <div className={`proposal-section ${kind}`} key={kind}><h3>{changeLabel[kind]}</h3>{changes.map((item, index) => <div className="proposal-change" key={`${kind}:${item.key}:${index}`}><strong>{item.title}</strong><span>{item.before ?? "—"}{item.before !== item.after ? ` → ${item.after ?? "오늘 계획 밖"}` : ""}</span></div>)}</div> : null;
+      return changes.length ? <div className={`proposal-section ${kind}`} key={kind}><h3>{changeLabel[kind]}</h3>{changes.map((item, index) => <div className="proposal-change" key={`${kind}:${item.key}:${index}`}><strong>{item.title}</strong><span>{item.before ?? "—"}{item.before !== item.after ? ` → ${item.after ?? "오늘 계획 밖"}` : ""}{item.beforeMinutes !== item.afterMinutes ? ` · ${item.beforeMinutes ?? 0}분 → ${item.afterMinutes ?? 0}분` : ` · ${item.afterMinutes ?? item.beforeMinutes ?? 0}분`}</span></div>)}</div> : null;
     })}</div>
-    <form className="proposal-actions" action={action}><button name="decision" value="reject" type="submit" disabled={pending}>거절</button><button className="approve" name="decision" value="approve" type="submit" disabled={pending}>이대로 변경</button></form>
+    <form className="proposal-actions" action={action}><button name="decision" value="reject" type="submit" disabled={pending}>Reject</button><button type="button" onClick={() => document.getElementById("today-plan-review")?.scrollIntoView({ behavior: "smooth" })}>Edit</button><button className="approve" name="decision" value="approve" type="submit" disabled={pending}>Approve</button></form>
   </section>;
 }
 
@@ -70,7 +117,8 @@ function CurrentMission({ data, openChief, replanAction, replanPending, focusAct
     {!activeFocus && <div className="mission-meta"><div><small>예상 시간</small><strong>{action?.minutes ? `${action.minutes}분` : recommendation?.minutes ? `${recommendation.minutes}분` : "—"}</strong></div><div><small>상태</small><strong>{action ? "실행 가능" : recommendation ? "다음 추천" : "대기"}</strong></div><div><small>PLAN</small><strong>{data.approvedPlan ? `v${data.approvedPlan.revisionNo}` : "—"}</strong></div></div>}
     <div className="mission-actions">
       {data.planState.status === "no_plan" && <form action={morningAction}><input type="hidden" name="command" value="일어남" /><button className="focus-button" type="submit" disabled={morningPending}>{morningPending ? "계획 준비 중…" : "오늘 계획 만들기"}</button></form>}
-      {data.planState.status === "pending_approval" && <form action={morningAction}><input type="hidden" name="command" value="승인" /><button className="focus-button" type="submit" disabled={morningPending}>오늘 계획 승인</button></form>}
+      {data.planState.status === "pending_approval" && data.proposal && <form action={replanAction}><input type="hidden" name="command" value="승인" /><button className="focus-button" type="submit" disabled={replanPending}>변경안 승인</button></form>}
+      {data.planState.status === "pending_approval" && !data.proposal && <form action={morningAction}><input type="hidden" name="command" value="승인" /><button className="focus-button" type="submit" disabled={morningPending}>오늘 계획 승인</button></form>}
       {data.planState.status === "approved" && !data.focus && action?.kind === "task" && <form action={focusAction}><input type="hidden" name="command" value="시작" /><button className="focus-button is-ready" type="submit" disabled={focusPending}>집중 시작</button></form>}
       {data.planState.status === "approved" && !data.focus && action?.kind === "task" && <form action={replanAction}><input type="hidden" name="command" value="지금 작업 미루기" /><button className="focus-button" type="submit" disabled={replanPending}>미루기</button></form>}
       {activeFocus && <><form action={focusAction}><button name="command" value="완료" className="focus-button is-ready" type="submit" disabled={focusPending}>완료</button></form><form action={focusAction}><button name="command" value="다른 거 할래" className="focus-button" type="submit" disabled={focusPending}>집중 종료</button></form></>}
@@ -84,7 +132,7 @@ function CurrentMission({ data, openChief, replanAction, replanPending, focusAct
       </form> : <form action={focusAction} className="runtime-input"><input name="command" required maxLength={500} placeholder={data.focus.step === "awaiting_missing_detail" ? "필요한 자료나 도움을 적어 주세요" : "막힌 이유를 적어 주세요"} /><button disabled={focusPending}>기록</button></form>}
     </div>}
     {data.planState.status === "no_plan" && morningFeedback.status === "success" && <form action={morningAction} className="mission-inline-panel runtime-input"><input name="command" required maxLength={500} placeholder="예: 오늘 22시까지, 14시부터 15시는 제외" /><button disabled={morningPending}>계획 생성</button></form>}
-    {data.planState.status === "pending_approval" && <form action={morningAction} className="mission-inline-panel runtime-input"><input name="command" required maxLength={500} placeholder="예: 수정: 낮은 우선순위 작업 제외" /><button disabled={morningPending}>다시 짜기</button></form>}
+    {data.planState.status === "pending_approval" && !data.proposal && <form action={morningAction} className="mission-inline-panel runtime-input"><input name="command" required maxLength={500} placeholder="예: 수정: 낮은 우선순위 작업 제외" /><button disabled={morningPending}>다시 짜기</button></form>}
     {(focusFeedback.message || morningFeedback.message) && <p className={`mission-feedback ${(focusFeedback.message ? focusFeedback : morningFeedback).status}`} role="status">{focusFeedback.message || morningFeedback.message}</p>}
   </section>;
 }
@@ -200,6 +248,7 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
       <CurrentMission data={initialData} openChief={openChief} replanAction={submitAction} replanPending={pending} focusAction={submitFocus} focusPending={focusPending} focusFeedback={focusState} morningAction={submitMorning} morningPending={morningPending} morningFeedback={morningState} />
       <section className="today-flow-panel"><TodayCalendar items={initialData.timeline} timeZone={initialData.timeZone} onOpenWeek={() => setWeekOpen(true)} /></section>
       <QuestHud data={initialData} />
+      <PlanReviewPanel data={initialData} morningAction={submitMorning} morningPending={morningPending} />
       <section className="chief-command-panel" ref={chiefRef}>
         <header><div><small>CHIEF</small><strong>오늘 흐름 조정</strong></div><button type="button" onClick={() => chiefOpen ? setChiefOpen(false) : openChief()} disabled={!initialData.configured} aria-expanded={chiefOpen}>조정 요청</button></header>
         {chiefOpen && <form action={submitAction}><input id="chief-command" ref={commandRef} name="command" placeholder="예: 지금 작업 미루기, 2시간 휴식" aria-label="Chief에게 일정 조정 요청" disabled={!initialData.configured || pending} /><button type="submit" disabled={!initialData.configured || pending}>{pending ? "계산 중…" : "변경안 만들기"}</button></form>}

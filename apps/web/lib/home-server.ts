@@ -45,7 +45,7 @@ type PlanRow = { id: string; plan_date?: string; revision_no: number; input_snap
 type ItemRow = {
   id: string; item_type: "task" | "routine" | "rest" | "buffer"; task_id: string | null;
   activity_occurrence_id: string | null; title: string; planned_start_at: Date; planned_end_at: Date;
-  planned_minutes: number; status: string; context_title: string | null;
+  planned_minutes: number; status: string; context_title: string | null; context_kind: string | null;
 };
 type PendingReviewRow = {
   id: string; title: string | null; work_context_id: string; project_title: string;
@@ -71,7 +71,7 @@ const readItems = async (sql: Sql, userId: UserId, planId: string): Promise<Item
   select i.id,i.item_type,i.task_id,i.activity_occurrence_id,
     coalesce(t.title,a.title,case when i.item_type='buffer' then '버퍼' else '휴식' end) title,
     i.planned_start_at,i.planned_end_at,i.planned_minutes,i.status,
-    coalesce(w.title,g.title) context_title
+    coalesce(w.title,g.title) context_title,w.kind context_kind
   from public.plan_items i
   left join public.tasks t on t.id=i.task_id and t.user_id=i.user_id
   left join public.objectives o on o.id=t.objective_id and o.user_id=t.user_id
@@ -153,15 +153,18 @@ const proposalChanges = (before: readonly ItemRow[], after: readonly ItemRow[], 
     const key = itemKey(item);
     const next = remaining.get(key);
     remaining.delete(key);
-    if (!next) return { key, title: item.title, change: "deferred" as const, before: time(item.planned_start_at, timeZone), after: null };
+    if (!next) return { key, title: item.title, change: "removed" as const, before: time(item.planned_start_at, timeZone), after: null, beforeMinutes: item.planned_minutes, afterMinutes: null };
     const moved = item.planned_start_at.getTime() !== next.planned_start_at.getTime();
+    const resized = item.planned_minutes !== next.planned_minutes;
     return {
-      key, title: item.title, change: moved ? "moved" as const : "kept" as const,
-      before: time(item.planned_start_at, timeZone), after: time(next.planned_start_at, timeZone)
+      key, title: item.title, change: moved ? "moved" as const : resized ? "duration_changed" as const : "kept" as const,
+      before: time(item.planned_start_at, timeZone), after: time(next.planned_start_at, timeZone),
+      beforeMinutes: item.planned_minutes, afterMinutes: next.planned_minutes
     };
   });
   for (const [key, item] of remaining) changes.push({
-    key, title: item.title, change: "added", before: null, after: time(item.planned_start_at, timeZone)
+    key, title: item.title, change: "added", before: null, after: time(item.planned_start_at, timeZone),
+    beforeMinutes: null, afterMinutes: item.planned_minutes
   });
   return changes;
 };
@@ -172,7 +175,8 @@ const reasonLabels: Record<string, string> = {
   user_prioritize_task: "지정한 작업을 오늘 계획에서 우선 배치했습니다.",
   user_reduce_today: "우선순위가 가장 낮은 작업을 오늘 계획에서 제외했습니다.",
   user_exclude_after: "요청한 시간 이후에는 집중 작업을 배치하지 않았습니다.",
-  user_rebalance: "현재 Task와 고정 일정을 기준으로 남은 순서를 다시 계산했습니다."
+  user_rebalance: "현재 Task와 고정 일정을 기준으로 남은 순서를 다시 계산했습니다.",
+  user_direct_edit: "사용자가 지정한 시간과 duration을 새 revision으로 해석했습니다."
 };
 
 export const createWebReplanService = (sql: Sql) => new DynamicReplanningService({
@@ -338,11 +342,17 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
           revisionNo: proposalPlans[0].revision_no,
           summary: typeof adjustment.summary === "string" ? adjustment.summary : "오늘 일정 재조정",
           reason: primaryReason ?? "마감, 중요도와 남은 가용시간을 기준으로 다시 계산했습니다.",
-          changes: proposalChanges(approvedItems, proposedItems, timeZone)
+          changes: proposalChanges(approvedItems, proposedItems, timeZone),
+          totalMinutesBefore: approvedItems.reduce((sum, item) => sum + item.planned_minutes, 0),
+          totalMinutesAfter: proposedItems.reduce((sum, item) => sum + item.planned_minutes, 0)
         };
       }
     }
-    const newestPlan = approved ?? planStates.find((plan) => plan.status === "pending_approval") ?? null;
+    const newestPlan = pendingPlan ?? approved;
+    const reviewPlan = pendingPlan ?? approved;
+    const reviewItems = pendingPlan ? pendingItems : approvedItems;
+    const reviewApprovalKind = pendingPlan && reviewPlan?.id === pendingPlan.id
+      ? (pending?.plan_id === pendingPlan.id ? "replan" as const : "morning" as const) : null;
     const reviewArtifacts = reviews.map((artifact) => {
       let parsed: unknown;
       try { parsed = JSON.parse(artifact.content_text); } catch { parsed = null; }
@@ -369,6 +379,18 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
             ?? "승인된 오늘 계획에 포함된 실행 항목입니다."
       } : null,
       approvedPlan: approved ? { id: approved.id, revisionNo: approved.revision_no } : null,
+      planReview: reviewPlan ? {
+        planId: reviewPlan.id, revisionNo: reviewPlan.revision_no,
+        status: reviewPlan.status === "pending_approval" ? "pending_approval" : "approved",
+        approvalKind: reviewApprovalKind,
+        totalMinutes: reviewItems.reduce((sum, item) => sum + item.planned_minutes, 0),
+        items: reviewItems.map((item) => ({
+          id: item.id, title: item.title, context: item.context_title,
+          itemType: item.item_type === "task" && item.context_kind === "course" ? "study" as const : item.item_type,
+          startsAt: item.planned_start_at.toISOString(), endsAt: item.planned_end_at.toISOString(),
+          minutes: item.planned_minutes, current: approved?.id === reviewPlan.id && currentAction?.planItemId === item.id
+        }))
+      } : null,
       planState: newestPlan ? {
         status: newestPlan.status === "pending_approval" ? "pending_approval" : "approved",
         revisionNo: newestPlan.revision_no,
@@ -401,7 +423,7 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
   } catch (error) {
     return {
       configured: false, error: error instanceof Error ? error.message : "Home 데이터를 불러오지 못했습니다.",
-      date: localDate(now, "Asia/Seoul"), timeZone: "Asia/Seoul", outcomePriority: null, currentAction: null, approvedPlan: null,
+      date: localDate(now, "Asia/Seoul"), timeZone: "Asia/Seoul", outcomePriority: null, currentAction: null, approvedPlan: null, planReview: null,
       planState: { status: "no_plan", revisionNo: null, message: null },
       calendar: { activeProviders: [], lastSyncedAt: null, fixedCommitmentCount: 0 }, focus: null, reviewArtifacts: [],
       timeline: [], week: weekDates(localDate(now, "Asia/Seoul")).map((date) => ({ date, items: [] })), goals: [], agents: [], decisionCount: 0, proposal: null,

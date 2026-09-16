@@ -14,9 +14,29 @@ export type HomeTimelineItem = {
 export type HomeProposalChange = {
   readonly key: string;
   readonly title: string;
-  readonly change: "kept" | "moved" | "deferred" | "added";
+  readonly change: "kept" | "moved" | "removed" | "added" | "duration_changed";
   readonly before: string | null;
   readonly after: string | null;
+  readonly beforeMinutes: number | null;
+  readonly afterMinutes: number | null;
+};
+
+export type HomePlanReview = {
+  readonly planId: string;
+  readonly revisionNo: number;
+  readonly status: "approved" | "pending_approval";
+  readonly approvalKind: "morning" | "replan" | null;
+  readonly totalMinutes: number;
+  readonly items: readonly {
+    readonly id: string;
+    readonly title: string;
+    readonly context: string | null;
+    readonly itemType: "task" | "study" | "routine" | "rest" | "buffer";
+    readonly startsAt: string;
+    readonly endsAt: string;
+    readonly minutes: number;
+    readonly current: boolean;
+  }[];
 };
 
 export type HomeWeekDay = {
@@ -40,6 +60,7 @@ export type HomeViewModel = {
     readonly reason: string | null;
   };
   readonly approvedPlan: null | { readonly id: string; readonly revisionNo: number };
+  readonly planReview: HomePlanReview | null;
   readonly planState: {
     readonly status: "no_plan" | "pending_approval" | "approved";
     readonly revisionNo: number | null;
@@ -77,6 +98,8 @@ export type HomeViewModel = {
     readonly summary: string;
     readonly reason: string;
     readonly changes: readonly HomeProposalChange[];
+    readonly totalMinutesBefore: number;
+    readonly totalMinutesAfter: number;
   };
 };
 

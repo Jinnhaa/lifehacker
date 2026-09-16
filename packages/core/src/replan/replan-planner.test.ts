@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { MorningObservation } from "../morning/morning.js";
 import type { Task } from "../task/task.js";
 import { classifyReplanImpact } from "./replan-impact.js";
-import { buildReplanDraft } from "./replan-planner.js";
+import { applyDirectPlanEdit, buildReplanDraft } from "./replan-planner.js";
 import type { ReplanPlanState } from "./replan.js";
 
 const userId = "10000000-0000-4000-8000-000000000001" as UserId;
@@ -40,6 +40,26 @@ const previous: ReplanPlanState = {
 };
 
 describe("Dynamic replanning deterministic planner", () => {
+  it("previews time and duration changes while preserving the immutable source revision", () => {
+    const { draft, interpretation } = applyDirectPlanEdit(previous, {
+      kind: "reschedule", itemId: "i1", start: new Date("2026-09-04T06:30:00.000Z"), durationMinutes: 30
+    }, "과목 A");
+    expect(previous.items[0]!.start).toEqual(now);
+    expect(draft.items.find((item) => item.taskId === first.id)).toMatchObject({ plannedMinutes: 30 });
+    expect(interpretation).toMatchObject({ context: "과목 A", totalMinutesBefore: 150, totalMinutesAfter: 120 });
+    expect(interpretation.affectedItems).toEqual([]);
+  });
+
+  it("previews exclusion and reports other items affected by a move", () => {
+    const excluded = applyDirectPlanEdit(previous, { kind: "exclude", itemId: "i3" });
+    expect(excluded.draft.items.some((item) => item.title === "휴식")).toBe(false);
+    expect(excluded.interpretation.totalMinutesAfter).toBe(135);
+    const overlapping = applyDirectPlanEdit(previous, {
+      kind: "reschedule", itemId: "i1", start: new Date("2026-09-04T05:30:00.000Z"), durationMinutes: 60
+    });
+    expect(overlapping.interpretation.affectedItems.map((item) => item.itemId)).toEqual(["i2", "i3", "i4"]);
+  });
+
   it("reobserves while protecting fixed time, rest, buffer, work-until, and routine risk", () => {
     const draft = buildReplanDraft({ observation, previous, now });
     expect(draft.items.some((item) => item.taskId === blocked.id)).toBe(false);

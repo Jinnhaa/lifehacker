@@ -12,6 +12,7 @@ import {
   getWebUserId
 } from "../lib/home-server";
 import type { ChiefActionState, RuntimeActionState } from "../lib/home-types";
+import { zonedDateTimeToUtc } from "@amber/shared";
 
 const profileTimeZone = async (): Promise<string> => {
   const rows = await getWebSql()<{ timezone: string }[]>`select timezone from public.profiles where id=${getWebUserId()}`;
@@ -47,6 +48,34 @@ export const decideChiefReplan = async (_previous: ChiefActionState, formData: F
   const decision = formData.get("decision");
   if (decision !== "approve" && decision !== "reject") return { status: "error", message: "검토 결정을 확인할 수 없습니다." };
   return run(decision === "approve" ? "승인" : "거절");
+};
+
+export const editTodayPlan = async (_previous: ChiefActionState, formData: FormData): Promise<ChiefActionState> => {
+  try {
+    const planId = String(formData.get("planId") ?? "");
+    const itemId = String(formData.get("itemId") ?? "");
+    const kind = formData.get("editKind") === "exclude" ? "exclude" as const : "reschedule" as const;
+    if (!planId || !itemId) return { status: "error", message: "수정할 계획 항목을 확인할 수 없습니다." };
+    const date = String(formData.get("date") ?? "");
+    const localTime = String(formData.get("localTime") ?? "");
+    const durationMinutes = Number(formData.get("durationMinutes"));
+    const timeZone = await profileTimeZone();
+    const edit = kind === "exclude" ? { kind, itemId } : {
+      kind, itemId,
+      start: zonedDateTimeToUtc(`${date}T${localTime}:00`, timeZone),
+      durationMinutes
+    };
+    const key = createHash("sha256").update(JSON.stringify({ planId, edit: {
+      ...edit, ...(edit.kind === "reschedule" ? { start: edit.start.toISOString() } : {})
+    }})).digest("hex");
+    const result = await createWebReplanService(getWebSql()).editPlan({
+      userId: getWebUserId(), planId, edit, idempotencyKey: key, receivedAt: new Date()
+    });
+    revalidatePath("/");
+    return { status: "success", message: `v${result.plan.revisionNo} 변경안을 만들었습니다. Before / After를 확인하고 승인해 주세요.` };
+  } catch (error) {
+    return runtimeError(error, "계획 변경안을 만들지 못했습니다.");
+  }
 };
 
 const runtimeError = (error: unknown, fallback: string): RuntimeActionState => ({

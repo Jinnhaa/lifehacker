@@ -360,6 +360,34 @@ button { color: inherit; }
 .mission-control-layout .quest-line strong { font-size: 11px; }
 .mission-control-layout .hud-empty { font-size: 10px; }
 .chief-command-panel { grid-column: 1 / -1; padding: 14px 16px; }
+.plan-review { grid-column: 1 / -1; min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,253,248,.94); box-shadow: 0 10px 24px rgba(68,57,43,.08); }
+.plan-review > header, .interpretation-preview > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.plan-review > header small, .interpretation-preview > header small { color: var(--green-deep); font-size: 9px; font-weight: 900; letter-spacing: .13em; }
+.plan-review > header h2, .interpretation-preview h3 { margin: 3px 0 0; }
+.plan-review-list { display: grid; gap: 8px; margin-top: 16px; }
+.plan-review-list article { display: grid; grid-template-columns: 110px minmax(0,1fr) auto; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid #ddd5c8; border-radius: 11px; background: white; }
+.plan-review-list article.is-now { border-color: var(--green-deep); box-shadow: inset 4px 0 var(--green-deep); }
+.plan-review-time { display: flex; gap: 5px; font-variant-numeric: tabular-nums; }
+.plan-review-list article small { color: #6f8377; font-size: 8px; font-weight: 900; letter-spacing: .12em; }
+.plan-review-list article h3 { margin: 3px 0; font-size: 13px; }
+.plan-review-list article p { margin: 0; color: var(--muted); font-size: 10px; }
+.plan-review-list article button, .plan-review-approve button { padding: 8px 11px; border: 1px solid #cfc7bb; border-radius: 8px; background: #f8f5ef; cursor: pointer; font-size: 9px; font-weight: 800; }
+.plan-review-approve { margin-top: 12px; text-align: right; }
+.plan-review-approve button { background: var(--green-deep); color: white; }
+.interpretation-preview { margin-top: 16px; padding: 16px; border: 1px solid #b9c9bf; border-radius: 12px; background: #f3f8f4; }
+.interpretation-preview header button { border: 0; background: transparent; cursor: pointer; font-size: 20px; }
+.edit-controls { display: flex; flex-wrap: wrap; gap: 12px; margin: 14px 0; }
+.edit-controls label { display: grid; gap: 5px; color: var(--muted); font-size: 9px; font-weight: 800; }
+.edit-controls input { height: 36px; padding: 0 9px; border: 1px solid #c9d2cc; border-radius: 7px; background: white; }
+.edit-controls .exclude-toggle { display: flex; align-items: center; flex-direction: row; }
+.edit-controls .exclude-toggle input { width: 16px; height: 16px; }
+.interpretation-preview dl { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin: 0 0 14px; }
+.interpretation-preview dl div { padding: 9px; border-radius: 8px; background: white; }
+.interpretation-preview dt { color: var(--muted); font-size: 8px; font-weight: 900; letter-spacing: .08em; }
+.interpretation-preview dd { margin: 4px 0 0; font-size: 11px; }
+.interpretation-preview > .approve { padding: 10px 14px; border: 0; border-radius: 8px; background: var(--green-deep); color: white; cursor: pointer; font-size: 10px; font-weight: 900; }
+.interpretation-preview > .approve:disabled { cursor: not-allowed; opacity: .55; }
+.proposal-total { display: flex; justify-content: space-between; gap: 12px; margin: 12px 0; padding: 10px; border-radius: 9px; background: #f5f1e9; font-size: 10px; }
 .chief-command-panel header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .chief-command-panel small { display: block; color: var(--green-deep); font-size: 8px; font-weight: 900; letter-spacing: .14em; }
 .chief-command-panel strong { display: block; margin-top: 3px; font-size: 14px; }
@@ -490,7 +518,9 @@ button { color: inherit; }
   .mission-actions { grid-column: 1 / -1; }
   .mission-actions button { flex: 1; }
   .mission-control-layout { grid-template-columns: 1fr; gap: 12px; }
-  .today-flow-panel, .mission-control-layout .quest-hud, .chief-command-panel { grid-column: 1; }
+  .today-flow-panel, .mission-control-layout .quest-hud, .chief-command-panel, .plan-review { grid-column: 1; }
+  .plan-review-list article { grid-template-columns: 80px minmax(0,1fr) auto; }
+  .interpretation-preview dl { grid-template-columns: 1fr; }
   .mission-control-layout .mission-hud { grid-template-columns: 1fr; min-height: 0; padding: 18px; }
   .mission-hud.is-focusing { min-height: 270px; }
   .mission-hud.is-focusing .mission-actions { grid-column: auto; width: 100%; }
