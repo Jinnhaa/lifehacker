@@ -28,6 +28,25 @@ Lifehacker는 일반 생산성 Dashboard가 아니라,
 
 ---
 
+## Web-first Principle
+
+Lifehacker의 핵심 기능은 Web만으로 완결되어야 한다.
+
+다음 기능은 Discord나 외부 메시징 채널 없이 Web에서 모두 사용할 수 있어야 한다.
+
+- 계획 생성 및 조정
+- 승인 / 거절 / 수정
+- Task 생성 / 수정 / 완료
+- Calendar 확인 / 조정
+- Focus 실행
+- Replan
+- Projects / Learning 관리
+- Settings
+
+Discord는 Morning Briefing, 알림, Wake 등 보조 채널로만 사용한다.
+
+Discord나 다른 외부 채널이 Lifehacker Core Product Flow의 필수 의존성이 되어서는 안 된다.
+
 ## 2. Global IA
 
 Lifehacker의 최상위 공간은 5개다.
