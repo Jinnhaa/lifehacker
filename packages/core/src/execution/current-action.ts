@@ -26,7 +26,9 @@ export type DerivedCurrentAction =
 export const deriveCurrentAction = async (
   sql: Sql,
   userId: UserId,
-  planDate: string
+  planDate: string,
+  timeZone = "Asia/Seoul",
+  now = new Date()
 ): Promise<DerivedCurrentAction | null> => {
   const focus = await sql<{ title: string; task_id: string; plan_item_id: string | null }[]>`
     select t.title,f.task_id,f.plan_item_id
@@ -61,6 +63,8 @@ export const deriveCurrentAction = async (
     where p.user_id=${userId} and p.plan_date=${planDate} and p.status='approved'
       and i.item_type in ('task','routine','rest') and i.status in ('planned','in_progress')
       and (t.id is null or t.status in ('INBOX','PLANNED','IN_PROGRESS'))
+      and (t.id is null or t.internal_deadline is null or (t.internal_deadline at time zone ${timeZone})::date >= ${planDate}::date)
+      and (t.id is null or t.official_deadline is null or t.official_deadline >= ${now})
       and (o.id is null or o.status in ('planned','in_progress','partial'))
     order by i.position limit 1
   `;

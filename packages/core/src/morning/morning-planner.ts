@@ -1,5 +1,6 @@
 import { calculateRecurringActivityRisk, type RecurringActivityRisk } from "../rules/recurring-activity.js";
 import { getDaysUntilDeadline } from "../rules/deadline.js";
+import { isTaskOverdue } from "../rules/task-overdue.js";
 import { applyApprovedPrinciples } from "../principle-application/principle-application.js";
 import type { Task } from "../task/task.js";
 import type {
@@ -111,7 +112,8 @@ const remainingSuitableDays = (activity: MorningRecurringActivity, localWeekday:
 const buildCandidates = (observation: MorningObservation, now: Date, localWeekday: number): Candidate[] => {
   const directiveOrders = observation.strategicDirectives.map((value) => value.priorityOrder);
   const tasks: Candidate[] = observation.tasks.flatMap((task) => {
-    if (task.status === "DONE" || task.status === "BLOCKED" || task.status === "WAITING_FOR_USER") return [];
+    if (task.status === "DONE" || task.status === "BLOCKED" || task.status === "WAITING_FOR_USER"
+      || isTaskOverdue(task, now, observation.timeZone)) return [];
     const workload = calculateTaskWorkload(task, now, observation.timeZone, localWeekday);
     if (workload.remainingMinutes === 0) return [];
     const minutes = workload.todayRequiredMinutes;

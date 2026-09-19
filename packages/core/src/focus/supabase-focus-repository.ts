@@ -44,6 +44,7 @@ const mapCheckpoint = (value: unknown): FocusCheckpoint => {
     sessionId: String(record.sessionId ?? ""),
     taskId: String(record.taskId ?? ""),
     planItemId: typeof record.planItemId === "string" ? record.planItemId : null,
+    ...(typeof record.durationMinutes === "number" ? { durationMinutes: record.durationMinutes } : {}),
     ...(typeof record.blockCategory === "string" ? { blockCategory: record.blockCategory as BlockCategory } : {}),
     ...(typeof record.blockDetail === "string" ? { blockDetail: record.blockDetail } : {}),
     ...(typeof record.pendingStepSplit === "boolean" ? { pendingStepSplit: record.pendingStepSplit } : {}),
@@ -108,7 +109,9 @@ export class SupabaseFocusRepository implements FocusRepository {
     userId: UserId,
     planDate: string,
     now: Date,
-    messageId: string
+    messageId: string,
+    durationMinutes = 25,
+    timeZone = "Asia/Seoul"
   ): Promise<{ context: FocusContext | null; action: DerivedCurrentAction | null; duplicate: boolean }> {
     return this.sql.begin(async (tx) => {
       const prior = await tx<{ aggregate_id: string }[]>`
@@ -138,7 +141,7 @@ export class SupabaseFocusRepository implements FocusRepository {
         };
       }
 
-      const action = await deriveCurrentAction(tx, userId, planDate);
+      const action = await deriveCurrentAction(tx, userId, planDate, timeZone, now);
       if (!action || action.kind !== "task") return { context: null, action, duplicate: false };
       const tasks = await tx<TaskRow[]>`select id,title,status,completion_criteria,estimated_minutes,estimated_user_minutes,actual_minutes,next_action from public.tasks where id=${action.taskId} and user_id=${userId} for update`;
       const task = tasks[0];
@@ -158,7 +161,7 @@ export class SupabaseFocusRepository implements FocusRepository {
       const workflows = await tx<WorkflowRow[]>`
         insert into public.workflow_runs(user_id,workflow_type,status,current_step,checkpoint_state,checkpoint_version,idempotency_key,correlation_id,started_at)
         values(${userId},'focus','running','active',${tx.json({
-          sessionId: session.id, taskId: task.id, planItemId: action.planItemId, lastMessageId: messageId
+          sessionId: session.id, taskId: task.id, planItemId: action.planItemId, durationMinutes, lastMessageId: messageId
         })},0,${`focus:${session.id}`},gen_random_uuid(),${now}) returning *
       `;
       const workflow = mapWorkflow(workflows[0]!);
@@ -184,7 +187,50 @@ export class SupabaseFocusRepository implements FocusRepository {
     });
   }
 
-  async complete(userId: UserId, planDate: string, now: Date, messageId: string): Promise<CompleteFocusResult | null> {
+  async extend(userId: UserId, now: Date, messageId: string): Promise<boolean> {
+    return this.sql.begin(async (tx) => {
+      const state = await this.lockActive(tx, userId);
+      if (!state || state.workflow.currentStep !== "active") return false;
+      if (state.workflow.checkpoint.lastMessageId === messageId) return true;
+      await this.updateWorkflow(tx, state.workflow, "active", "running", {
+        ...state.workflow.checkpoint,
+        durationMinutes: (state.workflow.checkpoint.durationMinutes ?? 25) + 15,
+        lastMessageId: messageId
+      }, now);
+      await event(tx, {
+        userId, eventType: "focus_extended", aggregateType: "focus_session", aggregateId: state.session.id,
+        occurredAt: now, correlationId: state.workflow.correlationId, workflowRunId: state.workflow.id,
+        idempotencyKey: `focus-extend:${messageId}`, payload: { added_minutes: 15 }
+      });
+      return true;
+    });
+  }
+
+  async pause(userId: UserId, planDate: string, now: Date, messageId: string): Promise<boolean> {
+    return this.sql.begin(async (tx) => {
+      const state = await this.lockActive(tx, userId);
+      if (!state || state.workflow.currentStep !== "active") return false;
+      const minutes = elapsedMinutes(state.session.started_at, now);
+      await tx`update public.focus_sessions set status='paused',paused_at=${now},end_reason='user_paused',actual_minutes=actual_minutes+${minutes} where id=${state.session.id} and user_id=${userId}`;
+      await tx`update public.tasks set actual_minutes=actual_minutes+${minutes},updated_at=${now} where id=${state.session.task_id} and user_id=${userId}`;
+      if (state.session.plan_item_id) await tx`update public.plan_items set status='switched',updated_at=${now} where id=${state.session.plan_item_id} and user_id=${userId}`;
+      await this.updateWorkflow(tx, state.workflow, "completed", "completed", { ...state.workflow.checkpoint, lastMessageId: messageId }, now, now);
+      await event(tx, {
+        userId, eventType: "focus_paused", aggregateType: "focus_session", aggregateId: state.session.id,
+        occurredAt: now, correlationId: state.workflow.correlationId, workflowRunId: state.workflow.id,
+        idempotencyKey: `focus-pause:${messageId}`, payload: { task_id: state.session.task_id, actual_minutes: minutes }
+      });
+      await event(tx, {
+        userId, eventType: "replan_triggered", aggregateType: state.session.plan_item_id ? "plan_item" : "task",
+        aggregateId: state.session.plan_item_id ?? state.session.task_id, occurredAt: now,
+        correlationId: state.workflow.correlationId, workflowRunId: state.workflow.id,
+        idempotencyKey: `focus-pause-replan:${messageId}`, payload: { reason: "task_switched", replan_executed: false }
+      });
+      return true;
+    });
+  }
+
+  async complete(userId: UserId, planDate: string, now: Date, messageId: string, timeZone = "Asia/Seoul"): Promise<CompleteFocusResult | null> {
     return this.sql.begin(async (tx) => {
       const prior = await tx<{ payload: unknown }[]>`
         select payload from public.domain_events where user_id=${userId} and idempotency_key=${`focus-complete:${messageId}`}
@@ -197,7 +243,7 @@ export class SupabaseFocusRepository implements FocusRepository {
           return context ? { kind: "next_step", context } : null;
         }
         const title = String(payload.task_title ?? "Task");
-        return { kind: "task_completed", taskTitle: title, nextAction: await deriveCurrentAction(tx, userId, planDate) };
+        return { kind: "task_completed", taskTitle: title, nextAction: await deriveCurrentAction(tx, userId, planDate, timeZone, now) };
       }
       const sessions = await tx<SessionRow[]>`
         select * from public.focus_sessions where user_id=${userId} and status='active' limit 1 for update
@@ -288,7 +334,7 @@ export class SupabaseFocusRepository implements FocusRepository {
           });
         }
       }
-      return { kind: "task_completed", taskTitle: task.title, nextAction: await deriveCurrentAction(tx, userId, planDate) };
+      return { kind: "task_completed", taskTitle: task.title, nextAction: await deriveCurrentAction(tx, userId, planDate, timeZone, now) };
     });
   }
 

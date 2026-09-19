@@ -627,6 +627,31 @@ button { color: inherit; }
 .game-dock { bottom: 16px; gap: 7px; padding: 7px 9px 9px; border-radius: 20px; background: linear-gradient(180deg, var(--lh-wood-light), var(--lh-wood)); }.game-dock button { width: 56px; height: 52px; border-radius: 13px; color: #fff5df; }.game-dock button:not(.active) { opacity: .86; }.game-dock button:hover { background: rgba(255,244,220,.18); }.game-dock i { font-size: 21px; }.game-dock .active { background: var(--lh-panel); color: var(--lh-text); box-shadow: 0 5px 0 rgba(72,48,34,.28); transform: translateY(-6px); }
 @media (max-width: 1050px) { .tycoon-home { padding-top: 8px; }.tycoon-office { min-height: 820px; }.quest-console { top: 7%; }.office-station { transform: scale(.8); }.tycoon-chief-command { top: 52%; } }
 @media (max-width: 720px) { .tycoon-home { padding-top: 0; }.tycoon-office { min-height: 1030px; border-radius: 22px; }.office-wordmark { top: 13px; left: 15px; }.world-calendar-button { top: 10px; right: 11px; }.quest-console { top: 52px; }.quest-console > header { margin-bottom: 9px; }.missions-board { top: 590px; }.office-station { transform: scale(.7); }.game-dock { gap: 2px; padding: 5px 6px 7px; }.game-dock button { width: 49px; height: 46px; }.review-toast { bottom: 88px; }.tycoon-chief-command { display: none; } }
+/* Home execution: actionable quests remain compact inside the existing world. */
+.quest-console .mission-meta { display: flex; margin: 8px 0 0; }
+.quest-console .mission-meta div { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 9px; }
+.quest-console .mission-meta strong { font-size: 13px; }
+.quest-console .mission-actions:empty { display: none; }
+.next-quest-row { display: flex; align-items: center; gap: 5px; }
+.next-quest-row > button { flex: 1; }
+.next-quests .quest-check, .plan-review-list .quest-check { display: grid; place-items: center; width: 28px; height: 28px; min-height: 28px; padding: 0; border: 2px solid var(--lh-outline); border-radius: 8px; background: var(--lh-panel); color: transparent; box-shadow: 0 2px 0 rgba(93,73,61,.23); cursor: pointer; }
+.next-quests .quest-check:hover, .plan-review-list .quest-check:hover { color: var(--lh-green); background: var(--lh-panel-soft); }
+.next-quests .next-quest-row > button { grid-template-columns: minmax(0,1fr) auto 14px; }
+.next-quests .all-quests-link { display: block; margin: 5px 2px 0 auto; padding: 4px 0; border: 0; background: transparent; color: var(--lh-wood-dark); cursor: pointer; font-size: 10px; font-weight: 800; }
+.capacity-panel { padding: 6px 9px; }
+.capacity-panel header { display: none; }
+.capacity-values { gap: 5px; }
+.capacity-values span { padding: 5px 7px; }
+.capacity-panel p { margin: 4px 0 0; font-size: 9px; }
+.focus-session-controls { display: grid; justify-items: center; gap: 8px; }
+.focus-session-controls > strong { color: var(--lh-wood-dark); font-size: 14px; }
+.focus-session-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 7px; }
+.focus-session-actions button { min-height: 38px; padding: 7px 13px; border: 2px solid var(--lh-outline); border-radius: 10px; background: var(--lh-panel-warm); box-shadow: 0 3px 0 rgba(93,73,61,.24); cursor: pointer; font-weight: 800; }
+.focus-session-actions button.is-ready { background: var(--lh-yellow); }
+.plan-review-list > h3 { margin: 12px 0 2px; color: var(--lh-wood-dark); font-size: 12px; }
+.plan-review-capacity { margin: 8px 0 0; color: var(--lh-wood-dark); font-size: 11px; font-weight: 800; }
+.plan-row-actions { display: flex; align-items: center; gap: 5px; }
+.plan-review-list .fixed-schedule-row { background: var(--lh-panel-soft); }
 .work-section { margin-top: 18px; border: 1px solid var(--line); border-radius: 15px; background: rgba(255,253,248,.88); overflow: hidden; }
 .work-section > header { display: flex; align-items: center; justify-content: space-between; padding: 17px 20px; border-bottom: 1px solid var(--line); }
 .work-section > header b { display: grid; place-items: center; min-width: 28px; height: 28px; border-radius: 10px; background: #e4efe8; color: var(--green-deep); font-size: 12px; }

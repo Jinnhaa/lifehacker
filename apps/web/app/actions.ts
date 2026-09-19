@@ -13,6 +13,8 @@ import {
 } from "../lib/home-server";
 import type { ChiefActionState, RuntimeActionState } from "../lib/home-types";
 import { zonedDateTimeToUtc } from "@amber/shared";
+import { completeManualQuest, completeManualRoutine } from "@amber/core";
+import type { TaskId } from "@amber/shared";
 
 const profileTimeZone = async (): Promise<string> => {
   const rows = await getWebSql()<{ timezone: string }[]>`select timezone from public.profiles where id=${getWebUserId()}`;
@@ -111,6 +113,27 @@ export const runFocusAction = async (_previous: RuntimeActionState, formData: Fo
     return { status: "success", message: result.reply ?? "Focus 상태를 갱신했습니다." };
   } catch (error) {
     return runtimeError(error, "Focus 처리에 실패했습니다.");
+  }
+};
+
+export const completeHomeQuestAction = async (_previous: RuntimeActionState, formData: FormData): Promise<RuntimeActionState> => {
+  try {
+    const taskId = String(formData.get("taskId") ?? "");
+    const stepId = String(formData.get("stepId") ?? "");
+    const occurrenceId = String(formData.get("occurrenceId") ?? "");
+    if ((taskId && !/^[0-9a-f-]{36}$/i.test(taskId)) || (stepId && !/^[0-9a-f-]{36}$/i.test(stepId))
+      || (occurrenceId && !/^[0-9a-f-]{36}$/i.test(occurrenceId)) || (!taskId && !occurrenceId)) {
+      return { status: "error", message: "완료할 Quest를 확인할 수 없습니다." };
+    }
+    const sql = getWebSql();
+    const result = occurrenceId ? (await completeManualRoutine(sql, getWebUserId(), occurrenceId), "routine" as const)
+      : await completeManualQuest(sql, getWebUserId(), taskId as TaskId, stepId || undefined);
+    if (result !== "step") await createWebReplanService(sql).processLatestTrigger(getWebUserId(), await profileTimeZone(), new Date());
+    revalidatePath("/");
+    revalidatePath("/work");
+    return { status: "success", message: result === "step" ? "Step을 완료했습니다." : "Quest를 완료하고 남은 계획을 확인했습니다." };
+  } catch (error) {
+    return runtimeError(error, "Quest 완료 처리에 실패했습니다.");
   }
 };
 

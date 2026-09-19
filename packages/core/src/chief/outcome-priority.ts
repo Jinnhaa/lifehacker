@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { getDaysUntilDeadline } from "../rules/deadline.js";
+import { isTaskOverdue } from "../rules/task-overdue.js";
 import { calculateTaskWorkload, createMorningPlan } from "../morning/morning-planner.js";
 import type { MorningObservation, TimeInterval } from "../morning/morning.js";
 
@@ -48,7 +49,8 @@ const labels: Record<z.infer<typeof reasonCodeSchema>, string> = {
 export function judgeOutcomes(input: OutcomeInput): OutcomeJudgment {
   const { observation, now } = input;
   const evidence = observation.outcomeEvidence;
-  const candidates = observation.tasks.filter(t => ["INBOX", "PLANNED", "IN_PROGRESS", "BLOCKED", "WAITING_FOR_USER"].includes(t.status));
+  const candidates = observation.tasks.filter(t => ["INBOX", "PLANNED", "IN_PROGRESS", "BLOCKED", "WAITING_FOR_USER"].includes(t.status)
+    && !isTaskOverdue(t, now, observation.timeZone));
   const blocked = new Set(candidates.filter(t => ["BLOCKED", "WAITING_FOR_USER"].includes(t.status)).map(t => t.id as string));
   for (const edge of evidence?.dependencies ?? []) if (!edge.completed) blocked.add(edge.taskId);
   for (const task of candidates) {

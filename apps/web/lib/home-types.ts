@@ -1,5 +1,8 @@
 export type HomeTimelineItem = {
   readonly id: string;
+  readonly taskId?: string | null;
+  readonly stepId?: string | null;
+  readonly occurrenceId?: string | null;
   readonly kind: "task" | "routine" | "rest" | "buffer" | "calendar";
   readonly title: string;
   readonly startsAt: string;
@@ -29,9 +32,12 @@ export type HomePlanReview = {
   readonly totalMinutes: number;
   readonly items: readonly {
     readonly id: string;
+    readonly taskId: string | null;
+    readonly stepId: string | null;
+    readonly occurrenceId: string | null;
     readonly title: string;
     readonly context: string | null;
-    readonly itemType: "task" | "study" | "routine" | "rest" | "buffer";
+    readonly itemType: "task" | "study" | "routine" | "rest" | "buffer" | "calendar";
     readonly startsAt: string;
     readonly endsAt: string;
     readonly minutes: number;
@@ -45,7 +51,8 @@ export type HomeWeekDay = {
 };
 
 export type HomeViewModel = {
-  readonly outcomePriority?: { readonly judgment: import("@amber/core").OutcomeJudgment; readonly decisionId: string } | null;
+  readonly outcomePriority?: { readonly judgment: OutcomeJudgment; readonly decisionId: string } | null;
+  readonly missionProgress: Readonly<Record<string, { readonly completed: number; readonly total: number }>>;
   readonly configured: boolean;
   readonly error: string | null;
   readonly date: string;
@@ -60,6 +67,7 @@ export type HomeViewModel = {
     readonly reason: string | null;
   };
   readonly approvedPlan: null | { readonly id: string; readonly revisionNo: number };
+  readonly availableMinutes: number | null;
   readonly planReview: HomePlanReview | null;
   readonly planState: {
     readonly status: "no_plan" | "pending_approval" | "approved";
@@ -76,6 +84,8 @@ export type HomeViewModel = {
     readonly taskId: string;
     readonly category: string | null;
     readonly startedAt: string | null;
+    readonly durationMinutes: number;
+    readonly stepTitle: string | null;
   };
   readonly reviewArtifacts: readonly {
     readonly id: string;
@@ -91,7 +101,7 @@ export type HomeViewModel = {
   readonly goals: readonly { readonly name: string; readonly status: string }[];
   readonly agents: readonly { readonly name: string; readonly status: string; readonly detail: string }[];
   readonly decisionCount: number;
-  readonly projectRuntime: readonly import("@amber/core").ProjectRuntimeSummary[];
+  readonly projectRuntime: readonly ProjectRuntimeSummary[];
   readonly proposal: null | {
     readonly planId: string;
     readonly revisionNo: number;
@@ -105,3 +115,4 @@ export type HomeViewModel = {
 
 export type ChiefActionState = { readonly status: "idle" | "success" | "error"; readonly message: string };
 export type RuntimeActionState = ChiefActionState;
+import type { OutcomeJudgment, ProjectRuntimeSummary } from "@amber/core";

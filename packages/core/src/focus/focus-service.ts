@@ -106,18 +106,30 @@ export class FocusWorkflowService implements FocusMessageHandler {
       const context = await this.repository.resume(message.userId, this.clock.now(), message.messageId);
       return { handled: true, reply: context ? `다시 시작했어.\n\n${formatFocus(context, false)}` : "재개할 Focus가 없어." };
     }
-    if (text === "시작" || text === "시작할게") {
+    const timedStart = /^시작:(\d{1,3})$/.exec(text);
+    if (text === "시작" || text === "시작할게" || timedStart) {
+      const durationMinutes = timedStart ? Number(timedStart[1]) : 25;
+      if (durationMinutes < 1 || durationMinutes > 240) return { handled: true, reply: "집중 시간은 1–240분으로 설정해 줘." };
       if (workflow?.currentStep === "recovery_ready" && workflow.checkpoint.blockCategory !== "missing_material") {
         return { handled: true, reply: "중단한 Focus를 이어가려면 “다시 할게”라고 보내줘." };
       }
-      const result = await this.repository.start(message.userId, planDate, this.clock.now(), message.messageId);
+      const result = await this.repository.start(message.userId, planDate, this.clock.now(), message.messageId, durationMinutes, message.timeZone);
       if (!result.action) return { handled: true, reply: "지금 시작할 Current Action이 없어." };
       if (result.action.kind !== "task") return { handled: true, reply: `현재 행동은 ${result.action.title} 반복활동이야. Task FocusSession은 만들지 않았어.` };
       if (!result.context) return { handled: true, reply: "지금은 Focus를 시작하지 못했어." };
       return { handled: true, reply: result.duplicate ? `이미 집중 중이야.\n\n${formatFocus(result.context, false)}` : `집중을 시작할게.\n\n${formatFocus(result.context, true)}` };
     }
+    if (text === "15분 더") {
+      const extended = await this.repository.extend(message.userId, this.clock.now(), message.messageId);
+      return { handled: true, reply: extended ? "집중 시간을 15분 연장했어." : "연장할 active Focus가 없어." };
+    }
+    if (text === "나중에 이어하기") {
+      const paused = await this.repository.pause(message.userId, planDate, this.clock.now(), message.messageId);
+      const adjustment = paused ? await this.replanAdjustment(message) : null;
+      return { handled: true, reply: paused ? adjustment ?? "진행 상태를 저장했어. Task는 완료하지 않았어." : "종료할 active Focus가 없어." };
+    }
     if (text === "완료" || text === "끝") {
-      const result = await this.repository.complete(message.userId, planDate, this.clock.now(), message.messageId);
+      const result = await this.repository.complete(message.userId, planDate, this.clock.now(), message.messageId, message.timeZone);
       if (!result) return { handled: true, reply: "완료할 active Focus가 없어." };
       const adjustment = await this.replanAdjustment(message);
       return {

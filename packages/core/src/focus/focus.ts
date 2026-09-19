@@ -40,6 +40,7 @@ export interface FocusCheckpoint {
   readonly sessionId: string;
   readonly taskId: string;
   readonly planItemId: string | null;
+  readonly durationMinutes?: number;
   readonly blockCategory?: BlockCategory;
   readonly blockDetail?: string;
   readonly pendingStepSplit?: boolean;
@@ -75,8 +76,10 @@ export interface SwitchResult {
 
 export interface FocusRepository {
   findCurrentWorkflow(userId: UserId): Promise<FocusWorkflowRun | null>;
-  start(userId: UserId, planDate: string, now: Date, messageId: string): Promise<{ readonly context: FocusContext | null; readonly action: DerivedCurrentAction | null; readonly duplicate: boolean }>;
-  complete(userId: UserId, planDate: string, now: Date, messageId: string): Promise<CompleteFocusResult | null>;
+  start(userId: UserId, planDate: string, now: Date, messageId: string, durationMinutes?: number, timeZone?: string): Promise<{ readonly context: FocusContext | null; readonly action: DerivedCurrentAction | null; readonly duplicate: boolean }>;
+  extend(userId: UserId, now: Date, messageId: string): Promise<boolean>;
+  pause(userId: UserId, planDate: string, now: Date, messageId: string): Promise<boolean>;
+  complete(userId: UserId, planDate: string, now: Date, messageId: string, timeZone?: string): Promise<CompleteFocusResult | null>;
   requestBlockReason(userId: UserId, now: Date, messageId: string): Promise<FocusContext | null>;
   waitForBlockDetail(userId: UserId, category: "missing_material" | "other", initialDetail: string, now: Date, messageId: string): Promise<void>;
   recordBlock(userId: UserId, planDate: string, category: BlockCategory, detail: string, now: Date, messageId: string): Promise<RecoveryResult | null>;
