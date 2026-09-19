@@ -4,7 +4,7 @@ import { useActionState, useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation";
 import { decideChiefReplan, decideProjectBacklogAction, editTodayPlan, requestChiefReplan, reviewArtifactAction, runFocusAction, runMorningAction, runProjectRuntimeAction } from "../app/actions";
 import type { ChiefActionState, HomeViewModel } from "../lib/home-types";
-import { TodayCalendar, WeekCalendarOverlay } from "./calendar-views";
+import { WeekCalendarOverlay } from "./calendar-views";
 
 const initialActionState: ChiefActionState = { status: "idle", message: "" };
 const changeLabel = { kept: "유지", moved: "이동", removed: "제외", added: "추가", duration_changed: "duration 변경" } as const;
@@ -98,8 +98,8 @@ function FocusTimer({ startedAt }: { startedAt: string | null }) {
   return <time className="focus-timer" dateTime={`PT${minutes}M${elapsedSeconds % 60}S`}>{String(Math.floor(minutes / 60)).padStart(2, "0")}:{String(minutes % 60).padStart(2, "0")}:{String(elapsedSeconds % 60).padStart(2, "0")}</time>;
 }
 
-function CurrentMission({ data, openChief, replanAction, replanPending, focusAction, focusPending, focusFeedback, morningAction, morningPending, morningFeedback }: {
-  data: HomeViewModel; openChief: () => void;
+function CurrentMission({ data, openChief, onOpenWork, replanAction, replanPending, focusAction, focusPending, focusFeedback, morningAction, morningPending, morningFeedback }: {
+  data: HomeViewModel; openChief: () => void; onOpenWork: () => void;
   replanAction: (payload: FormData) => void; replanPending: boolean;
   focusAction: (payload: FormData) => void; focusPending: boolean; focusFeedback: ChiefActionState;
   morningAction: (payload: FormData) => void; morningPending: boolean; morningFeedback: ChiefActionState;
@@ -113,7 +113,7 @@ function CurrentMission({ data, openChief, replanAction, replanPending, focusAct
     <div className="mission-copy"><small>{activeFocus ? "FOCUS MODE" : action ? "NOW" : recommendation ? "NEXT RECOMMENDATION" : "NOW"}</small>
       {!data.configured ? <><h1>연결 설정이 필요합니다</h1><p>{data.error}</p></>
         : activeFocus ? <><h1>{title}</h1><FocusTimer startedAt={data.focus?.startedAt ?? null} /></>
-          : <><h1>{title}</h1><p>{action?.context ?? (recommendation ? "Current Action이 없을 때의 다음 추천" : data.approvedPlan ? "오늘 계획의 실행 가능한 항목을 모두 확인했습니다." : "Morning에서 오늘 계획을 승인해 주세요.")}</p>{reason && <p className="mission-reason">{reason}</p>}</>}</div>
+          : <><button type="button" className="main-quest-link" onClick={onOpenWork}><h1>{title}</h1></button><p>{action?.context ?? (recommendation ? "Current Action이 없을 때의 다음 추천" : data.approvedPlan ? "오늘 계획의 실행 가능한 항목을 모두 확인했습니다." : "Morning에서 오늘 계획을 승인해 주세요.")}</p>{reason && <p className="mission-reason">{reason}</p>}</>}</div>
     {!activeFocus && <div className="mission-meta"><div><small>예상 시간</small><strong>{action?.minutes ? `${action.minutes}분` : recommendation?.minutes ? `${recommendation.minutes}분` : "—"}</strong></div><div><small>상태</small><strong>{action ? "실행 가능" : recommendation ? "다음 추천" : "대기"}</strong></div><div><small>PLAN</small><strong>{data.approvedPlan ? `v${data.approvedPlan.revisionNo}` : "—"}</strong></div></div>}
     <div className="mission-actions">
       {data.planState.status === "no_plan" && <form action={morningAction}><input type="hidden" name="command" value="일어남" /><button className="focus-button" type="submit" disabled={morningPending}>{morningPending ? "계획 준비 중…" : "오늘 계획 만들기"}</button></form>}
@@ -196,6 +196,57 @@ function ProjectRuntimeOverlay({ data, action, decisionAction, pending, decision
   </div>;
 }
 
+const stationAsset = {
+  chief: "/assets/tycoon/characters/chief/idle.webp",
+  project: "/assets/tycoon/characters/project-pm/idle.webp",
+  learning: "/assets/tycoon/characters/university/idle.webp"
+} as const;
+
+function OfficeStation({ kind, title, detail, onClick }: {
+  kind: keyof typeof stationAsset; title: string; detail: string; onClick: () => void;
+}) {
+  return <button className={`office-station ${kind}`} type="button" onClick={onClick} aria-label={`${title}: ${detail}`}>
+    <span className="station-back" /><img className="station-character-asset" src={stationAsset[kind]} alt="" />
+    <span className="station-desk"><i /><b /></span><span className="station-badge"><i />{detail}</span><strong>{title}</strong>
+  </button>;
+}
+
+function FocusDurationSelector() {
+  const [duration, setDuration] = useState("25");
+  return <div className="focus-duration" aria-label="집중 시간 선택"><span>FOCUS</span>{["25", "45", "60"].map((value) => <button type="button" key={value} className={duration === value ? "selected" : ""} onClick={() => setDuration(value)}>{value}</button>)}<label className={duration === "custom" ? "selected" : ""}>직접<input aria-label="직접 집중 시간" type="number" min="1" max="240" placeholder="분" onFocus={() => setDuration("custom")} /></label></div>;
+}
+
+function NextQuests({ data, onOpenWork }: { data: HomeViewModel; onOpenWork: () => void }) {
+  const items = data.timeline.filter((item) => item.kind === "task" && item.title !== data.currentAction?.title).slice(0, 3);
+  return <section className="next-quests" aria-labelledby="next-quests-title"><header><small>QUEUE</small><h2 id="next-quests-title">Next Quests</h2></header>
+    {items.length ? <ol>{items.map((item, index) => <li key={item.id}><button type="button" onClick={onOpenWork}><b>0{index + 1}</b><span><strong>{item.title}</strong><small>{item.context ?? "오늘 계획"}</small></span><em>{item.minutes}분</em><i>›</i></button></li>)}</ol> : <p className="quest-empty">다음 Quest는 오늘 계획이 준비되면 표시됩니다.</p>}
+  </section>;
+}
+
+function Capacity({ data }: { data: HomeViewModel }) {
+  const required = data.timeline.filter((item) => item.kind === "task").reduce((sum, item) => sum + item.minutes, 0);
+  // The Home view model exposes whether capacity is known, not a numeric availability value.
+  // Keep the real planned requirement visible, but never present a guessed "available" figure.
+  const available = null;
+  const difference = available === null ? null : available - required;
+  const meter = available === null || required === 0 ? 0 : Math.min(100, Math.round(required / Math.max(available, 1) * 100));
+  return <section className="capacity-panel" aria-labelledby="capacity-title"><header><small>TODAY CAPACITY</small><h2 id="capacity-title">오늘의 여력</h2></header><div className="capacity-values"><span><small>AVAILABLE</small><b>{available === null ? "—" : `${available}분`}</b></span><span><small>REQUIRED</small><b>{required ? `${required}분` : "—"}</b></span><span className={difference !== null && difference < 0 ? "risk" : ""}><small>DIFF</small><b>{difference === null ? "—" : `${difference > 0 ? "+" : ""}${difference}분`}</b></span></div><div className="capacity-meter"><i style={{ width: `${meter}%` }} /></div><p>{available === null ? "Chief가 가능한 시간을 확인하면 여력을 계산합니다." : difference !== null && difference < 0 ? "필요 시간이 가용 시간을 넘습니다. Chief에게 조정을 요청하세요." : "현재 계획은 오늘의 실행 범위 안에 있습니다."}</p></section>;
+}
+
+function MissionsBoard({ data }: { data: HomeViewModel }) {
+  const judgment = data.outcomePriority?.judgment;
+  const clear = judgment?.todayPriority[0] ?? null;
+  const levelUp = judgment?.todayPriority.slice(1).find((item) => item.reasonCodes.includes("GOAL")) ?? judgment?.todayPriority[1] ?? null;
+  const bonus = judgment?.futureRelief ?? null;
+  const rows = [["🔥", "Clear Quest", clear], ["🌱", "Level-up Quest", levelUp], ["✨", "Bonus Quest", bonus]] as const;
+  return <aside className="missions-board" aria-labelledby="missions-title"><header><small>DAILY MISSION BOARD</small><h2 id="missions-title">Today's Missions</h2></header><div>{rows.map(([icon, label, item]) => <article key={label} className={!item ? "empty" : ""}><span>{icon}</span><div><small>{label}</small><strong>{item?.outcome ?? "아직 배정된 Quest가 없습니다"}</strong></div>{item && <em>{item.minutes}m</em>}</article>)}</div></aside>;
+}
+
+function GameDock({ router }: { router: ReturnType<typeof useRouter> }) {
+  const items = [["⌂", "Home", "/"], ["✓", "Work", "/work"], ["▣", "Projects", "/projects"], ["✦", "Learning", "/learning"], ["⚙", "Settings", "/settings"]] as const;
+  return <nav className="game-dock" aria-label="게임 도크">{items.map(([icon, label, href], index) => <button type="button" className={index === 0 ? "active" : ""} key={label} onClick={() => router.push(href)} aria-label={label}><i>{icon}</i><span>{label}</span></button>)}</nav>;
+}
+
 export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel }) {
   const router = useRouter();
   const [actionState, submitAction, pending] = useActionState(requestChiefReplan, initialActionState);
@@ -209,6 +260,8 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
   const [weekOpen, setWeekOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [projectOpen, setProjectOpen] = useState(false);
+  const [planOpen, setPlanOpen] = useState(false);
+  const [proposalOpen, setProposalOpen] = useState(false);
   const commandRef = useRef<HTMLInputElement>(null);
   const chiefRef = useRef<HTMLDivElement>(null);
   const openChief = useCallback(() => {
@@ -238,24 +291,22 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
   const feedback = decisionState.message || actionState.message;
   const feedbackStatus = decisionState.message ? decisionState.status : actionState.status;
 
-  return <main className="tycoon-shell mission-control-shell">
-    <header className="world-header">
-      <div className="brand"><span className="brand-mark">A</span><div><strong>Amber HQ</strong><small>{date}</small></div></div>
-      <div className="world-status"><span className={initialData.configured ? "online" : "offline"}><i />{initialData.configured ? "HQ ONLINE" : "SETUP NEEDED"}</span><button type="button" onClick={() => setWeekOpen(true)} title={initialData.calendar.activeProviders.length ? `${initialData.calendar.activeProviders.join(", ")} 동기화 상태` : "연결된 Calendar 없음"}>CALENDAR <b>{calendarCount}</b></button><button type="button" onClick={() => setReviewOpen(true)}>REVIEW <b>{initialData.decisionCount}</b></button><button type="button" onClick={() => setProjectOpen(true)}>PROJECT</button><button type="button" onClick={() => router.push("/settings/integrations")}>SETTINGS</button></div>
-    </header>
-
-    <section className="mission-control-layout">
-      <CurrentMission data={initialData} openChief={openChief} replanAction={submitAction} replanPending={pending} focusAction={submitFocus} focusPending={focusPending} focusFeedback={focusState} morningAction={submitMorning} morningPending={morningPending} morningFeedback={morningState} />
-      <section className="today-flow-panel"><TodayCalendar items={initialData.timeline} timeZone={initialData.timeZone} onOpenWeek={() => setWeekOpen(true)} /></section>
-      <QuestHud data={initialData} />
-      <PlanReviewPanel data={initialData} morningAction={submitMorning} morningPending={morningPending} />
-      <section className="chief-command-panel" ref={chiefRef}>
-        <header><div><small>CHIEF</small><strong>오늘 흐름 조정</strong></div><button type="button" onClick={() => chiefOpen ? setChiefOpen(false) : openChief()} disabled={!initialData.configured} aria-expanded={chiefOpen}>조정 요청</button></header>
-        {chiefOpen && <form action={submitAction}><input id="chief-command" ref={commandRef} name="command" placeholder="예: 지금 작업 미루기, 2시간 휴식" aria-label="Chief에게 일정 조정 요청" disabled={!initialData.configured || pending} /><button type="submit" disabled={!initialData.configured || pending}>{pending ? "계산 중…" : "변경안 만들기"}</button></form>}
-        {feedback && <p className={`command-feedback ${feedbackStatus}`} role="status">{feedback}</p>}
-      </section>
+  return <main className={`tycoon-shell tycoon-home ${initialData.focus?.step === "active" ? "is-focus-mode" : ""}`}>
+    <header className="tycoon-world-header"><div className="brand"><span className="brand-mark">A</span><div><strong>Amber HQ</strong><small>{date}</small></div></div><div><span className={initialData.configured ? "online" : "offline"}><i />{initialData.configured ? "HQ ONLINE" : "SETUP NEEDED"}</span><button type="button" onClick={() => setWeekOpen(true)}>일정 {calendarCount}</button></div></header>
+    <section className="tycoon-office" aria-label="Amber HQ Office World">
+      <div className="office-floor" /><div className="office-zone zone-chief" /><div className="office-zone zone-project" /><div className="office-zone zone-learning" />
+      <OfficeStation kind="chief" title="Chief" detail="Work & Calendar" onClick={() => router.push("/work")} />
+      <OfficeStation kind="project" title="Project PM" detail="Projects" onClick={() => router.push("/projects")} />
+      <OfficeStation kind="learning" title="Learning" detail="Learning" onClick={() => router.push("/learning")} />
+      <section className="quest-console"><header><small>CHIEF'S QUEST CONSOLE</small><button type="button" onClick={() => setPlanOpen(true)}>오늘 계획 보기</button></header><CurrentMission data={initialData} openChief={openChief} onOpenWork={() => router.push("/work")} replanAction={submitAction} replanPending={pending} focusAction={submitFocus} focusPending={focusPending} focusFeedback={focusState} morningAction={submitMorning} morningPending={morningPending} morningFeedback={morningState} /><FocusDurationSelector /><NextQuests data={initialData} onOpenWork={() => router.push("/work")} /><Capacity data={initialData} /></section>
+      <MissionsBoard data={initialData} />
+      <section className="chief-command-panel tycoon-chief-command" ref={chiefRef}><header><div><small>CHIEF RADIO</small><strong>오늘 흐름 조정</strong></div><button type="button" onClick={() => chiefOpen ? setChiefOpen(false) : openChief()} disabled={!initialData.configured} aria-expanded={chiefOpen}>조정</button></header>{chiefOpen && <form action={submitAction}><input id="chief-command" ref={commandRef} name="command" placeholder="예: 지금 작업 미루기, 2시간 휴식" aria-label="Chief에게 일정 조정 요청" disabled={!initialData.configured || pending} /><button type="submit" disabled={!initialData.configured || pending}>{pending ? "계산 중…" : "변경안 만들기"}</button></form>}{feedback && <p className={`command-feedback ${feedbackStatus}`} role="status">{feedback}</p>}</section>
+      {initialData.focus?.step === "active" && <div className="focus-spotlight" aria-hidden="true" />}
     </section>
-    {initialData.proposal && <ProposalPanel proposal={initialData.proposal} action={submitDecision} pending={decisionPending} />}
+    {initialData.decisionCount > 0 && <aside className="review-toast"><span>!</span><div><small>REVIEW READY</small><strong>{initialData.reviewArtifacts.length ? `${initialData.reviewArtifacts.length}개의 산출물 검토 대기` : "확인이 필요한 제안이 있습니다"}</strong></div><button type="button" onClick={() => initialData.proposal ? setProposalOpen(true) : setReviewOpen(true)}>검토</button></aside>}
+    <GameDock router={router} />
+    {proposalOpen && initialData.proposal && <div className="runtime-overlay"><ProposalPanel proposal={initialData.proposal} action={submitDecision} pending={decisionPending} /></div>}
+    {planOpen && <div className="runtime-overlay" role="dialog" aria-modal="true" aria-label="오늘 계획"><section className="plan-dialog"><button className="dialog-close" type="button" onClick={() => setPlanOpen(false)} aria-label="오늘 계획 닫기">×</button><PlanReviewPanel data={initialData} morningAction={submitMorning} morningPending={morningPending} /></section></div>}
     {weekOpen && <WeekCalendarOverlay days={initialData.week} today={initialData.date} timeZone={initialData.timeZone} onClose={() => setWeekOpen(false)} />}
     {reviewOpen && <ReviewOverlay data={initialData} action={submitReview} pending={reviewPending} feedback={reviewState} onClose={() => setReviewOpen(false)} />}
     {projectOpen && <ProjectRuntimeOverlay data={initialData} action={submitProject} decisionAction={submitProjectDecision} pending={projectPending} decisionPending={projectDecisionPending} feedback={projectDecisionState.message ? projectDecisionState : projectState} onClose={() => setProjectOpen(false)} onOpenReview={() => { setProjectOpen(false); setReviewOpen(true); }} />}
