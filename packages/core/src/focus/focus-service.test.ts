@@ -4,7 +4,7 @@ import { classifyBlockReason, FocusWorkflowService, formatRecovery } from "./foc
 import type { BlockCategory, FocusContext, FocusRepository, RecoveryResult } from "./focus.js";
 
 const context: FocusContext = {
-  sessionId: "session", taskId: "task", planItemId: "item", taskTitle: "운영체제 과제",
+  sessionId: "session", taskId: "task", activityOccurrenceId: null, planItemId: "item", taskTitle: "운영체제 과제",
   taskCompletionCriteria: "보고서 제출 가능 상태", estimatedMinutes: 60, nextAction: "개요 작성",
   steps: [{
     id: "step", position: 1, title: "서론 작성", owner: "user", estimatedMinutes: 20,

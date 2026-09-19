@@ -48,6 +48,8 @@ export async function completeManualQuest(sql: Sql, userId: UserId, taskId: Task
 /** Uses the existing ActivityOccurrence completion state for a planned routine. */
 export async function completeManualRoutine(sql: Sql, userId: UserId, occurrenceId: string): Promise<void> {
   await sql.begin(async (tx) => {
+    const active = await tx<{ id: string }[]>`select id from public.focus_sessions where user_id=${userId} and activity_occurrence_id=${occurrenceId} and status='active' limit 1 for update`;
+    if (active.length) throw new DomainError("CONFLICT", "진행 중인 Focus는 Focus 화면에서 완료해 주세요.");
     const now = new Date();
     const occurrences = await tx<{ id: string }[]>`
       update public.activity_occurrences o set status='completed',ended_at=${now}

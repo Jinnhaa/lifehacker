@@ -276,7 +276,7 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
       sql<PlanRow[]>`select id,revision_no,input_snapshot,status from public.daily_plans where user_id=${userId} and plan_date=${date} and status in ('approved','pending_approval') order by revision_no desc limit 1`,
       deriveCurrentAction(sql, userId, date, timeZone, now),
       new SupabaseFocusRepository(sql).findCurrentWorkflow(userId),
-      sql<{ started_at: Date }[]>`select started_at from public.focus_sessions where user_id=${userId} and status='active' order by started_at desc limit 1`,
+      sql<{ id: string; started_at: Date; planned_minutes: number | null }[]>`select id,started_at,planned_minutes from public.focus_sessions where user_id=${userId} and status='active' order by started_at desc limit 1`,
       sql<{ name: string; status: string }[]>`select title name,status from public.goals where user_id=${userId} and status='active' order by importance desc,created_at limit 3`,
       sql<{ name: string; run_status: string | null }[]>`
         select i.name,r.status run_status from public.agent_instances i
@@ -313,6 +313,13 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
       pendingPlan ? readItems(sql, userId, pendingPlan.id) : []
     ]);
     const currentItem = currentAction?.planItemId ? approvedItems.find((item) => item.id === currentAction.planItemId) : null;
+    const priority = outcomePriority.judgment.todayPriority.find((item) => item.taskId === (currentAction?.kind === "task" ? currentAction.taskId : null));
+    const whyNow = priority?.reasonCodes.includes("OVERDUE") ? "마감이 지나 우선 확인이 필요해요."
+      : priority?.reasonCodes.includes("DUE_TODAY") ? "오늘 마감이라 먼저 실행해요."
+        : priority?.reasonCodes.includes("DEADLINE_RISK") ? "남은 시간 대비 마감 위험이 있어요."
+          : priority?.reasonCodes.includes("UNBLOCKS") ? "이 일을 마치면 다음 작업을 시작할 수 있어요."
+            : priority?.reasonCodes.includes("GOAL") ? "장기 목표를 위해 오늘 시간을 확보했어요."
+              : "오늘 계획에서 우선 실행하도록 배치했어요.";
     const approvedByKey = new Map(approvedItems.map((item) => [itemKey(item), item]));
     const pendingChanges = pendingItems.filter((item) => {
       const previous = approvedByKey.get(itemKey(item));
@@ -386,11 +393,11 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
       missionProgress,
       currentAction: currentAction ? {
         kind: currentAction.kind, taskId: currentAction.kind === "task" ? currentAction.taskId : null,
-        title: currentAction.title, minutes: currentItem?.planned_minutes ?? null,
+        stepId: currentItem?.step_id ?? null, occurrenceId: currentAction.kind === "routine" ? currentAction.activityOccurrenceId : null,
+        planItemId: currentAction.planItemId,
+        title: currentItem?.step_title ?? currentAction.title, minutes: currentItem?.planned_minutes ?? null,
         context: currentItem?.context_title ?? null, source: currentAction.source,
-        reason: currentAction.source === "focus_session" ? "진행 중인 FocusSession을 유지합니다."
-          : outcomePriority.judgment.todayPriority.find((item) => item.taskId === (currentAction.kind === "task" ? currentAction.taskId : null))?.rationale
-            ?? "승인된 오늘 계획에 포함된 실행 항목입니다."
+        whyNow
       } : null,
       approvedPlan: approved ? { id: approved.id, revisionNo: approved.revision_no } : null,
       availableMinutes: approved ? remainingAvailableMinutes(approved.input_snapshot, now, timeline) : null,
@@ -427,9 +434,10 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
       },
       focus: focus && focus.currentStep !== "completed" ? {
         step: focus.currentStep, taskId: focus.checkpoint.taskId,
+        occurrenceId: focus.checkpoint.activityOccurrenceId ?? null,
         category: focus.checkpoint.blockCategory ?? null,
-        startedAt: focusSessions[0]?.started_at.toISOString() ?? null,
-        durationMinutes: focus.checkpoint.durationMinutes ?? 25,
+        startedAt: focusSessions[0]?.id === focus.checkpoint.sessionId ? focusSessions[0].started_at.toISOString() : null,
+        durationMinutes: focusSessions[0]?.id === focus.checkpoint.sessionId ? focusSessions[0].planned_minutes ?? focus.checkpoint.durationMinutes ?? 25 : focus.checkpoint.durationMinutes ?? 25,
         stepTitle: approvedItems.find((item) => item.task_id === focus.checkpoint.taskId)?.step_title ?? null
       } : null,
       reviewArtifacts,

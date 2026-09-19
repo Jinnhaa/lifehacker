@@ -61,4 +61,16 @@ describe("manual quest completion", () => {
     expect(queries.some((query) => query.includes("replan_triggered"))).toBe(true);
     expect(queries.join(" ")).not.toContain("set actual_minutes");
   });
+  it("does not manually complete a routine while its Focus session is active", async () => {
+    const queries: string[] = [];
+    const sql = ((parts: TemplateStringsArray) => {
+      const query = parts.join("?");
+      queries.push(query);
+      return Promise.resolve(query.includes("from public.focus_sessions") ? [{ id: "active" }] : []);
+    }) as unknown as Sql;
+    Object.assign(sql, { begin: async (callback: (tx: Sql) => Promise<unknown>) => callback(sql) });
+    await expect(completeManualRoutine(sql, "10000000-0000-4000-8000-000000000001" as UserId, "occurrence"))
+      .rejects.toThrow("진행 중인 Focus");
+    expect(queries.some((query) => query.includes("update public.activity_occurrences"))).toBe(false);
+  });
 });

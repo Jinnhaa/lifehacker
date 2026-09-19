@@ -1,3 +1,5 @@
+import type { OutcomeJudgment, ProjectRuntimeSummary } from "@amber/core";
+
 export type HomeTimelineItem = {
   readonly id: string;
   readonly taskId?: string | null;
@@ -60,11 +62,14 @@ export type HomeViewModel = {
   readonly currentAction: null | {
     readonly kind: "task" | "routine" | "rest";
     readonly taskId: string | null;
+    readonly stepId: string | null;
+    readonly occurrenceId: string | null;
+    readonly planItemId: string | null;
     readonly title: string;
     readonly minutes: number | null;
     readonly context: string | null;
     readonly source: string;
-    readonly reason: string | null;
+    readonly whyNow: string;
   };
   readonly approvedPlan: null | { readonly id: string; readonly revisionNo: number };
   readonly availableMinutes: number | null;
@@ -81,7 +86,8 @@ export type HomeViewModel = {
   };
   readonly focus: null | {
     readonly step: "active" | "awaiting_block_reason" | "awaiting_missing_detail" | "awaiting_other_detail" | "recovery_ready" | "awaiting_switch_confirmation";
-    readonly taskId: string;
+    readonly taskId: string | null;
+    readonly occurrenceId: string | null;
     readonly category: string | null;
     readonly startedAt: string | null;
     readonly durationMinutes: number;
@@ -115,4 +121,3 @@ export type HomeViewModel = {
 
 export type ChiefActionState = { readonly status: "idle" | "success" | "error"; readonly message: string };
 export type RuntimeActionState = ChiefActionState;
-import type { OutcomeJudgment, ProjectRuntimeSummary } from "@amber/core";

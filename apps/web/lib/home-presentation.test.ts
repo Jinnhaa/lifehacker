@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activeHomeQuests, remainingAvailableMinutes, splitTodayPlan } from "./home-presentation";
+import { activeHomeQuests, defaultFocusMinutes, focusRemainingSeconds, remainingAvailableMinutes, splitTodayPlan } from "./home-presentation";
 import type { HomeTimelineItem } from "./home-types";
 
 const item = (id: string, overrides: Partial<HomeTimelineItem> = {}): HomeTimelineItem => ({
@@ -8,6 +8,18 @@ const item = (id: string, overrides: Partial<HomeTimelineItem> = {}): HomeTimeli
 });
 
 describe("Home execution presentation", () => {
+  it("uses the quest estimate as the default Focus duration", () => {
+    expect(defaultFocusMinutes(45)).toBe(45);
+    expect(defaultFocusMinutes(null)).toBe(25);
+    expect(defaultFocusMinutes(300)).toBe(240);
+  });
+  it("counts down from stored timestamps and restores the same time after refresh", () => {
+    const startedAt = "2026-09-19T00:00:00.000Z";
+    expect(focusRemainingSeconds(startedAt, 45, Date.parse(startedAt))).toBe(2_700);
+    expect(focusRemainingSeconds(startedAt, 45, Date.parse(startedAt) + 75_000)).toBe(2_625);
+    expect(focusRemainingSeconds(startedAt, 45, Date.parse(startedAt) + 75_000)).toBe(2_625);
+    expect(focusRemainingSeconds(startedAt, 45, Date.parse(startedAt) + 50 * 60_000)).toBe(0);
+  });
   it("keeps only active approved next quests, excluding the current task", () => {
     expect(activeHomeQuests([
       item("current"), item("next"), item("routine", { kind: "routine", taskId: null, occurrenceId: "occurrence" }), item("done", { status: "completed" }), item("pending", { source: "pending" })

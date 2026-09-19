@@ -21,8 +21,9 @@ interface WorkflowRow {
 }
 
 interface SessionRow {
-  id: string; user_id: string; task_id: string; plan_item_id: string | null;
-  current_step_id: string | null; status: string; started_at: Date; actual_minutes: number;
+  id: string; user_id: string; task_id: string | null; activity_occurrence_id: string | null; plan_item_id: string | null;
+  current_step_id: string | null; status: string; started_at: Date; planned_minutes: number | null;
+  actual_minutes: number; actual_seconds: number;
 }
 
 interface TaskRow {
@@ -42,7 +43,8 @@ const mapCheckpoint = (value: unknown): FocusCheckpoint => {
   const record = asRecord(value);
   return {
     sessionId: String(record.sessionId ?? ""),
-    taskId: String(record.taskId ?? ""),
+    taskId: typeof record.taskId === "string" ? record.taskId : null,
+    activityOccurrenceId: typeof record.activityOccurrenceId === "string" ? record.activityOccurrenceId : null,
     planItemId: typeof record.planItemId === "string" ? record.planItemId : null,
     ...(typeof record.durationMinutes === "number" ? { durationMinutes: record.durationMinutes } : {}),
     ...(typeof record.blockCategory === "string" ? { blockCategory: record.blockCategory as BlockCategory } : {}),
@@ -75,6 +77,14 @@ const mapStep = (row: StepRow): FocusTaskStep => ({
 
 const elapsedMinutes = (startedAt: Date, now: Date): number =>
   Math.max(0, Math.floor((now.getTime() - startedAt.getTime()) / 60_000));
+const elapsedSeconds = (startedAt: Date, now: Date): number =>
+  Math.max(0, Math.floor((now.getTime() - startedAt.getTime()) / 1_000));
+
+const focusedAction = (context: FocusContext): DerivedCurrentAction => context.activityOccurrenceId
+  ? { kind: "routine", source: "focus_session", title: context.taskTitle,
+      activityOccurrenceId: context.activityOccurrenceId, planItemId: context.planItemId }
+  : { kind: "task", source: "focus_session", title: context.taskTitle,
+      taskId: context.taskId!, planItemId: context.planItemId };
 
 const event = async (
   sql: Sql,
@@ -119,10 +129,7 @@ export class SupabaseFocusRepository implements FocusRepository {
       `;
       if (prior[0]) {
         const context = await this.getContext(tx, userId, prior[0].aggregate_id);
-        const action = context ? {
-          kind: "task" as const, source: "focus_session" as const, title: context.taskTitle,
-          taskId: context.taskId, planItemId: context.planItemId
-        } : null;
+        const action = context ? focusedAction(context) : null;
         return { context, action, duplicate: true };
       }
 
@@ -133,16 +140,42 @@ export class SupabaseFocusRepository implements FocusRepository {
         const context = await this.getContext(tx, userId, active[0].id);
         return {
           context,
-          action: context ? {
-            kind: "task" as const, source: "focus_session" as const, title: context.taskTitle,
-            taskId: context.taskId, planItemId: context.planItemId
-          } : null,
+          action: context ? focusedAction(context) : null,
           duplicate: true
         };
       }
 
       const action = await deriveCurrentAction(tx, userId, planDate, timeZone, now);
-      if (!action || action.kind !== "task") return { context: null, action, duplicate: false };
+      if (!action || action.kind === "rest") return { context: null, action, duplicate: false };
+      if (action.kind === "routine") {
+        const occurrences = await tx<{ id: string; status: string; title: string }[]>`
+          select o.id,o.status,a.title from public.activity_occurrences o
+          join public.recurring_activities a on a.id=o.recurring_activity_id and a.user_id=o.user_id
+          where o.id=${action.activityOccurrenceId} and o.user_id=${userId} for update`;
+        if (!occurrences[0] || !["planned", "in_progress", "partial"].includes(occurrences[0].status)) {
+          return { context: null, action: null, duplicate: false };
+        }
+        const sessions = await tx<SessionRow[]>`
+          insert into public.focus_sessions(user_id,activity_occurrence_id,plan_item_id,status,started_at,planned_minutes)
+          values(${userId},${action.activityOccurrenceId},${action.planItemId},'active',${now},${durationMinutes}) returning *`;
+        const session = sessions[0]!;
+        await tx`update public.activity_occurrences set status='in_progress',started_at=coalesce(started_at,${now}) where id=${action.activityOccurrenceId} and user_id=${userId}`;
+        const workflows = await tx<WorkflowRow[]>`
+          insert into public.workflow_runs(user_id,workflow_type,status,current_step,checkpoint_state,checkpoint_version,idempotency_key,correlation_id,started_at)
+          values(${userId},'focus','running','active',${tx.json({
+            sessionId: session.id, taskId: null, activityOccurrenceId: action.activityOccurrenceId,
+            planItemId: action.planItemId, durationMinutes, lastMessageId: messageId
+          })},0,${`focus:${session.id}`},gen_random_uuid(),${now}) returning *`;
+        const workflow = mapWorkflow(workflows[0]!);
+        if (action.planItemId) await tx`update public.plan_items set status='in_progress',updated_at=${now} where id=${action.planItemId} and user_id=${userId}`;
+        await event(tx, {
+          userId, eventType: "focus_started", aggregateType: "focus_session", aggregateId: session.id,
+          occurredAt: now, correlationId: workflow.correlationId, workflowRunId: workflow.id,
+          idempotencyKey: `focus-start:${messageId}`,
+          payload: { activity_occurrence_id: action.activityOccurrenceId, plan_item_id: action.planItemId, planned_minutes: durationMinutes }
+        });
+        return { context: await this.getContext(tx, userId, session.id), action, duplicate: false };
+      }
       const tasks = await tx<TaskRow[]>`select id,title,status,completion_criteria,estimated_minutes,estimated_user_minutes,actual_minutes,next_action from public.tasks where id=${action.taskId} and user_id=${userId} for update`;
       const task = tasks[0];
       if (!task) return { context: null, action: null, duplicate: false };
@@ -151,8 +184,8 @@ export class SupabaseFocusRepository implements FocusRepository {
         where task_id=${task.id} and user_id=${userId} and status<>'completed' order by position
       `;
       const sessions = await tx<SessionRow[]>`
-        insert into public.focus_sessions(user_id,task_id,plan_item_id,current_step_id,status,started_at)
-        values(${userId},${task.id},${action.planItemId},${steps[0]?.id ?? null},'active',${now}) returning *
+        insert into public.focus_sessions(user_id,task_id,plan_item_id,current_step_id,status,started_at,planned_minutes)
+        values(${userId},${task.id},${action.planItemId},${steps[0]?.id ?? null},'active',${now},${durationMinutes}) returning *
       `;
       const session = sessions[0]!;
       if (session.current_step_id) {
@@ -181,7 +214,7 @@ export class SupabaseFocusRepository implements FocusRepository {
       await event(tx, {
         userId, eventType: "focus_started", aggregateType: "focus_session", aggregateId: session.id,
         occurredAt: now, correlationId: workflow.correlationId, workflowRunId: workflow.id,
-        idempotencyKey: `focus-start:${messageId}`, payload: { task_id: task.id, plan_item_id: action.planItemId }
+        idempotencyKey: `focus-start:${messageId}`, payload: { task_id: task.id, plan_item_id: action.planItemId, planned_minutes: durationMinutes }
       });
       return { context: await this.getContext(tx, userId, session.id), action, duplicate: false };
     });
@@ -197,6 +230,7 @@ export class SupabaseFocusRepository implements FocusRepository {
         durationMinutes: (state.workflow.checkpoint.durationMinutes ?? 25) + 15,
         lastMessageId: messageId
       }, now);
+      await tx`update public.focus_sessions set planned_minutes=coalesce(planned_minutes,25)+15 where id=${state.session.id} and user_id=${userId}`;
       await event(tx, {
         userId, eventType: "focus_extended", aggregateType: "focus_session", aggregateId: state.session.id,
         occurredAt: now, correlationId: state.workflow.correlationId, workflowRunId: state.workflow.id,
@@ -211,18 +245,20 @@ export class SupabaseFocusRepository implements FocusRepository {
       const state = await this.lockActive(tx, userId);
       if (!state || state.workflow.currentStep !== "active") return false;
       const minutes = elapsedMinutes(state.session.started_at, now);
-      await tx`update public.focus_sessions set status='paused',paused_at=${now},end_reason='user_paused',actual_minutes=actual_minutes+${minutes} where id=${state.session.id} and user_id=${userId}`;
-      await tx`update public.tasks set actual_minutes=actual_minutes+${minutes},updated_at=${now} where id=${state.session.task_id} and user_id=${userId}`;
+      const seconds = elapsedSeconds(state.session.started_at, now);
+      await tx`update public.focus_sessions set status='paused',paused_at=${now},end_reason='user_paused',actual_minutes=actual_minutes+${minutes},actual_seconds=actual_seconds+${seconds} where id=${state.session.id} and user_id=${userId}`;
+      if (state.session.task_id) await tx`update public.tasks set actual_minutes=actual_minutes+${minutes},updated_at=${now} where id=${state.session.task_id} and user_id=${userId}`;
+      if (state.session.activity_occurrence_id) await tx`update public.activity_occurrences set status='partial',actual_minutes=coalesce(actual_minutes,0)+${minutes} where id=${state.session.activity_occurrence_id} and user_id=${userId}`;
       if (state.session.plan_item_id) await tx`update public.plan_items set status='switched',updated_at=${now} where id=${state.session.plan_item_id} and user_id=${userId}`;
       await this.updateWorkflow(tx, state.workflow, "completed", "completed", { ...state.workflow.checkpoint, lastMessageId: messageId }, now, now);
       await event(tx, {
         userId, eventType: "focus_paused", aggregateType: "focus_session", aggregateId: state.session.id,
         occurredAt: now, correlationId: state.workflow.correlationId, workflowRunId: state.workflow.id,
-        idempotencyKey: `focus-pause:${messageId}`, payload: { task_id: state.session.task_id, actual_minutes: minutes }
+        idempotencyKey: `focus-pause:${messageId}`, payload: { task_id: state.session.task_id, activity_occurrence_id: state.session.activity_occurrence_id, actual_minutes: minutes, actual_seconds: seconds }
       });
       await event(tx, {
-        userId, eventType: "replan_triggered", aggregateType: state.session.plan_item_id ? "plan_item" : "task",
-        aggregateId: state.session.plan_item_id ?? state.session.task_id, occurredAt: now,
+        userId, eventType: "replan_triggered", aggregateType: state.session.plan_item_id ? "plan_item" : state.session.task_id ? "task" : "activity_occurrence",
+        aggregateId: state.session.plan_item_id ?? state.session.task_id ?? state.session.activity_occurrence_id!, occurredAt: now,
         correlationId: state.workflow.correlationId, workflowRunId: state.workflow.id,
         idempotencyKey: `focus-pause-replan:${messageId}`, payload: { reason: "task_switched", replan_executed: false }
       });
@@ -242,8 +278,9 @@ export class SupabaseFocusRepository implements FocusRepository {
           const context = active[0] ? await this.getContext(tx, userId, active[0].id) : null;
           return context ? { kind: "next_step", context } : null;
         }
-        const title = String(payload.task_title ?? "Task");
-        return { kind: "task_completed", taskTitle: title, nextAction: await deriveCurrentAction(tx, userId, planDate, timeZone, now) };
+        const title = String(payload.task_title ?? payload.routine_title ?? "Quest");
+        return { kind: payload.result === "routine_completed" ? "routine_completed" : "task_completed", taskTitle: title,
+          nextAction: await deriveCurrentAction(tx, userId, planDate, timeZone, now) };
       }
       const sessions = await tx<SessionRow[]>`
         select * from public.focus_sessions where user_id=${userId} and status='active' limit 1 for update
@@ -256,6 +293,43 @@ export class SupabaseFocusRepository implements FocusRepository {
       `;
       const workflow = workflows[0] ? mapWorkflow(workflows[0]) : null;
       if (!workflow) throw new Error("Focus workflow missing");
+      if (session.activity_occurrence_id) {
+        const occurrence = await tx<{ title: string; actual_minutes: number | null }[]>`
+          select a.title,o.actual_minutes from public.activity_occurrences o
+          join public.recurring_activities a on a.id=o.recurring_activity_id and a.user_id=o.user_id
+          where o.id=${session.activity_occurrence_id} and o.user_id=${userId} for update`;
+        if (!occurrence[0]) throw new Error("Focused routine missing");
+        const minutes = elapsedMinutes(session.started_at, now);
+        const seconds = elapsedSeconds(session.started_at, now);
+        await tx`update public.focus_sessions set status='completed',ended_at=${now},end_reason='routine_completed',actual_minutes=actual_minutes+${minutes},actual_seconds=actual_seconds+${seconds}
+          where id=${session.id} and user_id=${userId}`;
+        await tx`update public.activity_occurrences set status='completed',ended_at=${now},actual_minutes=coalesce(actual_minutes,0)+${minutes}
+          where id=${session.activity_occurrence_id} and user_id=${userId}`;
+        if (session.plan_item_id) await tx`update public.plan_items set status='completed',updated_at=${now} where id=${session.plan_item_id} and user_id=${userId}`;
+        await this.updateWorkflow(tx, workflow, "completed", "completed", { ...workflow.checkpoint, lastMessageId: messageId }, now, now);
+        await event(tx, {
+          userId, eventType: "activity_occurrence_completed", aggregateType: "activity_occurrence", aggregateId: session.activity_occurrence_id,
+          occurredAt: now, correlationId: workflow.correlationId, workflowRunId: workflow.id,
+          idempotencyKey: `focus-routine-complete:${messageId}`, payload: { source: "focus", actual_minutes: minutes, actual_seconds: seconds }
+        });
+        await event(tx, {
+          userId, eventType: "focus_completed", aggregateType: "focus_session", aggregateId: session.id,
+          occurredAt: now, correlationId: workflow.correlationId, workflowRunId: workflow.id,
+          idempotencyKey: `focus-complete:${messageId}`,
+          payload: { result: "routine_completed", activity_occurrence_id: session.activity_occurrence_id,
+            routine_title: occurrence[0].title, actual_minutes: minutes, actual_seconds: seconds }
+        });
+        const planned = session.planned_minutes;
+        if (planned !== null && minutes !== planned) await event(tx, {
+          userId, eventType: "replan_triggered", aggregateType: session.plan_item_id ? "plan_item" : "activity_occurrence",
+          aggregateId: session.plan_item_id ?? session.activity_occurrence_id, occurredAt: now,
+          correlationId: workflow.correlationId, workflowRunId: workflow.id,
+          idempotencyKey: `focus-complete-replan:${messageId}`,
+          payload: { reason: minutes > planned ? "task_overrun" : "task_completed_early", delta_minutes: minutes - planned, replan_executed: false }
+        });
+        return { kind: "routine_completed", taskTitle: occurrence[0].title,
+          nextAction: await deriveCurrentAction(tx, userId, planDate, timeZone, now) };
+      }
       const tasks = await tx<TaskRow[]>`select id,title,status,completion_criteria,estimated_minutes,estimated_user_minutes,actual_minutes,next_action from public.tasks where id=${session.task_id} and user_id=${userId} for update`;
       const task = tasks[0];
       if (!task) throw new Error("Focused task missing");
@@ -294,8 +368,9 @@ export class SupabaseFocusRepository implements FocusRepository {
 
       assertTaskTransition(task.status as Parameters<typeof assertTaskTransition>[0], "DONE");
       const minutes = elapsedMinutes(session.started_at, now);
+      const seconds = elapsedSeconds(session.started_at, now);
       await tx`
-        update public.focus_sessions set status='completed',ended_at=${now},end_reason='task_completed',actual_minutes=actual_minutes+${minutes}
+        update public.focus_sessions set status='completed',ended_at=${now},end_reason='task_completed',actual_minutes=actual_minutes+${minutes},actual_seconds=actual_seconds+${seconds}
         where id=${session.id} and user_id=${userId}
       `;
       await tx`
@@ -316,7 +391,7 @@ export class SupabaseFocusRepository implements FocusRepository {
         userId, eventType: "focus_completed", aggregateType: "focus_session", aggregateId: session.id,
         occurredAt: now, correlationId: workflow.correlationId, workflowRunId: workflow.id,
         idempotencyKey: `focus-complete:${messageId}`,
-        payload: { result: "task_completed", task_id: task.id, task_title: task.title, actual_minutes: minutes }
+        payload: { result: "task_completed", task_id: task.id, task_title: task.title, actual_minutes: minutes, actual_seconds: seconds }
       });
       const estimate = task.estimated_user_minutes ?? task.estimated_minutes;
       if (estimate !== null) {
@@ -341,10 +416,11 @@ export class SupabaseFocusRepository implements FocusRepository {
   async requestBlockReason(userId: UserId, now: Date, messageId: string): Promise<FocusContext | null> {
     return this.sql.begin(async (tx) => {
       const state = await this.lockActive(tx, userId);
-      if (!state) return null;
+      if (!state || !state.session.task_id) return null;
       const minutes = elapsedMinutes(state.session.started_at, now);
+      const seconds = elapsedSeconds(state.session.started_at, now);
       await tx`
-        update public.focus_sessions set status='paused',paused_at=${now},end_reason='blocked',actual_minutes=actual_minutes+${minutes}
+        update public.focus_sessions set status='paused',paused_at=${now},end_reason='blocked',actual_minutes=actual_minutes+${minutes},actual_seconds=actual_seconds+${seconds}
         where id=${state.session.id} and user_id=${userId}
       `;
       await tx`update public.tasks set actual_minutes=actual_minutes+${minutes},updated_at=${now} where id=${state.session.task_id} and user_id=${userId}`;
@@ -356,7 +432,7 @@ export class SupabaseFocusRepository implements FocusRepository {
         userId, eventType: "focus_paused", aggregateType: "focus_session", aggregateId: state.session.id,
         occurredAt: now, correlationId: state.workflow.correlationId, workflowRunId: state.workflow.id,
         idempotencyKey: `focus-block-request:${messageId}`,
-        payload: { reason: "block_reason_pending", actual_minutes: minutes }
+        payload: { reason: "block_reason_pending", actual_minutes: minutes, actual_seconds: seconds }
       });
       return this.getContext(tx, userId, state.session.id);
     });
@@ -391,7 +467,7 @@ export class SupabaseFocusRepository implements FocusRepository {
       if (!workflow || !["awaiting_block_reason", "awaiting_missing_detail", "awaiting_other_detail"].includes(workflow.currentStep)) return null;
       const sessions = await tx<SessionRow[]>`select * from public.focus_sessions where id=${workflow.checkpoint.sessionId} and user_id=${userId} and status='paused' for update`;
       const session = sessions[0];
-      if (!session) return null;
+      if (!session || !session.task_id) return null;
       const context = await this.getContext(tx, userId, session.id);
       if (!context) return null;
       if (category === "missing_material") {
@@ -439,7 +515,7 @@ export class SupabaseFocusRepository implements FocusRepository {
       if (!workflow || workflow.currentStep !== "recovery_ready") return null;
       const previousSessions = await tx<SessionRow[]>`select * from public.focus_sessions where id=${workflow.checkpoint.sessionId} and user_id=${userId} and status='paused' for update`;
       const previousSession = previousSessions[0];
-      if (!previousSession) return null;
+      if (!previousSession || !previousSession.task_id) return null;
       let currentStepId = previousSession.current_step_id;
       if (workflow.checkpoint.pendingStepSplit && currentStepId) {
         currentStepId = await this.splitCurrentStep(tx, userId, previousSession.task_id, currentStepId, now);
@@ -458,8 +534,8 @@ export class SupabaseFocusRepository implements FocusRepository {
         });
       }
       const sessions = await tx<SessionRow[]>`
-        insert into public.focus_sessions(user_id,task_id,plan_item_id,current_step_id,status,started_at)
-        values(${userId},${previousSession.task_id},${previousSession.plan_item_id},${currentStepId},'active',${now}) returning *
+        insert into public.focus_sessions(user_id,task_id,plan_item_id,current_step_id,status,started_at,planned_minutes)
+        values(${userId},${previousSession.task_id},${previousSession.plan_item_id},${currentStepId},'active',${now},${workflow.checkpoint.durationMinutes ?? previousSession.planned_minutes ?? 25}) returning *
       `;
       const session = sessions[0]!;
       if (session.current_step_id) {
@@ -467,6 +543,7 @@ export class SupabaseFocusRepository implements FocusRepository {
       }
       if (session.plan_item_id) await tx`update public.plan_items set status='in_progress',updated_at=${now} where id=${session.plan_item_id} and user_id=${userId}`;
       await this.updateWorkflow(tx, workflow, "active", "running", {
+        ...workflow.checkpoint,
         sessionId: session.id,
         taskId: session.task_id,
         planItemId: session.plan_item_id,
@@ -484,7 +561,7 @@ export class SupabaseFocusRepository implements FocusRepository {
   async requestSwitch(userId: UserId, now: Date, messageId: string): Promise<FocusContext | null> {
     return this.sql.begin(async (tx) => {
       const state = await this.lockActive(tx, userId);
-      if (!state) return null;
+      if (!state || !state.session.task_id) return null;
       await this.updateWorkflow(tx, state.workflow, "awaiting_switch_confirmation", "waiting_for_user", {
         ...state.workflow.checkpoint, lastMessageId: messageId
       }, now);
@@ -500,11 +577,12 @@ export class SupabaseFocusRepository implements FocusRepository {
   async confirmSwitch(userId: UserId, planDate: string, now: Date, messageId: string): Promise<SwitchResult | null> {
     return this.sql.begin(async (tx) => {
       const state = await this.lockActive(tx, userId);
-      if (!state || state.workflow.currentStep !== "awaiting_switch_confirmation") return null;
+      if (!state || !state.session.task_id || state.workflow.currentStep !== "awaiting_switch_confirmation") return null;
       const tasks = await tx<{ title: string }[]>`select title from public.tasks where id=${state.session.task_id} and user_id=${userId}`;
       const minutes = elapsedMinutes(state.session.started_at, now);
+      const seconds = elapsedSeconds(state.session.started_at, now);
       await tx`
-        update public.focus_sessions set status='paused',paused_at=${now},end_reason='task_switched',actual_minutes=actual_minutes+${minutes}
+        update public.focus_sessions set status='paused',paused_at=${now},end_reason='task_switched',actual_minutes=actual_minutes+${minutes},actual_seconds=actual_seconds+${seconds}
         where id=${state.session.id} and user_id=${userId}
       `;
       await tx`update public.tasks set actual_minutes=actual_minutes+${minutes},updated_at=${now} where id=${state.session.task_id} and user_id=${userId}`;
@@ -565,6 +643,19 @@ export class SupabaseFocusRepository implements FocusRepository {
     const sessions = await sql<SessionRow[]>`select * from public.focus_sessions where id=${sessionId} and user_id=${userId}`;
     const session = sessions[0];
     if (!session) return null;
+    if (session.activity_occurrence_id) {
+      const rows = await sql<{ title: string; expected_minutes: number }[]>`
+        select a.title,a.expected_minutes from public.activity_occurrences o
+        join public.recurring_activities a on a.id=o.recurring_activity_id and a.user_id=o.user_id
+        where o.id=${session.activity_occurrence_id} and o.user_id=${userId}`;
+      if (!rows[0]) return null;
+      return {
+        sessionId: session.id, taskId: null, activityOccurrenceId: session.activity_occurrence_id,
+        planItemId: session.plan_item_id, taskTitle: rows[0].title,
+        taskCompletionCriteria: null, estimatedMinutes: session.planned_minutes ?? rows[0].expected_minutes,
+        nextAction: null, steps: [], currentStep: null
+      };
+    }
     const tasks = await sql<TaskRow[]>`
       select id,title,status,completion_criteria,estimated_minutes,estimated_user_minutes,actual_minutes,next_action
       from public.tasks where id=${session.task_id} and user_id=${userId}
@@ -582,6 +673,7 @@ export class SupabaseFocusRepository implements FocusRepository {
     return {
       sessionId: session.id,
       taskId: task.id,
+      activityOccurrenceId: null,
       planItemId: session.plan_item_id,
       taskTitle: task.title,
       taskCompletionCriteria: task.completion_criteria,

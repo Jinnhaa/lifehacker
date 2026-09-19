@@ -17,7 +17,8 @@ export interface FocusTaskStep {
 
 export interface FocusContext {
   readonly sessionId: string;
-  readonly taskId: string;
+  readonly taskId: string | null;
+  readonly activityOccurrenceId: string | null;
   readonly planItemId: string | null;
   readonly taskTitle: string;
   readonly taskCompletionCriteria: string | null;
@@ -38,7 +39,8 @@ export type FocusWorkflowStep =
 
 export interface FocusCheckpoint {
   readonly sessionId: string;
-  readonly taskId: string;
+  readonly taskId: string | null;
+  readonly activityOccurrenceId?: string | null;
   readonly planItemId: string | null;
   readonly durationMinutes?: number;
   readonly blockCategory?: BlockCategory;
@@ -60,7 +62,7 @@ export interface FocusWorkflowRun {
 
 export type CompleteFocusResult =
   | { readonly kind: "next_step"; readonly context: FocusContext }
-  | { readonly kind: "task_completed"; readonly taskTitle: string; readonly nextAction: DerivedCurrentAction | null };
+  | { readonly kind: "task_completed" | "routine_completed"; readonly taskTitle: string; readonly nextAction: DerivedCurrentAction | null };
 
 export interface RecoveryResult {
   readonly context: FocusContext;

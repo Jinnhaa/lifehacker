@@ -1,5 +1,14 @@
 import type { HomePlanReview, HomeTimelineItem } from "./home-types";
 
+export const defaultFocusMinutes = (estimate: number | null): number =>
+  estimate !== null && estimate > 0 ? Math.min(240, Math.round(estimate)) : 25;
+
+export const focusRemainingSeconds = (startedAt: string | null, durationMinutes: number, nowMs: number): number => {
+  const startMs = startedAt ? Date.parse(startedAt) : NaN;
+  if (!Number.isFinite(startMs)) return Math.max(0, durationMinutes * 60);
+  return Math.max(0, durationMinutes * 60 - Math.max(0, Math.floor((nowMs - startMs) / 1_000)));
+};
+
 export const activeHomeQuests = (items: readonly HomeTimelineItem[], currentTaskId: string | null) =>
   items.filter((item) => (item.kind === "task" || item.kind === "routine") && item.source !== "pending"
     && item.status !== "completed" && !item.current && (currentTaskId === null || item.taskId !== currentTaskId));

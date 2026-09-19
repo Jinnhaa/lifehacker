@@ -11,10 +11,10 @@ export type DerivedCurrentAction =
     }
   | {
       readonly kind: "routine";
-      readonly source: "plan_item";
+      readonly source: "focus_session" | "plan_item";
       readonly title: string;
       readonly activityOccurrenceId: string;
-      readonly planItemId: string;
+      readonly planItemId: string | null;
     }
   | {
       readonly kind: "rest";
@@ -30,18 +30,25 @@ export const deriveCurrentAction = async (
   timeZone = "Asia/Seoul",
   now = new Date()
 ): Promise<DerivedCurrentAction | null> => {
-  const focus = await sql<{ title: string; task_id: string; plan_item_id: string | null }[]>`
-    select t.title,f.task_id,f.plan_item_id
-    from public.focus_sessions f join public.tasks t on t.id=f.task_id and t.user_id=f.user_id
+  const focus = await sql<{ title: string; task_id: string | null; activity_occurrence_id: string | null; plan_item_id: string | null }[]>`
+    select coalesce(t.title,a.title) title,f.task_id,f.activity_occurrence_id,f.plan_item_id
+    from public.focus_sessions f
+    left join public.tasks t on t.id=f.task_id and t.user_id=f.user_id
+    left join public.activity_occurrences o on o.id=f.activity_occurrence_id and o.user_id=f.user_id
+    left join public.recurring_activities a on a.id=o.recurring_activity_id and a.user_id=o.user_id
     where f.user_id=${userId} and f.status='active'
     order by f.started_at desc limit 1
   `;
   if (focus[0]) {
+    if (focus[0].activity_occurrence_id) return {
+      kind: "routine", source: "focus_session", title: focus[0].title,
+      activityOccurrenceId: focus[0].activity_occurrence_id, planItemId: focus[0].plan_item_id
+    };
     return {
       kind: "task",
       source: "focus_session",
       title: focus[0].title,
-      taskId: focus[0].task_id,
+      taskId: focus[0].task_id!,
       planItemId: focus[0].plan_item_id
     };
   }

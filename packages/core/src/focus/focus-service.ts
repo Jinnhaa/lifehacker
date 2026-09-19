@@ -115,7 +115,7 @@ export class FocusWorkflowService implements FocusMessageHandler {
       }
       const result = await this.repository.start(message.userId, planDate, this.clock.now(), message.messageId, durationMinutes, message.timeZone);
       if (!result.action) return { handled: true, reply: "지금 시작할 Current Action이 없어." };
-      if (result.action.kind !== "task") return { handled: true, reply: `현재 행동은 ${result.action.title} 반복활동이야. Task FocusSession은 만들지 않았어.` };
+      if (result.action.kind === "rest") return { handled: true, reply: `현재 행동은 ${result.action.title}이야. 집중 세션은 만들지 않았어.` };
       if (!result.context) return { handled: true, reply: "지금은 Focus를 시작하지 못했어." };
       return { handled: true, reply: result.duplicate ? `이미 집중 중이야.\n\n${formatFocus(result.context, false)}` : `집중을 시작할게.\n\n${formatFocus(result.context, true)}` };
     }
@@ -134,7 +134,7 @@ export class FocusWorkflowService implements FocusMessageHandler {
       const adjustment = await this.replanAdjustment(message);
       return {
         handled: true,
-        reply: adjustment && result.kind === "task_completed"
+        reply: adjustment && result.kind !== "next_step"
           ? `${result.taskTitle}을 완료했어.\n\n${adjustment}`
           : formatCompletion(result)
       };
@@ -152,7 +152,7 @@ export class FocusWorkflowService implements FocusMessageHandler {
         const baseReply = adjustment
           ? `${result.previousTaskTitle}의 진행 상태를 저장했어.\n\n${adjustment}`
           : `${result.previousTaskTitle}의 진행 상태를 저장했어.\n\n${nextActionText(result.nextAction)}`;
-        const followUp = context && this.decisionLearning
+        const followUp = context?.checkpoint.taskId && this.decisionLearning
           ? await this.decisionLearning.recordMaterialDecision({
               userId: message.userId,
               workflowRunId: context.id,

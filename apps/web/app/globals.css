@@ -648,6 +648,15 @@ button { color: inherit; }
 .focus-session-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 7px; }
 .focus-session-actions button { min-height: 38px; padding: 7px 13px; border: 2px solid var(--lh-outline); border-radius: 10px; background: var(--lh-panel-warm); box-shadow: 0 3px 0 rgba(93,73,61,.24); cursor: pointer; font-weight: 800; }
 .focus-session-actions button.is-ready { background: var(--lh-yellow); }
+.quest-console .mission-reason { margin: 9px 0 3px; line-height: 1.4; }
+.quest-console .mission-reason strong { color: var(--lh-wood-dark); }
+.quest-console .mission-meta { margin-top: 12px; }
+.quest-console .mission-estimate { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 11px; border: 2px solid var(--lh-outline); border-radius: 11px; background: var(--lh-yellow); box-shadow: 0 3px 0 rgba(93,73,61,.2); color: var(--lh-text); cursor: pointer; }
+.quest-console .mission-estimate small { margin-right: auto; color: var(--lh-wood-dark); font-size: 10px; font-weight: 800; }
+.quest-console .mission-estimate strong { font-size: 24px; line-height: 1; }
+.quest-console .mission-estimate span { font-size: 14px; }
+.quest-console .mission-estimate:disabled { cursor: default; opacity: .7; }
+.quest-console .mission-estimate:not(:disabled):active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(93,73,61,.2); }
 .plan-review-list > h3 { margin: 12px 0 2px; color: var(--lh-wood-dark); font-size: 12px; }
 .plan-review-capacity { margin: 8px 0 0; color: var(--lh-wood-dark); font-size: 11px; font-weight: 800; }
 .plan-row-actions { display: flex; align-items: center; gap: 5px; }

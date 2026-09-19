@@ -4,7 +4,7 @@ import { useActionState, useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation";
 import { completeHomeQuestAction, decideChiefReplan, decideProjectBacklogAction, editTodayPlan, requestChiefReplan, reviewArtifactAction, runFocusAction, runMorningAction, runProjectRuntimeAction } from "../app/actions";
 import type { ChiefActionState, HomeViewModel } from "../lib/home-types";
-import { activeHomeQuests, splitTodayPlan } from "../lib/home-presentation";
+import { activeHomeQuests, defaultFocusMinutes, focusRemainingSeconds, splitTodayPlan } from "../lib/home-presentation";
 import { WeekCalendarOverlay } from "./calendar-views";
 
 const initialActionState: ChiefActionState = { status: "idle", message: "" };
@@ -84,42 +84,45 @@ function FocusTimer({ startedAt, durationMinutes, action, pending }: { startedAt
     const timer = window.setInterval(() => setNow(Date.now()), 1_000);
     return () => window.clearInterval(timer);
   }, []);
-  const elapsedSeconds = startedAt && now ? Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1_000)) : 0;
-  const remaining = Math.max(0, durationMinutes * 60 - elapsedSeconds);
+  const remaining = focusRemainingSeconds(startedAt, durationMinutes, now ?? Date.parse(startedAt ?? ""));
   return <div className="focus-session-controls"><time className="focus-timer" dateTime={`PT${remaining}S`}>{String(Math.floor(remaining / 60)).padStart(2, "0")}:{String(remaining % 60).padStart(2, "0")}</time>
     {remaining === 0 && <strong>집중 시간 완료</strong>}
-    <div className="focus-session-actions"><form action={action}><button name="command" value="완료" className="focus-button is-ready" disabled={pending}>{remaining ? "완료" : "완료했어요"}</button></form>{remaining === 0 && <form action={action}><button name="command" value="15분 더" className="focus-button" disabled={pending}>15분 더</button></form>}<form action={action}><button name="command" value="나중에 이어하기" className="focus-button" disabled={pending}>{remaining ? "일시정지/종료" : "나중에 이어하기"}</button></form></div>
+    <div className="focus-session-actions"><form action={action}><button name="command" value="완료" className="focus-button is-ready" disabled={pending}>완료</button></form><form action={action}><button name="command" value="15분 더" className="focus-button" disabled={pending}>+15분</button></form><form action={action}><button name="command" value="나중에 이어하기" className="focus-button" disabled={pending}>나중에 이어하기</button></form></div>
   </div>;
 }
 
-function CurrentMission({ data, onOpenWork, onOpenPlan, focusAction, focusPending, focusFeedback, morningAction, morningPending, morningFeedback }: {
-  data: HomeViewModel; onOpenWork: () => void; onOpenPlan: () => void;
+function CurrentMission({ data, onOpenWork, focusAction, focusPending, focusFeedback, completeAction, completePending, morningAction, morningPending, morningFeedback }: {
+  data: HomeViewModel; onOpenWork: () => void;
   focusAction: (payload: FormData) => void; focusPending: boolean; focusFeedback: ChiefActionState;
+  completeAction: (payload: FormData) => void; completePending: boolean;
   morningAction: (payload: FormData) => void; morningPending: boolean; morningFeedback: ChiefActionState;
 }) {
   const action = data.currentAction;
   const recommendation = !action ? data.outcomePriority?.judgment.todayPriority[0] ?? null : null;
   const activeFocus = data.focus?.step === "active";
-  const [duration, setDuration] = useState("25");
-  const [customDuration, setCustomDuration] = useState(25);
+  const estimate = action?.minutes ?? recommendation?.minutes ?? null;
+  const defaultDuration = defaultFocusMinutes(estimate);
+  const [duration, setDuration] = useState(String(defaultDuration));
+  const [customDuration, setCustomDuration] = useState(defaultDuration);
+  const [durationOpen, setDurationOpen] = useState(false);
+  useEffect(() => { setDuration(String(defaultDuration)); setCustomDuration(defaultDuration); setDurationOpen(false); }, [action?.planItemId, defaultDuration]);
   const chosenDuration = duration === "custom" ? customDuration : Number(duration);
   const title = action?.title ?? recommendation?.outcome ?? "지금 실행할 항목이 없습니다";
-  const reason = action?.reason ?? recommendation?.rationale ?? null;
+  const reason = action?.whyNow ?? "오늘 계획에서 우선 실행하도록 배치했어요.";
   const feedback = focusFeedback.message ? focusFeedback : morningFeedback;
   const feedbackMessage = morningFeedback.status === "success"
     ? "오늘 Quest를 준비했습니다. 계획 보기에서 검토할 수 있습니다."
     : focusFeedback.status === "success" ? "Focus를 반영했습니다. 남은 Quest와 계획을 갱신합니다." : feedback.message;
   return <section className={`mission-hud ${activeFocus ? "is-focusing" : ""}`} data-testid="current-action">
-    <div className="mission-copy"><small>{activeFocus ? "FOCUS MODE" : action ? "NOW" : recommendation ? "NEXT RECOMMENDATION" : "NOW"}</small>
+    <div className="mission-copy"><small>{activeFocus ? "FOCUS MODE" : "MAIN QUEST"}</small>
       {!data.configured ? <><h1>연결 설정이 필요합니다</h1><p>{data.error}</p></>
-        : activeFocus ? <><h1>{title}</h1>{data.focus?.stepTitle && <p>{data.focus.stepTitle}</p>}<FocusTimer startedAt={data.focus?.startedAt ?? null} durationMinutes={data.focus?.durationMinutes ?? 25} action={focusAction} pending={focusPending} /></>
-          : <><button type="button" className="main-quest-link" onClick={onOpenWork}><h1>{title}</h1></button><p>{action?.context ?? (action?.kind === "routine" ? "오늘 계획의 반복 활동입니다. 완료 후 오늘 Quest에서 체크해 주세요." : recommendation ? "Current Action이 없을 때의 다음 추천" : data.approvedPlan ? "오늘 계획의 실행 가능한 항목을 모두 확인했습니다." : "Morning에서 오늘 계획을 승인해 주세요.")}</p>{reason && <p className="mission-reason">{reason}</p>}</>}</div>
-    {!activeFocus && <div className="mission-meta"><div><small>예상 남은 시간</small><strong>{action?.minutes ? `${action.minutes}분` : recommendation?.minutes ? `${recommendation.minutes}분` : "—"}</strong></div></div>}
-    {!activeFocus && data.planState.status === "approved" && action?.kind === "task" && <FocusDurationSelector duration={duration} setDuration={setDuration} customDuration={customDuration} setCustomDuration={setCustomDuration} />}
+        : activeFocus ? <><h1>{title}</h1><FocusTimer startedAt={data.focus?.startedAt ?? null} durationMinutes={data.focus?.durationMinutes ?? 25} action={focusAction} pending={focusPending} /></>
+          : <><button type="button" className="main-quest-link" onClick={onOpenWork}><h1>{title}</h1></button>{action && <p className="mission-reason"><strong>왜 지금?</strong> {reason}</p>}{!action && <p>{data.approvedPlan ? "오늘 계획의 실행 가능한 항목을 모두 확인했습니다." : "Morning에서 오늘 계획을 승인해 주세요."}</p>}</>}</div>
+    {!activeFocus && <div className="mission-meta"><button type="button" className="mission-estimate" onClick={() => setDurationOpen((open) => !open)} disabled={!action || action.kind === "rest"} aria-expanded={durationOpen}><small>예상시간 · 집중 시간 변경</small><strong>{estimate ? `${estimate}분` : "—"}</strong><span>⌄</span></button></div>}
+    {!activeFocus && durationOpen && data.planState.status === "approved" && action && action.kind !== "rest" && <FocusDurationSelector duration={duration} setDuration={setDuration} customDuration={customDuration} setCustomDuration={setCustomDuration} />}
     <div className="mission-actions">
       {data.planState.status === "no_plan" && <form action={morningAction}><input type="hidden" name="command" value="일어남" /><button className="focus-button" type="submit" disabled={morningPending}>{morningPending ? "계획 준비 중…" : "오늘 계획 만들기"}</button></form>}
-      {data.planState.status === "approved" && !data.focus && action?.kind === "task" && <form action={focusAction}><input type="hidden" name="command" value={`시작:${chosenDuration}`} /><button className="focus-button is-ready" type="submit" disabled={focusPending || !Number.isInteger(chosenDuration) || chosenDuration < 1 || chosenDuration > 240}>▶ 집중 시작</button></form>}
-      {data.planState.status === "approved" && action?.kind === "routine" && <button className="focus-button is-ready" type="button" onClick={onOpenPlan}>오늘 Quest에서 완료 체크</button>}
+      {data.planState.status === "approved" && !data.focus && action && action.kind !== "rest" && <><form action={focusAction}><input type="hidden" name="command" value={`시작:${chosenDuration}`} /><button className="focus-button is-ready" type="submit" disabled={focusPending || !Number.isInteger(chosenDuration) || chosenDuration < 1 || chosenDuration > 240}>▶ 집중 시작</button></form><form action={completeAction}><input type="hidden" name="taskId" value={action.taskId ?? ""} /><input type="hidden" name="stepId" value={action.stepId ?? ""} /><input type="hidden" name="occurrenceId" value={action.occurrenceId ?? ""} /><button className="focus-button" type="submit" disabled={completePending}>이미 완료했어요</button></form></>}
       {data.focus?.step === "awaiting_switch_confirmation" && <form action={focusAction}><button name="command" value="다른 거 할래" className="focus-button" type="submit" disabled={focusPending}>집중 종료 확인</button></form>}
       {data.focus?.step === "recovery_ready" && <form action={focusAction}><button name="command" value="다시 할게" className="focus-button is-ready" type="submit" disabled={focusPending}>다시 할게</button></form>}
     </div>
@@ -299,7 +302,7 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
       <OfficeStation kind="chief" title="Chief" detail="Work & Calendar" onClick={() => router.push("/work")} />
       <OfficeStation kind="project" title="Project PM" detail="Projects" onClick={() => router.push("/projects")} />
       <OfficeStation kind="learning" title="Learning" detail="Learning" onClick={() => router.push("/learning")} />
-      <section className="quest-console"><header><small>CHIEF'S QUEST CONSOLE</small><button type="button" onClick={() => setPlanOpen(true)}>오늘 계획 보기</button></header><CurrentMission data={initialData} onOpenWork={() => router.push("/work")} onOpenPlan={() => setPlanOpen(true)} focusAction={submitFocus} focusPending={focusPending} focusFeedback={focusState} morningAction={submitMorning} morningPending={morningPending} morningFeedback={morningState} /><NextQuests data={initialData} onOpenWork={() => router.push("/work")} onOpenPlan={() => setPlanOpen(true)} completeAction={submitComplete} completePending={completePending} /><Capacity data={initialData} />{completeState.message && <p className={`command-feedback ${completeState.status}`} role="status">{completeState.message}</p>}</section>
+      <section className="quest-console"><header><small>CHIEF'S QUEST CONSOLE</small><button type="button" onClick={() => setPlanOpen(true)}>오늘 계획 보기</button></header><CurrentMission data={initialData} onOpenWork={() => router.push("/work")} focusAction={submitFocus} focusPending={focusPending} focusFeedback={focusState} completeAction={submitComplete} completePending={completePending} morningAction={submitMorning} morningPending={morningPending} morningFeedback={morningState} /><NextQuests data={initialData} onOpenWork={() => router.push("/work")} onOpenPlan={() => setPlanOpen(true)} completeAction={submitComplete} completePending={completePending} /><Capacity data={initialData} />{completeState.message && <p className={`command-feedback ${completeState.status}`} role="status">{completeState.message}</p>}</section>
       <MissionsBoard data={initialData} />
       <section className="chief-command-panel tycoon-chief-command" ref={chiefRef}><header><div><small>CHIEF RADIO</small><strong>오늘 흐름 조정</strong></div><button type="button" onClick={() => chiefOpen ? setChiefOpen(false) : openChief()} disabled={!initialData.configured} aria-expanded={chiefOpen}>조정</button></header>{chiefOpen && <form action={submitAction}><input id="chief-command" ref={commandRef} name="command" placeholder="예: 지금 작업 미루기, 2시간 휴식" aria-label="Chief에게 일정 조정 요청" disabled={!initialData.configured || pending} /><button type="submit" disabled={!initialData.configured || pending}>{pending ? "계산 중…" : "변경안 만들기"}</button></form>}{feedback && <p className={`command-feedback ${feedbackStatus}`} role="status">{feedbackStatus === "success" ? "계획을 갱신했습니다. 중요한 변경은 검토 알림에서 확인하세요." : feedback}</p>}</section>
       {initialData.focus?.step === "active" && <div className="focus-spotlight" aria-hidden="true" />}
