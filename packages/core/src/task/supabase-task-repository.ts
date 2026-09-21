@@ -62,6 +62,13 @@ const appendEvent = async (sql: Sql, event: TaskDomainEventInput & { readonly ag
   `;
 };
 
+const withinTransaction = async <T>(sql: Sql, operation: (tx: Sql) => Promise<T>): Promise<T> => {
+  const begin = (sql as unknown as { begin?: unknown }).begin;
+  return typeof begin === "function"
+    ? (begin as (callback: (tx: Sql) => Promise<T>) => Promise<T>).call(sql, operation)
+    : operation(sql);
+};
+
 export class SupabaseTaskRepository implements TaskRepository {
   constructor(private readonly sql: Sql) {}
 
@@ -145,7 +152,7 @@ export class SupabaseTaskRepository implements TaskRepository {
     completedAt: Date | null,
     event: TaskDomainEventInput
   ): Promise<TransitionTaskResult> {
-    return this.sql.begin(async (tx) => {
+    return withinTransaction(this.sql, async (tx) => {
       const rows = await tx<TaskRow[]>`
         update public.tasks set
           status=${nextStatus}, completed_at=${completedAt}, updated_at=${event.occurredAt}

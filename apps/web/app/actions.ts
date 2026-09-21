@@ -126,12 +126,21 @@ export const completeHomeQuestAction = async (_previous: RuntimeActionState, for
       return { status: "error", message: "완료할 Quest를 확인할 수 없습니다." };
     }
     const sql = getWebSql();
-    const result = occurrenceId ? (await completeManualRoutine(sql, getWebUserId(), occurrenceId), "routine" as const)
+    const result = occurrenceId ? { kind: "routine" as const, ...(await completeManualRoutine(sql, getWebUserId(), occurrenceId)) }
       : await completeManualQuest(sql, getWebUserId(), taskId as TaskId, stepId || undefined);
-    if (result !== "step") await createWebReplanService(sql).processLatestTrigger(getWebUserId(), await profileTimeZone(), new Date());
+    if (result.kind !== "step" && !result.duplicate) {
+      await createWebReplanService(sql).processLatestTrigger(getWebUserId(), await profileTimeZone(), new Date());
+    }
     revalidatePath("/");
     revalidatePath("/work");
-    return { status: "success", message: result === "step" ? "Step을 완료했습니다." : "Quest를 완료하고 남은 계획을 확인했습니다." };
+    const officialPending = "officialSubmission" in result && result.officialSubmission.state === "pending_confirmation";
+    return {
+      status: "success",
+      message: result.duplicate ? "이미 완료된 Quest입니다. 현재 상태를 다시 확인했습니다."
+        : result.kind === "step" ? "Step을 완료했습니다. 다음 Step을 확인했습니다."
+          : officialPending ? "완료로 반영했습니다. 공식 제출 상태는 연동 원본에서 별도로 확인합니다."
+            : "Quest를 완료하고 남은 계획을 확인했습니다."
+    };
   } catch (error) {
     return runtimeError(error, "Quest 완료 처리에 실패했습니다.");
   }
