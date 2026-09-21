@@ -1,6 +1,6 @@
 import "server-only";
 
-import { SupabaseTaskRepository, TaskService } from "@amber/core";
+import { SupabaseTaskRepository, TaskService, isTaskOverdue } from "@amber/core";
 import { DeterministicTestInterpreter, InputService, SupabaseInputRepository } from "@amber/input";
 import { SystemClock, type UserId } from "@amber/shared";
 import type { Sql } from "postgres";
@@ -106,7 +106,11 @@ export const readWorkBoard = async (
       contextTitle: row.context_title, source, sourceLabel: sourceLabel(source)
     };
   });
+  const overdueIds = new Set(taskRows.filter((row) => isTaskOverdue({
+    status: row.status, internalDeadline: row.internal_deadline, officialDeadline: row.official_deadline
+  }, now, timeZone)).map((row) => row.id));
   const group = (key: "today" | "week" | "later") => tasks.filter((task) => {
+    if (overdueIds.has(task.id)) return false;
     const date = task.planningDeadlineValue.slice(0, 10);
     if (key === "today") return Boolean(date) && date <= today;
     if (key === "week") return Boolean(date) && date > today && date <= weekEnd;
@@ -129,6 +133,7 @@ export const readWorkBoard = async (
       };
     }),
     groups: [
+      { key: "overdue", label: "Overdue / Needs Review", tasks: tasks.filter((task) => overdueIds.has(task.id)) },
       { key: "today", label: "오늘", tasks: group("today") },
       { key: "week", label: "이번 주", tasks: group("week") },
       { key: "later", label: "이후", tasks: group("later") }
@@ -150,6 +155,7 @@ export const loadWorkBoard = async (): Promise<WorkBoardViewModel> => {
       error: error instanceof Error ? error.message : "Work Board를 불러오지 못했습니다.",
       timeZone: "Asia/Seoul", candidates: [],
       groups: [
+        { key: "overdue", label: "Overdue / Needs Review", tasks: [] },
         { key: "today", label: "오늘", tasks: [] },
         { key: "week", label: "이번 주", tasks: [] },
         { key: "later", label: "이후", tasks: [] }

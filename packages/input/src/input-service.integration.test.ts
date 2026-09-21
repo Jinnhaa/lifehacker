@@ -330,6 +330,85 @@ describe("InputService CREATE_TASK pipeline", () => {
     expect(proposal.items.some((entry) => entry.taskId === first.taskId)).toBe(true);
   });
 
+  it("deduplicates a Snowboard assignment, preserves its internal deadline, and applies authoritative completion once", async () => {
+    const contextId = randomUUID();
+    await admin`insert into public.work_contexts(id,user_id,kind,title,status,agent_mode) values (${contextId},${userId},'course','Database Systems','active','not_applicable')`;
+    const taskService = new TaskService(new SupabaseTaskRepository(admin), new FixedClock(new Date("2026-09-14T00:00:00Z")));
+    const service = new InputService(new SupabaseInputRepository(admin), new DeterministicTestInterpreter(taskResult()), taskService);
+    const sourceItemId = `assignment-${randomUUID()}`;
+    const item = {
+      source: "snowboard" as const,
+      sourceItemId,
+      sourceVersion: "v1",
+      sourceUrl: `https://snowboard.sookmyung.ac.kr/mod/assign/view.php?id=${sourceItemId}`,
+      observedAt: new Date("2026-09-14T00:00:00Z"),
+      title: "Database report",
+      officialDeadline: new Date("2026-09-22T14:59:00Z"),
+      workContextHint: "Database Systems",
+      objectiveHint: null,
+      status: "open" as const,
+      taskSemantics: "clear" as const,
+      rawPayload: { courseId: "course-1", submissionStatus: "Not submitted" }
+    };
+
+    const first = await service.processDiscoveredWorkItem(userId, item);
+    if (first.status !== "materialized") throw new Error("Expected materialized Snowboard assignment");
+    const internalDeadline = new Date("2026-09-20T09:00:00Z");
+    await taskService.updateTask({
+      userId,
+      taskId: first.taskId,
+      internalDeadline,
+      source: "user"
+    });
+    const changedOfficialDeadline = new Date("2026-09-23T14:59:00Z");
+    const second = await service.processDiscoveredWorkItem(userId, {
+      ...item,
+      sourceVersion: "v2",
+      observedAt: new Date("2026-09-15T00:00:00Z"),
+      officialDeadline: changedOfficialDeadline
+    });
+    const third = await service.processDiscoveredWorkItem(userId, {
+      ...item,
+      sourceVersion: "v2",
+      observedAt: new Date("2026-09-15T00:05:00Z"),
+      officialDeadline: changedOfficialDeadline
+    });
+    const completed = await service.processDiscoveredWorkItem(userId, {
+      ...item,
+      sourceVersion: "v3",
+      observedAt: new Date("2026-09-16T00:00:00Z"),
+      officialDeadline: changedOfficialDeadline,
+      status: "completed"
+    });
+    const completedAgain = await service.processDiscoveredWorkItem(userId, {
+      ...item,
+      sourceVersion: "v3",
+      observedAt: new Date("2026-09-16T00:05:00Z"),
+      officialDeadline: changedOfficialDeadline,
+      status: "completed"
+    });
+
+    expect(second).toMatchObject({ status: "materialized", taskId: first.taskId, duplicate: true });
+    expect(third).toMatchObject({ status: "materialized", taskId: first.taskId, duplicate: true });
+    expect(completed).toMatchObject({ status: "materialized", taskId: first.taskId, duplicate: true });
+    expect(completedAgain).toMatchObject({ status: "materialized", taskId: first.taskId, duplicate: true });
+    const tasks = await admin<{ count: number; official_deadline: Date; internal_deadline: Date; status: string }[]>`
+      select count(*)::int count,min(official_deadline) official_deadline,min(internal_deadline) internal_deadline,min(status) status
+      from public.tasks where user_id=${userId} and id=${first.taskId}
+    `;
+    expect(tasks[0]).toEqual({ count: 1, official_deadline: changedOfficialDeadline, internal_deadline: internalDeadline, status: "DONE" });
+    const references = await admin<{ external_type: string; external_version: string; internal_entity_id: string }[]>`
+      select external_type,external_version,internal_entity_id from public.external_references
+      where user_id=${userId} and source='snowboard' and external_id=${sourceItemId}
+    `;
+    expect(references[0]).toEqual({ external_type: "assignment", external_version: "v3", internal_entity_id: first.taskId });
+    const completionEvents = await admin<{ count: number; actor_type: string }[]>`
+      select count(*)::int count,min(actor_type) actor_type from public.domain_events
+      where user_id=${userId} and aggregate_id=${first.taskId} and event_type='task_completed'
+    `;
+    expect(completionEvents[0]).toEqual({ count: 1, actor_type: "snowboard" });
+  });
+
   it("does not guess when multiple confirmations exist and expires stale candidates", async () => {
     await admin`update public.parsed_entities p set processing_status='rejected' from public.inbox_items i where p.inbox_item_id=i.id and p.user_id=${userId} and i.parse_status='waiting_for_confirmation'`;
     await admin`update public.inbox_items set parse_status='applied' where user_id=${userId} and parse_status='waiting_for_confirmation'`;

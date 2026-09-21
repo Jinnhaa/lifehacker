@@ -47,6 +47,9 @@ importers:
       '@amber/notion':
         specifier: workspace:*
         version: link:../../packages/notion
+      '@amber/snowboard':
+        specifier: workspace:*
+        version: link:../../packages/snowboard
       '@amber/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -183,6 +186,24 @@ importers:
 
   packages/shared:
     dependencies:
+      zod:
+        specifier: 4.1.5
+        version: 4.1.5
+
+  packages/snowboard:
+    dependencies:
+      '@amber/core':
+        specifier: workspace:*
+        version: link:../core
+      '@amber/input':
+        specifier: workspace:*
+        version: link:../input
+      '@amber/shared':
+        specifier: workspace:*
+        version: link:../shared
+      postgres:
+        specifier: 3.4.7
+        version: 3.4.7
       zod:
         specifier: 4.1.5
         version: 4.1.5

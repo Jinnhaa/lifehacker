@@ -57,11 +57,27 @@ describe("DynamicReplanningService", () => {
       findCompletedApprovalByMessage: vi.fn(),
       findByTrigger: vi.fn().mockResolvedValue(null),
       loadPlanState: vi.fn().mockResolvedValue(state),
+      loadEditablePlanState: vi.fn().mockResolvedValue(state),
       createRevision: vi.fn().mockResolvedValue(result),
+      createDirectEditRevision: vi.fn().mockImplementation(async (_userId, _key, _previous, _draft, interpretation) => ({
+        ...result, interpretation, workflow: { ...result.workflow, status: "waiting_for_user", currentStep: "awaiting_approval", impact: "IMPORTANT_CHANGE" }
+      })),
       reject: vi.fn().mockResolvedValue({ duplicate: false }),
       deriveCurrentAction: vi.fn().mockResolvedValue(null)
     };
     approve.mockReset().mockResolvedValue({ plan, duplicate: false });
+  });
+
+  it("creates an approval-required revision for a direct edit without mutating the approved plan", async () => {
+    const response = await service().editPlan({
+      userId, planId: state.planId, receivedAt: now, idempotencyKey: "edit-1",
+      edit: { kind: "reschedule", itemId: "item", start: new Date("2026-09-04T04:00:00.000Z"), durationMinutes: 30 }
+    });
+    expect(response.workflow.status).toBe("waiting_for_user");
+    expect(response.interpretation.before.durationMinutes).toBe(50);
+    expect(response.interpretation.after?.durationMinutes).toBe(30);
+    expect(repository.createDirectEditRevision).toHaveBeenCalledOnce();
+    expect(repository.createRevision).not.toHaveBeenCalled();
   });
 
   const service = () => new DynamicReplanningService({

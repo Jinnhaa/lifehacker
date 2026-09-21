@@ -63,6 +63,26 @@ export interface ReplanRevisionResult {
   readonly duplicate: boolean;
 }
 
+export type DirectPlanEdit =
+  | { readonly kind: "reschedule"; readonly itemId: string; readonly start: Date; readonly durationMinutes: number }
+  | { readonly kind: "exclude"; readonly itemId: string };
+
+export interface DirectPlanEditInterpretation {
+  readonly itemId: string;
+  readonly title: string;
+  readonly itemType: ReplanPlanItem["itemType"];
+  readonly context: string | null;
+  readonly before: { readonly start: Date; readonly end: Date; readonly durationMinutes: number };
+  readonly after: { readonly start: Date; readonly end: Date; readonly durationMinutes: number } | null;
+  readonly affectedItems: readonly { readonly itemId: string; readonly title: string }[];
+  readonly totalMinutesBefore: number;
+  readonly totalMinutesAfter: number;
+}
+
+export interface DirectPlanEditResult extends ReplanRevisionResult {
+  readonly interpretation: DirectPlanEditInterpretation;
+}
+
 export interface ReplanRepository {
   findLatestPendingTrigger(userId: UserId): Promise<ReplanTrigger | null>;
   createManualTrigger(userId: UserId, now: Date, messageId: string, adjustment: ChiefReplanAdjustment): Promise<ReplanTrigger>;
@@ -70,6 +90,7 @@ export interface ReplanRepository {
   findCompletedApprovalByMessage(userId: UserId, planDate: string, messageId: string): Promise<ReplanWorkflowRun | null>;
   findByTrigger(userId: UserId, triggerId: string): Promise<ReplanRevisionResult | null>;
   loadPlanState(userId: UserId, planDate: string): Promise<ReplanPlanState | null>;
+  loadEditablePlanState(userId: UserId, planId: string): Promise<ReplanPlanState | null>;
   createRevision(
     trigger: ReplanTrigger,
     stateHash: string,
@@ -78,6 +99,14 @@ export interface ReplanRepository {
     decision: ReplanDecision,
     now: Date
   ): Promise<ReplanRevisionResult>;
+  createDirectEditRevision(
+    userId: UserId,
+    idempotencyKey: string,
+    previous: ReplanPlanState,
+    draft: MorningPlanDraft,
+    interpretation: DirectPlanEditInterpretation,
+    now: Date
+  ): Promise<DirectPlanEditResult>;
   reject(workflow: ReplanWorkflowRun, now: Date, messageId: string): Promise<{ readonly duplicate: boolean }>;
   deriveCurrentAction(userId: UserId, planDate: string): Promise<DerivedCurrentAction | null>;
 }
@@ -108,6 +137,14 @@ export interface ReplanServiceDependencies {
   readonly observationReader: Pick<MorningRepository, "loadObservation" | "approve">;
   readonly clock: Clock;
   readonly decisionLearning?: DecisionLearningRecorder;
+}
+
+export interface DirectPlanEditRequest {
+  readonly userId: UserId;
+  readonly planId: string;
+  readonly edit: DirectPlanEdit;
+  readonly idempotencyKey: string;
+  readonly receivedAt: Date;
 }
 
 export interface BuildReplanDraftInput {

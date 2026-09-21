@@ -13,6 +13,7 @@ describe("Discord worker config", () => {
       wakePollIntervalMs: 30_000,
       calendarUserId: null,
       calendarSyncIntervalMs: 900_000,
+      snowboardSyncIntervalMs: 900_000,
       workDiscoverySyncIntervalMs: 900_000
     });
   });
@@ -26,6 +27,14 @@ describe("Discord worker config", () => {
     });
     expect(config.calendarUserId).toBe("11111111-1111-4111-8111-111111111111");
     expect(config.calendarSyncIntervalMs).toBe(60_000);
+  });
+
+  it("accepts a bounded Snowboard sync interval", () => {
+    expect(loadDiscordWorkerConfig({
+      DISCORD_BOT_TOKEN: "test-token",
+      DISCORD_ALLOWED_USER_ID: "123456789012345678",
+      SNOWBOARD_SYNC_INTERVAL_MS: "60000"
+    }).snowboardSyncIntervalMs).toBe(60_000);
   });
 
   it("accepts a bounded wake polling interval", () => {

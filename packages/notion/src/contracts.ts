@@ -1,5 +1,6 @@
 import type { DiscoveredWorkItem } from "@amber/input";
 import type { UserId } from "@amber/shared";
+import type { NotionUniversityCourse } from "./notion-client.js";
 
 export const NOTION_SOURCE = "notion";
 export const NOTION_API_VERSION = "2025-09-03";
@@ -13,6 +14,7 @@ export interface NotionIntegrationAccount {
 
 export interface NotionWorkSourceClient {
   listWorkItems(sourceId: string, observedAt: Date): Promise<readonly DiscoveredWorkItem[]>;
+  listUniversityCourses?(taskSourceId: string, currentTerm: string, observedAt: Date): Promise<readonly NotionUniversityCourse[]>;
 }
 
 export interface WorkItemProcessor {

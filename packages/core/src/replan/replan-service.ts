@@ -3,12 +3,14 @@ import { DomainError, type UserId } from "@amber/shared";
 import type { MorningObservation, MorningPlan, MorningWorkflowRun } from "../morning/morning.js";
 import { shouldReplanForTrigger } from "../rules/replan.js";
 import { classifyReplanImpact } from "./replan-impact.js";
-import { buildReplanDraft, resolveReplanWorkUntil } from "./replan-planner.js";
+import { applyDirectPlanEdit, buildReplanDraft, resolveReplanWorkUntil } from "./replan-planner.js";
 import { interpretChiefReplanRequest } from "./chief-replan-request.js";
 import type {
   ReplanMessage,
   ReplanMessageHandler,
   ReplanMessageResult,
+  DirectPlanEditRequest,
+  DirectPlanEditResult,
   ReplanPlanState,
   ReplanServiceDependencies,
   ReplanTrigger,
@@ -84,6 +86,39 @@ export class DynamicReplanningService implements ReplanMessageHandler {
     this.observationReader = dependencies.observationReader;
     this.clock = dependencies.clock;
     this.decisionLearning = dependencies.decisionLearning;
+  }
+
+  async editPlan(request: DirectPlanEditRequest): Promise<DirectPlanEditResult> {
+    const previous = await this.repository.loadEditablePlanState(request.userId, request.planId);
+    if (!previous) throw new DomainError("INVALID_INPUT", "검토 가능한 오늘 계획을 찾지 못했습니다.");
+    if (localDate(request.receivedAt, previous.timeZone) !== previous.planDate) {
+      throw new DomainError("INVALID_INPUT", "오늘 계획만 직접 수정할 수 있습니다.");
+    }
+    if (request.edit.kind === "reschedule") {
+      if (!Number.isInteger(request.edit.durationMinutes) || request.edit.durationMinutes < 5 || request.edit.durationMinutes > 720) {
+        throw new DomainError("INVALID_INPUT", "duration은 5분부터 720분 사이여야 합니다.");
+      }
+      const end = new Date(request.edit.start.getTime() + request.edit.durationMinutes * 60_000);
+      if (localDate(request.edit.start, previous.timeZone) !== previous.planDate
+        || localDate(new Date(end.getTime() - 1), previous.timeZone) !== previous.planDate) {
+        throw new DomainError("INVALID_INPUT", "이번 버전에서는 오늘 안의 시간으로만 이동할 수 있습니다.");
+      }
+    }
+    const { draft, interpretation } = applyDirectPlanEdit(previous, request.edit);
+    if (interpretation.affectedItems.length) {
+      throw new DomainError("INVALID_INPUT", `다른 계획 항목과 겹칩니다: ${interpretation.affectedItems.map((item) => item.title).join(", ")}`);
+    }
+    if (interpretation.after) {
+      const observation = await this.observationReader.loadObservation(
+        request.userId, previous.planDate, previous.timeZone, request.receivedAt
+      );
+      const conflict = observation.constraints.find((value) => value.blocksCapacity
+        && value.start < interpretation.after!.end && value.end > interpretation.after!.start);
+      if (conflict) throw new DomainError("INVALID_INPUT", "고정 일정과 겹치는 시간으로 이동할 수 없습니다.");
+    }
+    return this.repository.createDirectEditRevision(
+      request.userId, request.idempotencyKey, previous, draft, interpretation, this.clock.now()
+    );
   }
 
   async processLatestTrigger(userId: UserId, timeZone: string, receivedAt: Date): Promise<string | null> {

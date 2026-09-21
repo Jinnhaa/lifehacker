@@ -1,0 +1,23 @@
+{
+  "name": "@amber/snowboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b --pretty false",
+    "test:python": "python3 -m unittest discover -s python -p 'test_*.py'",
+    "bootstrap": "tsc -b && node --enable-source-maps dist/bootstrap-cli.js",
+    "sync": "tsc -b && node --enable-source-maps dist/sync-cli.js"
+  },
+  "dependencies": {
+    "@amber/core": "workspace:*",
+    "@amber/input": "workspace:*",
+    "@amber/shared": "workspace:*",
+    "postgres": "3.4.7",
+    "zod": "4.1.5"
+  }
+}

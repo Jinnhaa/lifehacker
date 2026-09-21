@@ -102,10 +102,36 @@ describe("Chief outcome priority", () => {
     expect(result.notToday.find((choice) => choice.taskId === "too-late")?.reasonCodes).toContain("CAPACITY");
   });
 
+  it("fits distributed daily workload and exposes deadline risk when today's quota cannot fit", () => {
+    const distributed = judge([task("spread", {
+      estimatedMinutes: 300,
+      internalDeadline: new Date("2026-09-16T14:59:00.000Z")
+    })], {}, new Date("2026-09-12T01:00:00.000Z"));
+    expect(distributed.todayPriority[0]).toMatchObject({ taskId: "spread", minutes: 60 });
+
+    const risky = judge([task("risky", {
+      estimatedMinutes: 90,
+      officialDeadline: new Date("2026-09-12T14:59:00.000Z")
+    })], {}, new Date("2026-09-12T00:30:00.000Z"));
+    expect(risky.todayPriority).toEqual([]);
+    expect(risky.risks[0]?.reasonCodes).toEqual(expect.arrayContaining(["CAPACITY", "DEADLINE_RISK"]));
+  });
+
   it("preserves the active focus as current mission", () => {
     const result = judge([task("focus"), task("other")], { activeFocusTaskId: "focus" });
     expect(result.currentMission).toMatchObject({ taskId: "focus", source: "focus_session" });
     expect(result.currentMission?.reasonCodes).toContain("ACTIVE_FOCUS");
+  });
+
+  it("lets a new P0 official deadline replace a lower approved current action", () => {
+    const result = judge([
+      task("routine-like-plan-item", { internalDeadline: new Date("2026-09-16T14:59:00.000Z") }),
+      task("official-due", { officialDeadline: new Date("2026-09-12T14:59:00.000Z") })
+    ], {
+      approvedPlan: { id: "plan", revisionNo: 1 },
+      approvedAction: { taskId: "routine-like-plan-item", title: "알고리즘 routine", startsAt: "2026-09-11T23:00:00.000Z", endsAt: "2026-09-12T01:00:00.000Z" }
+    });
+    expect(result.currentMission).toMatchObject({ taskId: "official-due", source: "chief_recommendation" });
   });
 
   it("keeps an executable AI-owned step eligible until its status is waiting", () => {

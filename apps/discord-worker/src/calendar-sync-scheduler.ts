@@ -1,4 +1,4 @@
-export type CalendarSyncProvider = "google_calendar" | "icloud_calendar";
+export type CalendarSyncProvider = "google_calendar" | "icloud_calendar" | "snowboard";
 
 export interface CalendarSyncTask {
   readonly provider: CalendarSyncProvider;

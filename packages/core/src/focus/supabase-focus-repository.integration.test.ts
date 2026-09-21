@@ -4,6 +4,8 @@ import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { FocusWorkflowService } from "./focus-service.js";
 import { SupabaseFocusRepository } from "./supabase-focus-repository.js";
+import { completeManualRoutine } from "../task/manual-quest-completion.js";
+import { deriveCurrentAction } from "../execution/current-action.js";
 
 const connectionString = process.env.TEST_DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 const sql = postgres(connectionString, { max: 10 });
@@ -64,6 +66,69 @@ const message = (text: string, id: string, userId = userA) => ({
 });
 
 describe("Focus Workflow local Supabase", () => {
+  it("focuses a 45-minute routine, stores exact actual time, then advances past manual completion", async () => {
+    const routineUser = randomUUID() as UserId;
+    const routineId = randomUUID();
+    const occurrences = [randomUUID(), randomUUID()] as const;
+    const routinePlan = randomUUID();
+    const planDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+    const focusStart = new Date(`${planDate}T00:00:00+09:00`);
+    const routineClock = new FixedClock(focusStart);
+    const routineService = new FocusWorkflowService({ repository, clock: routineClock });
+    const routineMessage = (text: string, key: string) => ({
+      userId: routineUser, timeZone: "Asia/Seoul", text,
+      messageId: `routine:${key}`, receivedAt: routineClock.now()
+    });
+    try {
+      await sql`insert into auth.users(id,email,created_at,updated_at) values(${routineUser},${`focus-${routineUser}@example.test`},now(),now())`;
+      await sql`insert into public.profiles(id,timezone) values(${routineUser},'Asia/Seoul')`;
+      await sql`insert into public.recurring_activities(id,user_id,title,category,period,target_count,expected_minutes,scheduling_mode,importance,effective_from)
+        values(${routineId},${routineUser},'독서','study','week',2,45,'flexible',3,'2026-01-01')`;
+      await sql`insert into public.activity_occurrences(id,user_id,recurring_activity_id,period_key,sequence_no,planned_date,status)
+        values(${occurrences[0]},${routineUser},${routineId},${routineUser},1,${planDate},'planned'),
+          (${occurrences[1]},${routineUser},${routineId},${routineUser},2,${planDate},'planned')`;
+      await sql`insert into public.daily_plans(id,user_id,plan_date,timezone,revision_no,status,input_snapshot,created_by,approved_at)
+        values(${routinePlan},${routineUser},${planDate},'Asia/Seoul',1,'pending_approval','{}','test',null)`;
+      await sql`insert into public.plan_items(user_id,daily_plan_id,position,item_type,activity_occurrence_id,planned_minutes,status)
+        values(${routineUser},${routinePlan},1,'routine',${occurrences[0]},45,'planned'),
+          (${routineUser},${routinePlan},2,'routine',${occurrences[1]},45,'planned')`;
+      await sql`update public.daily_plans set status='approved',approved_at=now() where id=${routinePlan}`;
+
+      const started = await routineService.handleFocusMessage(routineMessage("시작:45", "start"));
+      expect(started.reply).toContain("독서");
+      const active = await sql<{ id: string; started_at: Date; planned_minutes: number; actual_seconds: number }[]>`
+        select id,started_at,planned_minutes,actual_seconds from public.focus_sessions
+        where user_id=${routineUser} and activity_occurrence_id=${occurrences[0]} and status='active'`;
+      expect(active[0]?.planned_minutes).toBe(45);
+      expect(active[0]?.started_at.toISOString()).toBe(focusStart.toISOString());
+      expect(active[0]?.actual_seconds).toBe(0);
+
+      routineClock.set(new Date(focusStart.getTime() + 10 * 60_000));
+      await routineService.handleFocusMessage(routineMessage("15분 더", "extend"));
+      const extended = await sql<{ planned_minutes: number }[]>`
+        select planned_minutes from public.focus_sessions where id=${active[0]!.id}`;
+      expect(extended[0]?.planned_minutes).toBe(60);
+
+      routineClock.set(new Date(focusStart.getTime() + 42 * 60_000 + 15_000));
+      const completed = await routineService.handleFocusMessage(routineMessage("완료", "complete"));
+      expect(completed.reply).toContain("다음 할 일은 독서");
+      const finished = await sql<{ status: string; planned_minutes: number; actual_minutes: number; actual_seconds: number }[]>`
+        select status,planned_minutes,actual_minutes,actual_seconds from public.focus_sessions where id=${active[0]!.id}`;
+      expect(finished[0]).toEqual({ status: "completed", planned_minutes: 60, actual_minutes: 42, actual_seconds: 2535 });
+      const next = await deriveCurrentAction(sql, routineUser, planDate, "Asia/Seoul", routineClock.now());
+      expect(next?.kind).toBe("routine");
+      if (next?.kind === "routine") expect(next.activityOccurrenceId).toBe(occurrences[1]);
+
+      await completeManualRoutine(sql, routineUser, occurrences[1]!);
+      const totals = await sql<{ sessions: number; actual_minutes: number | null; status: string }[]>`
+        select (select count(*)::int from public.focus_sessions where user_id=${routineUser}) sessions,
+          actual_minutes,status from public.activity_occurrences where id=${occurrences[1]}`;
+      expect(totals[0]).toEqual({ sessions: 1, actual_minutes: null, status: "completed" });
+      expect(await deriveCurrentAction(sql, routineUser, planDate, "Asia/Seoul", routineClock.now())).toBeNull();
+    } finally {
+      await sql`delete from auth.users where id=${routineUser}`;
+    }
+  });
   it("executes steps, records time, recovers, switches once confirmed, and isolates users", async () => {
     const started = await service.handleFocusMessage(message("시작", "start-1"));
     const duplicateStart = await service.handleFocusMessage(message("시작할게", "start-2"));
@@ -96,6 +161,9 @@ describe("Focus Workflow local Supabase", () => {
       from public.tasks t where t.id=${taskIds[0]}
     `;
     expect(completedState[0]).toEqual({ status: "DONE", actual_minutes: 50, active: 0 });
+    const taskFocus = await sql<{ planned_minutes: number; actual_seconds: number }[]>`
+      select planned_minutes,actual_seconds from public.focus_sessions where user_id=${userA} and task_id=${taskIds[0]} order by started_at desc limit 1`;
+    expect(taskFocus[0]).toEqual({ planned_minutes: 25, actual_seconds: 3_000 });
 
     clock.set(new Date("2026-09-04T01:00:00.000Z"));
     await service.handleFocusMessage(message("시작", "start-hard"));

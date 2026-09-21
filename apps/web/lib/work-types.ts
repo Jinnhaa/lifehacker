@@ -44,7 +44,7 @@ export type WorkBoardViewModel = {
   readonly timeZone: string;
   readonly candidates: readonly WorkCandidateItem[];
   readonly groups: readonly {
-    readonly key: "today" | "week" | "later";
+    readonly key: "overdue" | "today" | "week" | "later";
     readonly label: string;
     readonly tasks: readonly WorkTaskItem[];
   }[];

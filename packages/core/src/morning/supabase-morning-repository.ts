@@ -154,15 +154,22 @@ export class SupabaseMorningRepository implements MorningRepository {
         select id,constraint_type,value,hardness,valid_from,valid_until,origin from public.constraints
         where user_id=${userId} and valid_from<${dayEnd} and (valid_until is null or valid_until>${dayStart})
       `,
-      this.sql<{ id: string; title: string; target_count: number; expected_minutes: number; minimum_minutes: number | null; preferred_days: number[] | null; importance: number; completed_count: number; occurrence_id: string | null }[]>`
+      this.sql<{ id: string; title: string; target_count: number; expected_minutes: number; minimum_minutes: number | null; preferred_days: number[] | null; importance: number; completed_count: number; occurrence_id: string | null; course_study: unknown }[]>`
         select a.id,a.title,a.target_count,a.expected_minutes,a.minimum_minutes,a.preferred_days,a.importance,
           count(o.id) filter(where o.status='completed' and o.counts_toward_target)::int completed_count,
-          min(o.id::text) filter(where o.planned_date=${planDate} and o.status not in ('cancelled','skipped')) occurrence_id
+          min(o.id::text) filter(where o.planned_date=${planDate} and o.status not in ('cancelled','skipped')) occurrence_id,
+          study.payload course_study
         from public.recurring_activities a left join public.activity_occurrences o
           on o.recurring_activity_id=a.id and o.user_id=a.user_id and o.planned_date between ${week.start} and ${week.end}
+        left join lateral (
+          select e.payload from public.domain_events e
+          where e.user_id=a.user_id and e.aggregate_type='recurring_activity' and e.aggregate_id=a.id
+            and e.event_type='course_study_workload_reconciled'
+          order by e.occurred_at desc limit 1
+        ) study on true
         where a.user_id=${userId} and a.active=true and a.effective_from<=${planDate}
           and (a.effective_until is null or a.effective_until>=${planDate})
-        group by a.id order by a.created_at
+        group by a.id,study.payload order by a.created_at
       `,
       this.sql<{ id: string; directive: string; priority_order: unknown }[]>`
         select id,directive,priority_order from public.strategic_directives
@@ -191,18 +198,32 @@ export class SupabaseMorningRepository implements MorningRepository {
     const carryover = carryoverRows[0] ? asRecord(carryoverRows[0].result) : null;
     return {
       timeZone,
-      outcomeEvidence: await loadOutcomeEvidence(this.sql,userId,planDate),
+      outcomeEvidence: await loadOutcomeEvidence(this.sql,userId,planDate,timeZone),
       planningBufferMinutes: setting.planning_buffer_minutes,
       planningPolicy: asRecord(setting.planning_policy),
       constraints,
       tasks,
       learningContext,
-      recurringActivities: activityRows.map((row) => ({
+      recurringActivities: activityRows.map((row) => {
+        const study = asRecord(row.course_study);
+        const rank = Number(study.priorityRank);
+        return {
         id: row.id, title: row.title, targetCount: row.target_count,
         expectedMinutes: row.expected_minutes, minimumMinutes: row.minimum_minutes,
         preferredDays: row.preferred_days, importance: row.importance,
-        completedCount: row.completed_count, occurrenceId: row.occurrence_id
-      })),
+        completedCount: row.completed_count, occurrenceId: row.occurrence_id,
+        ...(typeof study.workContextId === "string" && Number.isInteger(rank) && rank >= 0 && rank <= 4
+          ? { courseStudy: {
+              workContextId: study.workContextId,
+              weeklyMinutes: Number(study.weeklyMinutes),
+              todayMinutes: Number(study.todayMinutes),
+              priorityRank: rank as 0 | 1 | 2 | 3 | 4,
+              reasons: Array.isArray(study.reasons) ? study.reasons.filter((value): value is string => typeof value === "string") : [],
+              signals: asRecord(study.signals)
+            } }
+          : {})
+        };
+      }),
       strategicDirectives: directiveRows.map((row) => ({ id: row.id, directive: row.directive, priorityOrder: row.priority_order })),
       principles,
       carryoverContext: carryoverRows[0] && carryover ? {

@@ -1,7 +1,7 @@
 import type { TaskId, UserId } from "@amber/shared";
 import { describe, expect, it } from "vitest";
 import type { Task } from "../task/task.js";
-import { createMorningPlan } from "./morning-planner.js";
+import { calculateTaskWorkload, createMorningPlan } from "./morning-planner.js";
 import type { MorningObservation } from "./morning.js";
 
 const userId = "10000000-0000-4000-8000-000000000001" as UserId;
@@ -31,6 +31,37 @@ const observation = (overrides: Partial<MorningObservation> = {}): MorningObserv
 });
 
 describe("createMorningPlan", () => {
+  it("spreads remaining work through the internal deadline instead of piling it onto the last day", () => {
+    const source = task({
+      estimatedMinutes: 300,
+      officialDeadline: new Date("2026-09-10T14:59:59.000Z"),
+      internalDeadline: new Date("2026-09-08T14:59:59.000Z")
+    });
+    const workload = calculateTaskWorkload(source, new Date("2026-09-04T00:00:00.000Z"), "Asia/Seoul", 5);
+    const plan = createMorningPlan({
+      observation: observation({ constraints: [], planningBufferMinutes: 0, tasks: [source], recurringActivities: [] }),
+      now: new Date("2026-09-04T00:00:00.000Z"),
+      workUntil: new Date("2026-09-04T06:00:00.000Z"),
+      privateIntervals: [], localWeekday: 5
+    });
+
+    expect(workload).toMatchObject({
+      targetSource: "internal", remainingMinutes: 300, todayRequiredMinutes: 60, weekRequiredMinutes: 180
+    });
+    expect(plan.items.reduce((sum, item) => sum + item.plannedMinutes, 0)).toBe(60);
+  });
+
+  it("uses a default target two days before a sufficiently distant official deadline", () => {
+    const workload = calculateTaskWorkload(task({
+      estimatedMinutes: 300,
+      officialDeadline: new Date("2026-09-10T14:59:59.000Z")
+    }), new Date("2026-09-04T00:00:00.000Z"), "Asia/Seoul", 5);
+
+    expect(workload.targetSource).toBe("official_default");
+    expect(workload.targetDeadline).toEqual(new Date("2026-09-08T14:59:59.000Z"));
+    expect(workload.todayRequiredMinutes).toBe(60);
+  });
+
   it("protects fixed events, buffer, and MEDIUM/HIGH recurring activity without overload", () => {
     const plan = createMorningPlan({
       observation: observation(),
@@ -58,6 +89,28 @@ describe("createMorningPlan", () => {
     expect(plan.items).toEqual([]);
   });
 
+  it("derives deadline risk when fixed schedule leaves less capacity than today's required workload", () => {
+    const plan = createMorningPlan({
+      observation: observation({
+        planningBufferMinutes: 0,
+        constraints: [{
+          id: "fixed", title: "수업", start: new Date("2026-09-04T00:30:00.000Z"),
+          end: new Date("2026-09-04T02:00:00.000Z"), blocksCapacity: true,
+          constraintType: "fixed_event", hardness: "hard", origin: "calendar"
+        }],
+        tasks: [task({ estimatedMinutes: 180 })], recurringActivities: []
+      }),
+      now: new Date("2026-09-04T00:00:00.000Z"), workUntil: new Date("2026-09-04T02:00:00.000Z"),
+      privateIntervals: [], localWeekday: 5
+    });
+
+    expect(plan.items.filter((item) => item.itemType === "task").reduce((sum, item) => sum + item.plannedMinutes, 0)).toBe(30);
+    expect(plan.highlights).toContain("오늘 마감 과제: 마감 위험 · 오늘 필요 180분 / 배치 30분");
+    expect(plan.inputSnapshot.workload).toEqual(expect.arrayContaining([
+      expect.objectContaining({ taskId: task().id, deadlineRisk: true, todayRequiredMinutes: 180, plannedMinutes: 30 })
+    ]));
+  });
+
   it("traces an applied deadline preference without crossing fixed Calendar time", () => {
     const plan = createMorningPlan({
       observation: observation({
@@ -67,7 +120,7 @@ describe("createMorningPlan", () => {
           end: new Date("2026-09-04T01:00:00.000Z"), blocksCapacity: true,
           constraintType: "fixed_event", hardness: "hard", origin: "calendar"
         }],
-        tasks: [task({ officialDeadline: new Date("2026-09-06T14:59:59.000Z"), estimatedMinutes: 60, importance: 3 })],
+        tasks: [task({ officialDeadline: new Date("2026-09-07T14:59:59.000Z"), estimatedMinutes: 60, importance: 3 })],
         recurringActivities: [{
           id: "routine", title: "일본어", targetCount: 2, completedCount: 0, expectedMinutes: 30,
           minimumMinutes: 30, preferredDays: [5], importance: 4, occurrenceId: null
@@ -85,5 +138,23 @@ describe("createMorningPlan", () => {
     expect(plan.items[0]?.itemType).toBe("task");
     expect(plan.inputSnapshot.usedPrincipleIds).toEqual(["principle"]);
     expect(plan.items.every((item) => item.end <= new Date("2026-09-04T00:30:00.000Z") || item.start >= new Date("2026-09-04T01:00:00.000Z"))).toBe(true);
+  });
+
+  it("places capped course study workload as a routine and protects fixed time", () => {
+    const plan = createMorningPlan({
+      observation: observation({
+        tasks: [], planningBufferMinutes: 0,
+        recurringActivities: [{
+          id: "course-study", title: "알고리즘입문 학습", targetCount: 4, completedCount: 0,
+          expectedMinutes: 45, minimumMinutes: 15, preferredDays: [5], importance: 5, occurrenceId: null,
+          courseStudy: { workContextId: "course-context", weeklyMinutes: 180, todayMinutes: 45, priorityRank: 0, reasons: ["3일 내 퀴즈"], signals: { remainingLectureCount: 2 } }
+        }]
+      }),
+      now: new Date("2026-09-04T00:00:00.000Z"), workUntil: new Date("2026-09-04T03:00:00.000Z"),
+      privateIntervals: [], localWeekday: 5
+    });
+    expect(plan.items).toEqual([expect.objectContaining({ itemType: "routine", recurringActivityId: "course-study", plannedMinutes: 45 })]);
+    expect(plan.items[0]!.end <= new Date("2026-09-04T01:00:00.000Z") || plan.items[0]!.start >= new Date("2026-09-04T02:30:00.000Z")).toBe(true);
+    expect(plan.inputSnapshot.courseStudyWorkload).toEqual([expect.objectContaining({ workContextId: "course-context", weeklyMinutes: 180, todayMinutes: 45, plannedMinutes: 45 })]);
   });
 });

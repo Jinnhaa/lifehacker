@@ -17,5 +17,5 @@ try {
   );
   const result = await syncNotionForUser({ sql, userId: config.userId as UserId, processor, environment: process.env });
   if (!result) throw new Error("Exactly one active Notion integration account with configured sources is required");
-  console.info(`Notion sync complete: received=${result.received} materialized=${result.materialized} needs_confirmation=${result.needsConfirmation} dismissed=${result.dismissed}`);
+  console.info(`Notion sync complete: received=${result.received} materialized=${result.materialized} needs_confirmation=${result.needsConfirmation} dismissed=${result.dismissed} skipped_completed=${result.skippedCompleted} current_term_courses=${result.currentTermCourses} matched_snowboard_courses=${result.matchedSnowboardCourses}`);
 } finally { await sql.end(); }

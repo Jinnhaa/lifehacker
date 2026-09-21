@@ -4,6 +4,8 @@ import type { JSONValue, Sql } from "postgres";
 import { deriveCurrentAction } from "../execution/current-action.js";
 import type { MorningConstraint, MorningPlan, MorningPlanDraft, MorningPlanItemDraft } from "../morning/morning.js";
 import type {
+  DirectPlanEditInterpretation,
+  DirectPlanEditResult,
   ReplanDecision,
   ReplanPlanItem,
   ReplanPlanState,
@@ -186,6 +188,28 @@ export class SupabaseReplanRepository implements ReplanRepository {
     };
   }
 
+  async loadEditablePlanState(userId: UserId, planId: string): Promise<ReplanPlanState | null> {
+    const plans = await this.sql<PlanRow[]>`
+      select id,plan_date::text,timezone,revision_no,status,input_snapshot from public.daily_plans
+      where id=${planId} and user_id=${userId} and status in ('approved','pending_approval') limit 1
+    `;
+    const plan = plans[0];
+    if (!plan) return null;
+    const items = await this.loadItems(this.sql, userId, plan.id);
+    const active = await this.sql<{ task_id: string }[]>`
+      select task_id from public.focus_sessions where user_id=${userId} and status='active' limit 1
+    `;
+    const snapshot = asRecord(plan.input_snapshot);
+    const snapshotWorkUntil = new Date(String(snapshot.workUntil));
+    const workUntil = Number.isNaN(snapshotWorkUntil.getTime())
+      ? items.reduce((latest, item) => item.end > latest ? item.end : latest, new Date(`${plan.plan_date}T00:00:00.000Z`))
+      : snapshotWorkUntil;
+    return {
+      planId: plan.id, revisionNo: plan.revision_no, planDate: plan.plan_date, timeZone: plan.timezone, workUntil,
+      privateIntervals: parseIntervals(snapshot.privateIntervals), items, activeTaskId: active[0]?.task_id ?? null
+    };
+  }
+
   async createRevision(
     trigger: ReplanTrigger,
     stateHash: string,
@@ -294,6 +318,108 @@ export class SupabaseReplanRepository implements ReplanRepository {
       const plan = await this.getPlan(tx, trigger.userId, planId);
       if (!plan) throw new Error("Created replan plan missing");
       return { workflow, plan, duplicate: false };
+    });
+  }
+
+  async createDirectEditRevision(
+    userId: UserId,
+    idempotencyKey: string,
+    previous: ReplanPlanState,
+    draft: MorningPlanDraft,
+    interpretation: DirectPlanEditInterpretation,
+    now: Date
+  ): Promise<DirectPlanEditResult> {
+    return this.sql.begin(async (tx) => {
+      const workflowKey = `direct-plan-edit:${idempotencyKey}`;
+      const existing = await tx<WorkflowRow[]>`
+        select * from public.workflow_runs where user_id=${userId} and idempotency_key=${workflowKey} for update
+      `;
+      if (existing[0]) {
+        const workflow = mapWorkflow(existing[0]);
+        const plan = await this.getPlan(tx, userId, workflow.planId);
+        if (!plan) throw new Error("Direct edit plan missing");
+        return { workflow, plan, interpretation, duplicate: true };
+      }
+      const locked = await tx<PlanRow[]>`
+        select id,plan_date::text,timezone,revision_no,status,input_snapshot from public.daily_plans
+        where id=${previous.planId} and user_id=${userId} for update
+      `;
+      const base = locked[0];
+      if (!base || (base.status !== "approved" && base.status !== "pending_approval")) {
+        throw new Error("Plan changed before direct editing");
+      }
+      const approved = await tx<{ id: string }[]>`
+        select id from public.daily_plans where user_id=${userId} and plan_date=${previous.planDate}
+          and status='approved' order by revision_no desc limit 1 for update
+      `;
+      if (base.status === "pending_approval") {
+        const replaced = await tx<{ id: string }[]>`
+          select id from public.workflow_runs where user_id=${userId} and status='waiting_for_user'
+            and checkpoint_state->>'planId'=${base.id} for update
+        `;
+        for (const workflow of replaced) {
+          await tx`update public.approval_requests set status='cancelled',responded_at=${now},responded_by='user'
+            where user_id=${userId} and workflow_run_id=${workflow.id} and status='pending'`;
+          await tx`update public.workflow_runs set status='completed',current_step='completed',completed_at=${now},updated_at=${now},
+            checkpoint_state=checkpoint_state || ${tx.json({ replacedByDirectEdit: true })} where id=${workflow.id} and user_id=${userId}`;
+        }
+        await tx`update public.daily_plans set status='superseded' where id=${base.id} and user_id=${userId} and status='pending_approval'`;
+      }
+      const revisions = await tx<{ revision_no: number }[]>`
+        select coalesce(max(revision_no),0)::int revision_no from public.daily_plans
+        where user_id=${userId} and plan_date=${previous.planDate}
+      `;
+      const revisionNo = revisions[0]!.revision_no + 1;
+      const triggerRows = await tx<EventRow[]>`
+        insert into public.domain_events(user_id,event_type,aggregate_type,aggregate_id,actor_type,occurred_at,correlation_id,idempotency_key,payload_version,payload)
+        values(${userId},'replan_triggered','daily_plan',${base.id},'user',${now},gen_random_uuid(),${`${workflowKey}:trigger`},1,
+          ${tx.json({ reason: "manual_replan", delta_minutes: 0, direct_edit: true })})
+        returning id,user_id,correlation_id,occurred_at,payload
+      `;
+      const trigger = triggerRows[0]!;
+      const workflowRows = await tx<WorkflowRow[]>`
+        insert into public.workflow_runs(user_id,workflow_type,status,current_step,checkpoint_state,checkpoint_version,idempotency_key,correlation_id,started_at)
+        values(${userId},'dynamic_replanning','waiting_for_user','awaiting_approval','{}',1,${workflowKey},${trigger.correlation_id},${now}) returning *
+      `;
+      const snapshot = {
+        ...asRecord(base.input_snapshot),
+        highlights: draft.highlights,
+        triggerId: trigger.id,
+        triggerReason: "manual_replan",
+        impact: "IMPORTANT_CHANGE",
+        impactReasons: ["user_direct_edit"],
+        directEdit: {
+          ...interpretation,
+          before: { ...interpretation.before, start: interpretation.before.start.toISOString(), end: interpretation.before.end.toISOString() },
+          after: interpretation.after ? { ...interpretation.after, start: interpretation.after.start.toISOString(), end: interpretation.after.end.toISOString() } : null
+        }
+      };
+      const plans = await tx<PlanRow[]>`
+        insert into public.daily_plans(user_id,plan_date,timezone,revision_no,status,supersedes_plan_id,input_snapshot,created_by)
+        values(${userId},${previous.planDate},${previous.timeZone},${revisionNo},'pending_approval',${approved[0]?.id ?? null},
+          ${tx.json(snapshot as JSONValue)},'user_direct_edit') returning id,plan_date::text,timezone,revision_no,status,input_snapshot
+      `;
+      const planId = plans[0]!.id;
+      await this.insertItems(tx, userId, previous.planDate, planId, draft);
+      const checkpoint = {
+        planDate: previous.planDate, timeZone: previous.timeZone, planId, triggerId: trigger.id,
+        impact: "IMPORTANT_CHANGE", impactReasons: ["user_direct_edit"]
+      };
+      const workflowId = workflowRows[0]!.id;
+      await tx`update public.workflow_runs set checkpoint_state=${tx.json(checkpoint)},updated_at=${now} where id=${workflowId}`;
+      await tx`
+        insert into public.approval_requests(user_id,workflow_run_id,action_type,action_ref,action_hash,checkpoint_version,status,requested_at,resume_idempotency_key)
+        values(${userId},${workflowId},'approve_daily_plan',${planId},${actionHash(draft)},1,'pending',${now},${`replan-approval:${workflowId}`})
+      `;
+      await tx`
+        insert into public.domain_events(user_id,event_type,aggregate_type,aggregate_id,actor_type,occurred_at,correlation_id,workflow_run_id,idempotency_key,payload_version,payload)
+        values(${userId},'plan_replanned','daily_plan',${planId},'user',${now},${trigger.correlation_id},${workflowId},
+          ${`${workflowKey}:created`},1,${tx.json({ revision_no: revisionNo, trigger_id: trigger.id, reason: "manual_replan", direct_edit: true, impact: "IMPORTANT_CHANGE" })})
+      `;
+      const workflow = mapWorkflow({ ...workflowRows[0]!, checkpoint_state: checkpoint });
+      const plan = await this.getPlan(tx, userId, planId);
+      if (!plan) throw new Error("Created direct edit plan missing");
+      return { workflow, plan, interpretation, duplicate: false };
     });
   }
 

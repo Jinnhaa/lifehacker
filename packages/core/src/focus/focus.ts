@@ -17,7 +17,8 @@ export interface FocusTaskStep {
 
 export interface FocusContext {
   readonly sessionId: string;
-  readonly taskId: string;
+  readonly taskId: string | null;
+  readonly activityOccurrenceId: string | null;
   readonly planItemId: string | null;
   readonly taskTitle: string;
   readonly taskCompletionCriteria: string | null;
@@ -38,8 +39,10 @@ export type FocusWorkflowStep =
 
 export interface FocusCheckpoint {
   readonly sessionId: string;
-  readonly taskId: string;
+  readonly taskId: string | null;
+  readonly activityOccurrenceId?: string | null;
   readonly planItemId: string | null;
+  readonly durationMinutes?: number;
   readonly blockCategory?: BlockCategory;
   readonly blockDetail?: string;
   readonly pendingStepSplit?: boolean;
@@ -59,7 +62,7 @@ export interface FocusWorkflowRun {
 
 export type CompleteFocusResult =
   | { readonly kind: "next_step"; readonly context: FocusContext }
-  | { readonly kind: "task_completed"; readonly taskTitle: string; readonly nextAction: DerivedCurrentAction | null };
+  | { readonly kind: "task_completed" | "routine_completed"; readonly taskTitle: string; readonly nextAction: DerivedCurrentAction | null };
 
 export interface RecoveryResult {
   readonly context: FocusContext;
@@ -75,8 +78,11 @@ export interface SwitchResult {
 
 export interface FocusRepository {
   findCurrentWorkflow(userId: UserId): Promise<FocusWorkflowRun | null>;
-  start(userId: UserId, planDate: string, now: Date, messageId: string): Promise<{ readonly context: FocusContext | null; readonly action: DerivedCurrentAction | null; readonly duplicate: boolean }>;
-  complete(userId: UserId, planDate: string, now: Date, messageId: string): Promise<CompleteFocusResult | null>;
+  start(userId: UserId, planDate: string, now: Date, messageId: string, durationMinutes?: number, timeZone?: string,
+    target?: { readonly kind: "task" | "routine"; readonly id: string }): Promise<{ readonly context: FocusContext | null; readonly action: DerivedCurrentAction | null; readonly duplicate: boolean }>;
+  extend(userId: UserId, now: Date, messageId: string): Promise<boolean>;
+  pause(userId: UserId, planDate: string, now: Date, messageId: string): Promise<boolean>;
+  complete(userId: UserId, planDate: string, now: Date, messageId: string, timeZone?: string): Promise<CompleteFocusResult | null>;
   requestBlockReason(userId: UserId, now: Date, messageId: string): Promise<FocusContext | null>;
   waitForBlockDetail(userId: UserId, category: "missing_material" | "other", initialDetail: string, now: Date, messageId: string): Promise<void>;
   recordBlock(userId: UserId, planDate: string, category: BlockCategory, detail: string, now: Date, messageId: string): Promise<RecoveryResult | null>;

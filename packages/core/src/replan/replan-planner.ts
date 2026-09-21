@@ -1,7 +1,7 @@
 import { zonedDateTimeToUtc } from "@amber/shared";
 import { createMorningPlan } from "../morning/morning-planner.js";
 import type { MorningObservation, MorningPlanDraft, TimeInterval } from "../morning/morning.js";
-import type { BuildReplanDraftInput } from "./replan.js";
+import type { BuildReplanDraftInput, DirectPlanEdit, DirectPlanEditInterpretation, ReplanPlanState } from "./replan.js";
 
 const MINUTE = 60_000;
 const inactiveStatuses = new Set(["completed", "blocked", "switched", "skipped", "cancelled"]);
@@ -18,6 +18,48 @@ export const resolveReplanWorkUntil = (observation: MorningObservation, previous
   return typeof configured === "string" && /^\d{2}:\d{2}$/.test(configured)
     ? zonedDateTimeToUtc(`${previous.planDate}T${configured}:00`, previous.timeZone)
     : previous.workUntil;
+};
+
+export const applyDirectPlanEdit = (
+  previous: ReplanPlanState,
+  edit: DirectPlanEdit,
+  context: string | null = null
+): { readonly draft: MorningPlanDraft; readonly interpretation: DirectPlanEditInterpretation } => {
+  const target = previous.items.find((item) => item.id === edit.itemId);
+  if (!target) throw new Error("수정할 계획 항목을 찾지 못했습니다.");
+  const after = edit.kind === "exclude" ? null : {
+    start: edit.start,
+    end: new Date(edit.start.getTime() + edit.durationMinutes * MINUTE),
+    durationMinutes: edit.durationMinutes
+  };
+  const affectedItems = after ? previous.items.filter((item) => item.id !== target.id
+    && item.start < after.end && item.end > after.start).map((item) => ({ itemId: item.id, title: item.title })) : [];
+  const totalMinutesBefore = previous.items.reduce((sum, item) => sum + item.plannedMinutes, 0);
+  const totalMinutesAfter = totalMinutesBefore - target.plannedMinutes + (after?.durationMinutes ?? 0);
+  const items = previous.items.flatMap((item) => {
+    if (item.id !== target.id) return [{
+      itemType: item.itemType, title: item.title, plannedMinutes: item.plannedMinutes, start: item.start, end: item.end,
+      ...(item.taskId ? { taskId: item.taskId } : {}),
+      ...(item.recurringActivityId ? { recurringActivityId: item.recurringActivityId } : {})
+    }];
+    if (!after) return [];
+    return [{
+      itemType: item.itemType, title: item.title, plannedMinutes: after.durationMinutes, start: after.start, end: after.end,
+      ...(item.taskId ? { taskId: item.taskId } : {}),
+      ...(item.recurringActivityId ? { recurringActivityId: item.recurringActivityId } : {})
+    }];
+  }).sort((left, right) => left.start.getTime() - right.start.getTime());
+  return {
+    draft: {
+      items, fixedEvents: [], highlights: [`사용자 직접 수정: ${target.title}`],
+      inputSnapshot: { workUntil: previous.workUntil.toISOString(), privateIntervals: previous.privateIntervals }
+    },
+    interpretation: {
+      itemId: target.id, title: target.title, itemType: target.itemType, context,
+      before: { start: target.start, end: target.end, durationMinutes: target.plannedMinutes }, after,
+      affectedItems, totalMinutesBefore, totalMinutesAfter
+    }
+  };
 };
 
 const subtractIntervals = (source: TimeInterval, occupied: readonly TimeInterval[]): TimeInterval[] => {
