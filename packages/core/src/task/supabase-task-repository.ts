@@ -14,7 +14,7 @@ interface TaskRow {
   execution_mode: string;
   official_deadline: Date | null;
   internal_deadline: Date | null;
-  planned_date: string | null;
+  planned_date: string | Date | null;
   estimated_minutes: number | null;
   estimated_user_minutes: number | null;
   actual_minutes: number;
@@ -38,7 +38,7 @@ const mapTask = (row: TaskRow): Task => ({
   executionMode: row.execution_mode as TaskExecutionMode,
   officialDeadline: row.official_deadline,
   internalDeadline: row.internal_deadline,
-  plannedDate: row.planned_date,
+  plannedDate: row.planned_date instanceof Date ? row.planned_date.toISOString().slice(0, 10) : row.planned_date,
   estimatedMinutes: row.estimated_minutes,
   estimatedUserMinutes: row.estimated_user_minutes,
   actualMinutes: row.actual_minutes,
