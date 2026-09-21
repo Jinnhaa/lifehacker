@@ -148,9 +148,11 @@ RecurringActivity
 
 - `id`, `user_id`
 - `title`, `description?`, `importance`
+- Work/Chief planning용 `level`: LONG_TERM / MONTHLY / WEEKLY
+- `parent_goal_id?`, `period_start?`, `period_end?`, `progress`
 - `status`: active / archived
 - `origin`
-- `created_at`, `archived_at?`
+- `created_at`, `updated_at`, `archived_at?`
 
 ### Objective
 
@@ -241,6 +243,7 @@ Unique: `(recurring_activity_id, period_key, sequence_no)`
 - `work_context_id?`, `objective_id?`
 - `title`, `description?`
 - `official_deadline?`, `internal_deadline?`
+- `planned_date?`: deadline과 독립된 이동 가능한 실행 예정일
 - `estimated_minutes?`, `estimated_user_minutes?`, `actual_minutes`
 - `importance`, `status`, `next_action?`, `completion_criteria?`
 
