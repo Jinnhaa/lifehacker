@@ -1,4 +1,4 @@
-import type { OutcomeJudgment, ProjectRuntimeSummary } from "@amber/core";
+import type { ChiefCurrentStatus, OutcomeJudgment, ProjectRuntimeSummary } from "@amber/core";
 
 export type HomeTimelineItem = {
   readonly id: string;
@@ -54,6 +54,7 @@ export type HomeWeekDay = {
 
 export type HomeViewModel = {
   readonly outcomePriority?: { readonly judgment: OutcomeJudgment; readonly decisionId: string } | null;
+  readonly currentStatus: ChiefCurrentStatus | null;
   readonly missionProgress: Readonly<Record<string, { readonly completed: number; readonly total: number }>>;
   readonly configured: boolean;
   readonly error: string | null;

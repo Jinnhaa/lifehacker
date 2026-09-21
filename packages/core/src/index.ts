@@ -13,6 +13,7 @@ export * from "./artifact-review/artifact-review.js";
 export * from "./artifact-review/artifact-review-service.js";
 export * from "./artifact-review/supabase-artifact-review-repository.js";
 export * from "./chief/chief.js";
+export * from "./chief/current-status.js";
 export * from "./chief/outcome-priority.js";
 export * from "./chief/supabase-outcome-priority.js";
 export * from "./chief/chief-service.js";

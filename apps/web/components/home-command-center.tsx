@@ -2,7 +2,7 @@
 
 import { useActionState, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { completeHomeQuestAction, decideChiefReplan, decideProjectBacklogAction, editTodayPlan, requestChiefReplan, reviewArtifactAction, runFocusAction, runMorningAction, runProjectRuntimeAction } from "../app/actions";
+import { completeHomeQuestAction, decideChiefReplan, decideProjectBacklogAction, editTodayPlan, requestChiefReplan, reviewArtifactAction, runFocusAction, runMorningAction, runProjectRuntimeAction, saveChiefStatusOverride } from "../app/actions";
 import type { ChiefActionState, HomeViewModel } from "../lib/home-types";
 import { activeHomeQuests, defaultFocusMinutes, focusRemainingSeconds, splitTodayPlan } from "../lib/home-presentation";
 import { WeekCalendarOverlay } from "./calendar-views";
@@ -122,7 +122,7 @@ function CurrentMission({ data, onOpenWork, focusAction, focusPending, focusFeed
     {!activeFocus && durationOpen && data.planState.status === "approved" && action && action.kind !== "rest" && <FocusDurationSelector duration={duration} setDuration={setDuration} customDuration={customDuration} setCustomDuration={setCustomDuration} />}
     <div className="mission-actions">
       {data.planState.status === "no_plan" && <form action={morningAction}><input type="hidden" name="command" value="일어남" /><button className="focus-button" type="submit" disabled={morningPending}>{morningPending ? "계획 준비 중…" : "오늘 계획 만들기"}</button></form>}
-      {data.planState.status === "approved" && !data.focus && action && action.kind !== "rest" && <><form action={focusAction}><input type="hidden" name="command" value={`시작:${chosenDuration}`} /><button className="focus-button is-ready" type="submit" disabled={focusPending || !Number.isInteger(chosenDuration) || chosenDuration < 1 || chosenDuration > 240}>▶ 집중 시작</button></form><form action={completeAction}><input type="hidden" name="taskId" value={action.taskId ?? ""} /><input type="hidden" name="stepId" value={action.stepId ?? ""} /><input type="hidden" name="occurrenceId" value={action.occurrenceId ?? ""} /><button className="focus-button" type="submit" disabled={completePending}>이미 완료했어요</button></form></>}
+      {data.planState.status === "approved" && !data.focus && action && action.kind !== "rest" && <><form action={focusAction}><input type="hidden" name="command" value={`시작:${chosenDuration}:${action.kind}:${action.taskId ?? action.occurrenceId ?? ""}`} /><button className="focus-button is-ready" type="submit" disabled={focusPending || (!action.taskId && !action.occurrenceId) || !Number.isInteger(chosenDuration) || chosenDuration < 1 || chosenDuration > 240}>▶ 집중 시작</button></form><form action={completeAction}><input type="hidden" name="taskId" value={action.taskId ?? ""} /><input type="hidden" name="stepId" value={action.stepId ?? ""} /><input type="hidden" name="occurrenceId" value={action.occurrenceId ?? ""} /><button className="focus-button" type="submit" disabled={completePending || (!action.taskId && !action.occurrenceId)}>이미 완료했어요</button></form></>}
       {data.focus?.step === "awaiting_switch_confirmation" && <form action={focusAction}><button name="command" value="다른 거 할래" className="focus-button" type="submit" disabled={focusPending}>집중 종료 확인</button></form>}
       {data.focus?.step === "recovery_ready" && <form action={focusAction}><button name="command" value="다시 할게" className="focus-button is-ready" type="submit" disabled={focusPending}>다시 할게</button></form>}
     </div>
@@ -248,6 +248,44 @@ function GameDock({ router }: { router: ReturnType<typeof useRouter> }) {
   return <nav className="game-dock" aria-label="게임 도크">{items.map(([icon, label, href], index) => <button type="button" className={index === 0 ? "active" : ""} key={label} onClick={() => router.push(href)} aria-label={label}><i>{icon}</i><span>{label}</span></button>)}</nav>;
 }
 
+const readinessLabel = { NOT_STARTED: "미시작", IN_PROGRESS: "진행 중", READY: "준비됨", UNKNOWN: "확인 필요" } as const;
+const capacityLabel = (minutes: number | null): string => minutes === null ? "확인 전"
+  : minutes < 60 ? `${minutes}분` : `${Math.floor(minutes / 60)}h${minutes % 60 ? `${minutes % 60}m` : ""}`;
+
+function ChiefStatusPopup({ data, action, pending, feedback, onClose, onOpenWork }: {
+  data: HomeViewModel;
+  action: (payload: FormData) => void;
+  pending: boolean;
+  feedback: ChiefActionState;
+  onClose: () => void;
+  onOpenWork: () => void;
+}) {
+  const status = data.currentStatus;
+  const [editing, setEditing] = useState(false);
+  const nearest = status?.assessments[0] ?? null;
+  return <div className="status-popover-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
+    <section className="chief-status-popup" role="dialog" aria-modal="true" aria-labelledby="chief-status-title">
+      <header><div><small>CURRENT STATUS</small><h2 id="chief-status-title">Chief가 이해한 현재 상황</h2></div><button type="button" onClick={onClose} aria-label="현재 상태 닫기">×</button></header>
+      {!status ? <p className="runtime-empty">현재 상태를 불러오지 못했습니다.</p> : <>
+        <dl className="status-facts">
+          <div><dt>🔥 오늘 마감 미완료</dt><dd>{status.officialDueToday.length}</dd></div>
+          {nearest && <><div><dt>⚠ {nearest.title}</dt><dd>D-{nearest.daysUntil}</dd></div><div><dt>준비</dt><dd>{readinessLabel[nearest.readiness]}</dd></div></>}
+          <div><dt>✓ 오늘 완료</dt><dd>{status.completedTodayCount}</dd></div>
+          <div><dt>⏱ 남은 가용시간</dt><dd>{capacityLabel(status.remainingCapacityMinutes)}</dd></div>
+        </dl>
+        <div className="status-priorities"><h3>현재 우선순위</h3>{status.priorities.length ? <ol>{status.priorities.slice(0, 3).map((item) => <li key={item.id}><b>{item.band}</b><span><strong>{item.title}</strong><small>{item.whyNow}</small></span></li>)}</ol> : <p>즉시 처리할 위험이 없습니다.</p>}</div>
+        {status.overrides.length > 0 && <div className="status-overrides"><small>반영 중인 수정</small>{status.overrides.map((item) => <span key={item.id}>{item.scope === "TODAY" ? "오늘" : "계속"} · {item.text}</span>)}</div>}
+        {editing ? <form action={action} className="status-correction-form">
+          <textarea name="statusCorrection" required maxLength={500} placeholder="예: 데이터베이스는 영상강의 대신 교안으로 직접 공부할 거야." />
+          <fieldset><legend>반영 범위</legend><label><input type="radio" name="scope" value="TODAY" defaultChecked /> 오늘만</label><label><input type="radio" name="scope" value="PERSISTENT" /> 계속 반영</label></fieldset>
+          <div><button type="button" onClick={() => setEditing(false)}>취소</button><button className="approve" disabled={pending}>{pending ? "반영 중…" : "상태 반영"}</button></div>
+          {feedback.message && <p className={`command-feedback ${feedback.status}`} role="status">{feedback.message}</p>}
+        </form> : <div className="status-popup-actions"><button type="button" onClick={onOpenWork}>Work 열기</button><button className="approve" type="button" onClick={() => setEditing(true)}>상태 수정</button></div>}
+      </>}
+    </section>
+  </div>;
+}
+
 export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel }) {
   const router = useRouter();
   const [actionState, submitAction, pending] = useActionState(requestChiefReplan, initialActionState);
@@ -258,7 +296,9 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
   const [reviewState, submitReview, reviewPending] = useActionState(reviewArtifactAction, initialActionState);
   const [projectState, submitProject, projectPending] = useActionState(runProjectRuntimeAction, initialActionState);
   const [projectDecisionState, submitProjectDecision, projectDecisionPending] = useActionState(decideProjectBacklogAction, initialActionState);
+  const [statusOverrideState, submitStatusOverride, statusOverridePending] = useActionState(saveChiefStatusOverride, initialActionState);
   const [chiefOpen, setChiefOpen] = useState(false);
+  const [statusOpen, setStatusOpen] = useState(false);
   const [weekOpen, setWeekOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [projectOpen, setProjectOpen] = useState(false);
@@ -288,8 +328,8 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
   }, [chiefOpen]);
   useEffect(() => { if (initialData.proposal) setChiefOpen(false); }, [initialData.proposal]);
   useEffect(() => {
-    if (focusState.status === "success" || completeState.status === "success" || morningState.status === "success") router.refresh();
-  }, [focusState, completeState, morningState, router]);
+    if (focusState.status === "success" || completeState.status === "success" || morningState.status === "success" || statusOverrideState.status === "success") router.refresh();
+  }, [focusState, completeState, morningState, statusOverrideState, router]);
 
   const calendarCount = initialData.calendar.fixedCommitmentCount;
   const feedback = decisionState.message || actionState.message;
@@ -299,7 +339,7 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
     <section className="tycoon-office" aria-label="Lifehacker Office World">
       <div className="office-wordmark">Lifehacker</div><button className="world-calendar-button" type="button" onClick={() => setWeekOpen(true)} aria-label="주간 일정 열기">▦ <span>{calendarCount}</span></button>
       <div className="office-floor" /><div className="office-zone zone-chief" /><div className="office-zone zone-project" /><div className="office-zone zone-learning" />
-      <OfficeStation kind="chief" title="Chief" detail="Work & Calendar" onClick={() => router.push("/work")} />
+      <OfficeStation kind="chief" title="Chief" detail="Current Status" onClick={() => setStatusOpen(true)} />
       <OfficeStation kind="project" title="Project PM" detail="Projects" onClick={() => router.push("/projects")} />
       <OfficeStation kind="learning" title="Learning" detail="Learning" onClick={() => router.push("/learning")} />
       <section className="quest-console"><header><small>CHIEF'S QUEST CONSOLE</small><button type="button" onClick={() => setPlanOpen(true)}>오늘 계획 보기</button></header><CurrentMission data={initialData} onOpenWork={() => router.push("/work")} focusAction={submitFocus} focusPending={focusPending} focusFeedback={focusState} completeAction={submitComplete} completePending={completePending} morningAction={submitMorning} morningPending={morningPending} morningFeedback={morningState} /><NextQuests data={initialData} onOpenWork={() => router.push("/work")} onOpenPlan={() => setPlanOpen(true)} completeAction={submitComplete} completePending={completePending} /><Capacity data={initialData} />{completeState.message && <p className={`command-feedback ${completeState.status}`} role="status">{completeState.message}</p>}</section>
@@ -314,5 +354,6 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
     {weekOpen && <WeekCalendarOverlay days={initialData.week} today={initialData.date} timeZone={initialData.timeZone} onClose={() => setWeekOpen(false)} />}
     {reviewOpen && <ReviewOverlay data={initialData} action={submitReview} pending={reviewPending} feedback={reviewState} onClose={() => setReviewOpen(false)} />}
     {projectOpen && <ProjectRuntimeOverlay data={initialData} action={submitProject} decisionAction={submitProjectDecision} pending={projectPending} decisionPending={projectDecisionPending} feedback={projectDecisionState.message ? projectDecisionState : projectState} onClose={() => setProjectOpen(false)} onOpenReview={() => { setProjectOpen(false); setReviewOpen(true); }} />}
+    {statusOpen && <ChiefStatusPopup data={initialData} action={submitStatusOverride} pending={statusOverridePending} feedback={statusOverrideState} onClose={() => setStatusOpen(false)} onOpenWork={() => router.push("/work")} />}
   </main>;
 }

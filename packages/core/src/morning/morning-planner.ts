@@ -10,6 +10,7 @@ import type {
   MorningRecurringActivity,
   TimeInterval
 } from "./morning.js";
+import { courseStudyStrategy } from "../chief/current-status.js";
 
 const MINUTE = 60_000;
 
@@ -117,9 +118,13 @@ const buildCandidates = (observation: MorningObservation, now: Date, localWeekda
     const workload = calculateTaskWorkload(task, now, observation.timeZone, localWeekday);
     if (workload.remainingMinutes === 0) return [];
     const minutes = workload.todayRequiredMinutes;
-    const deadline = workload.targetDeadline;
-    const days = getDaysUntilDeadline(deadline, now, observation.timeZone);
-    const deadlineRank = days !== null && days < 0 ? 0 : days === 0 ? 1 : days !== null && days <= 3 ? 3 : 5;
+    const officialDays = getDaysUntilDeadline(task.officialDeadline, now, observation.timeZone);
+    const internalDays = getDaysUntilDeadline(task.internalDeadline, now, observation.timeZone);
+    const deadline = task.officialDeadline ?? workload.targetDeadline;
+    const deadlineRank = officialDays !== null && officialDays <= 0 ? 0
+      : internalDays !== null && internalDays <= 3 ? 2
+        : observation.carryoverContext?.taskIds.includes(task.id) && task.importance >= 4 ? 2
+          : officialDays !== null && officialDays <= 3 ? 3 : 4;
     const directed = directiveOrders.some((order) => containsId(order, task.id));
     return [{
       type: "task" as const,
@@ -141,13 +146,16 @@ const buildCandidates = (observation: MorningObservation, now: Date, localWeekda
     });
     if (result.remainingCount === 0 || (!activity.courseStudy && result.risk === "LOW")) return [];
     const minutes = activity.courseStudy?.todayMinutes ?? activity.expectedMinutes;
+    const strategy = activity.courseStudy ? courseStudyStrategy(observation.strategicDirectives, activity.courseStudy.workContextId) : null;
     return [{
       type: "routine" as const,
       id: activity.id,
-      title: activity.title,
+      title: strategy?.directMaterialStudy ? `${activity.title.replace(/ 학습$/, "")} 교안 직접 학습` : activity.title,
       minutes,
       minimumMinutes: activity.courseStudy ? Math.min(minutes, activity.minimumMinutes ?? 15) : activity.minimumMinutes ?? activity.expectedMinutes,
-      rank: activity.courseStudy?.priorityRank ?? (result.risk === "HIGH" ? 2 : 4),
+      rank: activity.courseStudy
+        ? activity.courseStudy.priorityRank <= 1 ? 1 : activity.courseStudy.priorityRank === 2 ? 2 : 3
+        : result.risk === "HIGH" ? 2 : 4,
       importance: activity.importance,
       deadline: null,
       risk: result.risk,

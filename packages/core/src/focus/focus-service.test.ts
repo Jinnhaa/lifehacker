@@ -89,7 +89,7 @@ describe("Home Focus timer commands", () => {
     await new FocusWorkflowService({ repository: repo, clock: new FixedClock(now) }).handleFocusMessage({
       userId, timeZone: "Asia/Seoul", text: "시작:45", messageId: "web:start", receivedAt: now
     });
-    expect(repo.start).toHaveBeenCalledWith(userId, "2026-09-19", now, "web:start", 45, "Asia/Seoul");
+    expect(repo.start).toHaveBeenCalledWith(userId, "2026-09-19", now, "web:start", 45, "Asia/Seoul", undefined);
   });
   it("extends and pauses through repository transitions", async () => {
     const repo = repository();

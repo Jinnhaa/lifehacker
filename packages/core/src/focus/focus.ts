@@ -78,7 +78,8 @@ export interface SwitchResult {
 
 export interface FocusRepository {
   findCurrentWorkflow(userId: UserId): Promise<FocusWorkflowRun | null>;
-  start(userId: UserId, planDate: string, now: Date, messageId: string, durationMinutes?: number, timeZone?: string): Promise<{ readonly context: FocusContext | null; readonly action: DerivedCurrentAction | null; readonly duplicate: boolean }>;
+  start(userId: UserId, planDate: string, now: Date, messageId: string, durationMinutes?: number, timeZone?: string,
+    target?: { readonly kind: "task" | "routine"; readonly id: string }): Promise<{ readonly context: FocusContext | null; readonly action: DerivedCurrentAction | null; readonly duplicate: boolean }>;
   extend(userId: UserId, now: Date, messageId: string): Promise<boolean>;
   pause(userId: UserId, planDate: string, now: Date, messageId: string): Promise<boolean>;
   complete(userId: UserId, planDate: string, now: Date, messageId: string, timeZone?: string): Promise<CompleteFocusResult | null>;

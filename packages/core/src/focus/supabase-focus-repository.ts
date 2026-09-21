@@ -121,7 +121,8 @@ export class SupabaseFocusRepository implements FocusRepository {
     now: Date,
     messageId: string,
     durationMinutes = 25,
-    timeZone = "Asia/Seoul"
+    timeZone = "Asia/Seoul",
+    target?: { readonly kind: "task" | "routine"; readonly id: string }
   ): Promise<{ context: FocusContext | null; action: DerivedCurrentAction | null; duplicate: boolean }> {
     return this.sql.begin(async (tx) => {
       const prior = await tx<{ aggregate_id: string }[]>`
@@ -145,7 +146,32 @@ export class SupabaseFocusRepository implements FocusRepository {
         };
       }
 
-      const action = await deriveCurrentAction(tx, userId, planDate, timeZone, now);
+      let action: DerivedCurrentAction | null = null;
+      if (target?.kind === "task") {
+        const targeted = await tx<{ id: string; title: string; plan_item_id: string | null }[]>`
+          select t.id,t.title,i.id plan_item_id from public.tasks t
+          left join lateral (
+            select i.id from public.plan_items i join public.daily_plans p on p.id=i.daily_plan_id and p.user_id=i.user_id
+            where i.user_id=t.user_id and i.task_id=t.id and p.plan_date=${planDate} and p.status='approved'
+              and i.status in ('planned','in_progress') order by i.position limit 1
+          ) i on true
+          where t.id=${target.id} and t.user_id=${userId} and t.status in ('INBOX','PLANNED','IN_PROGRESS')`;
+        if (targeted[0]) action = { kind: "task", source: "plan_item", title: targeted[0].title,
+          taskId: targeted[0].id, planItemId: targeted[0].plan_item_id };
+      } else if (target?.kind === "routine") {
+        const targeted = await tx<{ id: string; title: string; plan_item_id: string | null }[]>`
+          select o.id,a.title,i.id plan_item_id from public.activity_occurrences o
+          join public.recurring_activities a on a.id=o.recurring_activity_id and a.user_id=o.user_id
+          left join lateral (
+            select i.id from public.plan_items i join public.daily_plans p on p.id=i.daily_plan_id and p.user_id=i.user_id
+            where i.user_id=o.user_id and i.activity_occurrence_id=o.id and p.plan_date=${planDate} and p.status='approved'
+              and i.status in ('planned','in_progress') order by i.position limit 1
+          ) i on true
+          where o.id=${target.id} and o.user_id=${userId} and o.status in ('planned','in_progress','partial')`;
+        if (targeted[0]) action = { kind: "routine", source: "plan_item", title: targeted[0].title,
+          activityOccurrenceId: targeted[0].id, planItemId: targeted[0].plan_item_id };
+      }
+      action ??= await deriveCurrentAction(tx, userId, planDate, timeZone, now);
       if (!action || action.kind === "rest") return { context: null, action, duplicate: false };
       if (action.kind === "routine") {
         const occurrences = await tx<{ id: string; status: string; title: string }[]>`

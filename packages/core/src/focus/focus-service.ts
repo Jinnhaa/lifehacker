@@ -106,14 +106,17 @@ export class FocusWorkflowService implements FocusMessageHandler {
       const context = await this.repository.resume(message.userId, this.clock.now(), message.messageId);
       return { handled: true, reply: context ? `다시 시작했어.\n\n${formatFocus(context, false)}` : "재개할 Focus가 없어." };
     }
-    const timedStart = /^시작:(\d{1,3})$/.exec(text);
+    const timedStart = /^시작:(\d{1,3})(?::(task|routine):([0-9a-f-]{36}))?$/.exec(text);
     if (text === "시작" || text === "시작할게" || timedStart) {
       const durationMinutes = timedStart ? Number(timedStart[1]) : 25;
       if (durationMinutes < 1 || durationMinutes > 240) return { handled: true, reply: "집중 시간은 1–240분으로 설정해 줘." };
       if (workflow?.currentStep === "recovery_ready" && workflow.checkpoint.blockCategory !== "missing_material") {
         return { handled: true, reply: "중단한 Focus를 이어가려면 “다시 할게”라고 보내줘." };
       }
-      const result = await this.repository.start(message.userId, planDate, this.clock.now(), message.messageId, durationMinutes, message.timeZone);
+      const target = timedStart?.[2] && timedStart[3]
+        ? { kind: timedStart[2] as "task" | "routine", id: timedStart[3] }
+        : undefined;
+      const result = await this.repository.start(message.userId, planDate, this.clock.now(), message.messageId, durationMinutes, message.timeZone, target);
       if (!result.action) return { handled: true, reply: "지금 시작할 Current Action이 없어." };
       if (result.action.kind === "rest") return { handled: true, reply: `현재 행동은 ${result.action.title}이야. 집중 세션은 만들지 않았어.` };
       if (!result.context) return { handled: true, reply: "지금은 Focus를 시작하지 못했어." };

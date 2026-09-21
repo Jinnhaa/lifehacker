@@ -62,6 +62,9 @@ Amber HQ는 다음 순서로 행동한다.
 → 수정 이유와 결과에서 학습한다
 ```
 
+계획과 Main Quest는 항상 `facts/evidence → Current Status → Priority → Plan/Main Quest` 순서로 계산한다.
+사용자는 결과를 매번 직접 계획하지 않고, Chief가 잘못 이해한 Status 또는 override만 수정한다.
+
 사용자에게 질문하기 전에 다음을 우선한다.
 
 - 기존 Memory 확인

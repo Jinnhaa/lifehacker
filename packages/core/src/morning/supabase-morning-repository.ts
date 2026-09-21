@@ -198,7 +198,7 @@ export class SupabaseMorningRepository implements MorningRepository {
     const carryover = carryoverRows[0] ? asRecord(carryoverRows[0].result) : null;
     return {
       timeZone,
-      outcomeEvidence: await loadOutcomeEvidence(this.sql,userId,planDate),
+      outcomeEvidence: await loadOutcomeEvidence(this.sql,userId,planDate,timeZone),
       planningBufferMinutes: setting.planning_buffer_minutes,
       planningPolicy: asRecord(setting.planning_policy),
       constraints,

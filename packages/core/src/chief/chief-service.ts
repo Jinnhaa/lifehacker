@@ -13,6 +13,7 @@ import type {
   ChiefRequestKind,
   ChiefServiceDependencies
 } from "./chief.js";
+import { deriveCurrentStatus } from "./current-status.js";
 
 const STATUS_REQUESTS = new Set(["오늘 상황 봐줘", "현황 알려줘"]);
 const NEXT_ACTION_REQUESTS = new Set(["오늘 뭐 해야 돼?", "오늘 뭐 해야 돼", "지금 뭐 해야 해?", "지금 뭐 해야 해", "뭐부터 할까?", "뭐부터 할까"]);
@@ -36,8 +37,6 @@ const localWeekday = (value: Date, timeZone: string): number => {
   const weekday = new Intl.DateTimeFormat("en-US", { timeZone, weekday: "short" }).format(value);
   return ({ Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 } as const)[weekday as "Mon"] ?? 1;
 };
-
-const taskDeadline = (task: Task): Date | null => task.internalDeadline ?? task.officialDeadline;
 
 const remainingSuitableDays = (
   preferredDays: readonly number[] | null,
@@ -81,10 +80,11 @@ interface ChiefCandidate extends PlanningPriorityCandidate {
 }
 
 const taskRank = (task: Task, context: ChiefContext): number => {
-  const deadline = taskDeadline(task);
-  if (isOverdue(deadline, context.observedAt)) return 1;
-  const days = getDaysUntilDeadline(deadline, context.observedAt, context.timeZone);
-  if (days !== null && days <= 3) return 2;
+  if (isOverdue(task.officialDeadline, context.observedAt)) return 0;
+  const officialDays = getDaysUntilDeadline(task.officialDeadline, context.observedAt, context.timeZone);
+  if (officialDays === 0) return 0;
+  const internalDays = getDaysUntilDeadline(task.internalDeadline, context.observedAt, context.timeZone);
+  if (internalDays !== null && internalDays <= 3) return 2;
   if (task.importance >= 4) return 3;
   return 6;
 };
@@ -96,7 +96,7 @@ const candidates = (context: ChiefContext, risks: readonly RoutineRisk[]) => {
       id: task.id,
       rank: taskRank(task, context),
       importance: task.importance,
-      deadline: taskDeadline(task),
+      deadline: task.officialDeadline ?? task.internalDeadline,
       title: task.nextAction ?? task.title,
       estimatedMinutes: task.estimatedUserMinutes ?? task.estimatedMinutes
     })),
@@ -161,24 +161,28 @@ const currentActionSelection = (context: ChiefContext): { title: string; estimat
 
 const urgentWarning = (context: ChiefContext): string | null => {
   const task = [...context.observation.tasks]
-    .filter((item) => taskDeadline(item) !== null && (isOverdue(taskDeadline(item), context.observedAt) || isDueWithin(taskDeadline(item), 0, context.observedAt, context.timeZone)))
-    .sort((left, right) => taskDeadline(left)!.getTime() - taskDeadline(right)!.getTime())[0];
+    .filter((item) => item.officialDeadline !== null && (isOverdue(item.officialDeadline, context.observedAt) || isDueWithin(item.officialDeadline, 0, context.observedAt, context.timeZone)))
+    .sort((left, right) => left.officialDeadline!.getTime() - right.officialDeadline!.getTime())[0];
   if (!task) return null;
-  const deadline = taskDeadline(task)!;
+  const deadline = task.officialDeadline!;
   if (isOverdue(deadline, context.observedAt)) return `${task.title} 마감이 지났어.`;
   const time = new Intl.DateTimeFormat("ko-KR", { timeZone: context.timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(deadline);
   return `${task.title}이 오늘 ${time} 마감이야.`;
 };
 
 const buildReply = (context: ChiefContext, kind: ChiefRequestKind, workstyle: ResolvedWorkstyle): { reply: string; usedPrincipleIds: readonly string[] } => {
-  const overdue = context.observation.tasks.filter((task) => isOverdue(taskDeadline(task), context.observedAt));
-  const dueSoon = context.observation.tasks.filter((task) => !isOverdue(taskDeadline(task), context.observedAt)
-    && isDueWithin(taskDeadline(task), 3, context.observedAt, context.timeZone));
+  const overdue = context.observation.tasks.filter((task) => isOverdue(task.officialDeadline, context.observedAt));
+  const dueSoon = context.observation.tasks.filter((task) => !isOverdue(task.officialDeadline, context.observedAt)
+    && isDueWithin(task.officialDeadline, 3, context.observedAt, context.timeZone));
   const blocked = context.observation.tasks.filter((task) => task.status === "BLOCKED");
   const risks = routineRisks(context);
   const ranked = candidates(context, risks);
-  const selected = currentActionSelection(context) ?? ranked.candidates[0] ?? null;
-  const usedPrincipleIds = context.currentAction ? [] : ranked.usedPrincipleIds;
+  const status = deriveCurrentStatus({ observation: context.observation, now: context.observedAt, planDate: context.planDate, remainingCapacityMinutes: null });
+  const statusPriority = status.priorities[0] ?? null;
+  const focusedSelection = context.currentAction?.source === "focus_session" ? currentActionSelection(context) : null;
+  const selected = focusedSelection ?? (statusPriority ? { title: statusPriority.title, estimatedMinutes: statusPriority.minutes } : null)
+    ?? currentActionSelection(context) ?? ranked.candidates[0] ?? null;
+  const usedPrincipleIds = focusedSelection || statusPriority || context.currentAction ? [] : ranked.usedPrincipleIds;
   const warning = urgentWarning(context);
   const principleExplanation = usedPrincipleIds.length > 0 ? ranked.explanation?.replace("Task", "일") ?? null : null;
 
@@ -195,6 +199,7 @@ const buildReply = (context: ChiefContext, kind: ChiefRequestKind, workstyle: Re
     "오늘 상황", "",
     `- 고정 일정 ${fixedCount}개`,
     `- 남은 할 일 ${context.observation.tasks.length}개`,
+    `- 오늘 공식 마감 미완료 ${status.officialDueToday.length}개`,
     `- 마감 임박 ${dueSoon.length + overdue.length}개`,
     `- 막힌 일 ${blocked.length}개`
   ];

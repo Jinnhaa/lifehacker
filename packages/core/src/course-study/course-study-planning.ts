@@ -29,7 +29,9 @@ export interface CourseStudyRecommendation {
     readonly remainingLectureCount: number;
     readonly remainingLectureMinutes: number;
     readonly nearestQuizAt: string | null;
+    readonly nearestQuizTitle: string | null;
     readonly nearestExamAt: string | null;
+    readonly nearestExamTitle: string | null;
     readonly upcomingAssignmentCount: number;
     readonly overdueAssignmentCount: number;
   };
@@ -99,7 +101,9 @@ export function calculateCourseStudyRecommendations(input: {
         remainingLectureCount: course.remainingLectureCount,
         remainingLectureMinutes: course.remainingLectureMinutes,
         nearestQuizAt: nearestQuiz?.assessment.dueAt.toISOString() ?? null,
+        nearestQuizTitle: nearestQuiz?.assessment.title ?? null,
         nearestExamAt: nearestExam?.assessment.dueAt.toISOString() ?? null,
+        nearestExamTitle: nearestExam?.assessment.title ?? null,
         upcomingAssignmentCount: upcomingAssignments.length,
         overdueAssignmentCount: overdueAssignments.length
       }

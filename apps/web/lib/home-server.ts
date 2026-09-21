@@ -45,7 +45,7 @@ const time = (value: Date, timeZone: string): string => new Intl.DateTimeFormat(
 type PlanRow = { id: string; plan_date?: string; revision_no: number; input_snapshot: unknown; status?: string };
 type ItemRow = {
   id: string; item_type: "task" | "routine" | "rest" | "buffer"; task_id: string | null;
-  activity_occurrence_id: string | null; title: string; planned_start_at: Date; planned_end_at: Date;
+  activity_occurrence_id: string | null; recurring_activity_id: string | null; title: string; planned_start_at: Date; planned_end_at: Date;
   planned_minutes: number; status: string; context_title: string | null; context_kind: string | null;
   task_status: string | null; internal_deadline: Date | null; official_deadline: Date | null;
   step_id: string | null; step_title: string | null;
@@ -71,7 +71,7 @@ const weekDates = (date: string): string[] => {
 };
 
 const readItems = async (sql: Sql, userId: UserId, planId: string): Promise<ItemRow[]> => sql<ItemRow[]>`
-  select i.id,i.item_type,i.task_id,i.activity_occurrence_id,
+  select i.id,i.item_type,i.task_id,i.activity_occurrence_id,ao.recurring_activity_id,
     coalesce(t.title,a.title,case when i.item_type='buffer' then '버퍼' else '휴식' end) title,
     i.planned_start_at,i.planned_end_at,i.planned_minutes,i.status,
     coalesce(w.title,g.title) context_title,w.kind context_kind,
@@ -312,14 +312,24 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
       approved ? readItems(sql, userId, approved.id) : [],
       pendingPlan ? readItems(sql, userId, pendingPlan.id) : []
     ]);
-    const currentItem = currentAction?.planItemId ? approvedItems.find((item) => item.id === currentAction.planItemId) : null;
-    const priority = outcomePriority.judgment.todayPriority.find((item) => item.taskId === (currentAction?.kind === "task" ? currentAction.taskId : null));
-    const whyNow = priority?.reasonCodes.includes("OVERDUE") ? "마감이 지나 우선 확인이 필요해요."
-      : priority?.reasonCodes.includes("DUE_TODAY") ? "오늘 마감이라 먼저 실행해요."
-        : priority?.reasonCodes.includes("DEADLINE_RISK") ? "남은 시간 대비 마감 위험이 있어요."
-          : priority?.reasonCodes.includes("UNBLOCKS") ? "이 일을 마치면 다음 작업을 시작할 수 있어요."
-            : priority?.reasonCodes.includes("GOAL") ? "장기 목표를 위해 오늘 시간을 확보했어요."
-              : "오늘 계획에서 우선 실행하도록 배치했어요.";
+    const statusPriority = outcomePriority.currentStatus.priorities[0] ?? null;
+    const focused = currentAction?.source === "focus_session";
+    const statusItem = statusPriority?.taskId
+      ? approvedItems.find((item) => item.task_id === statusPriority.taskId) ?? null
+      : statusPriority?.recurringActivityId
+        ? approvedItems.find((item) => item.recurring_activity_id === statusPriority.recurringActivityId) ?? null
+        : null;
+    const selectedAction = focused ? currentAction : statusPriority ? statusPriority.kind === "task" ? {
+      kind: "task" as const, source: "current_status" as const, title: statusPriority.title,
+      taskId: statusPriority.taskId!, planItemId: statusItem?.id ?? null
+    } : {
+      kind: "routine" as const, source: "current_status" as const, title: statusPriority.title,
+      activityOccurrenceId: statusPriority.occurrenceId ?? statusItem?.activity_occurrence_id ?? "",
+      planItemId: statusItem?.id ?? null
+    } : currentAction;
+    const currentItem = selectedAction?.planItemId ? approvedItems.find((item) => item.id === selectedAction.planItemId) ?? null : null;
+    const whyNow = focused ? "진행 중인 집중을 마칠 때까지 현재 Quest를 유지해요."
+      : statusPriority?.whyNow ?? "현재 사실과 남은 가용시간을 기준으로 선택했어요.";
     const approvedByKey = new Map(approvedItems.map((item) => [itemKey(item), item]));
     const pendingChanges = pendingItems.filter((item) => {
       const previous = approvedByKey.get(itemKey(item));
@@ -329,14 +339,12 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
         || previous.status !== item.status;
     });
     const timeline: HomeTimelineItem[] = [
-      ...approvedItems.filter((item) => item.status !== "completed" && item.task_status !== "DONE"
-        && !(item.task_id && ((item.internal_deadline && localDate(item.internal_deadline, timeZone) < date)
-          || (item.official_deadline && item.official_deadline < now)))).map((item) => ({
+      ...approvedItems.filter((item) => item.status !== "completed" && item.task_status !== "DONE").map((item) => ({
         id: item.id, taskId: item.task_id, stepId: item.step_id, occurrenceId: item.activity_occurrence_id, kind: item.item_type, title: item.step_title ?? item.title,
         startsAt: item.planned_start_at.toISOString(), endsAt: item.planned_end_at.toISOString(),
         minutes: item.planned_minutes, status: item.status, context: item.context_title,
-        current: currentAction?.planItemId === item.id,
-        source: currentAction?.planItemId === item.id ? "current" as const : "chief" as const
+        current: selectedAction?.planItemId === item.id,
+        source: selectedAction?.planItemId === item.id ? "current" as const : "chief" as const
       })),
       ...pendingChanges.map((item) => ({
         id: `pending:${item.id}`, taskId: item.task_id, stepId: item.step_id, occurrenceId: item.activity_occurrence_id, kind: item.item_type, title: item.title,
@@ -390,30 +398,31 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
     return {
       configured: true, error: null, date, timeZone,
       outcomePriority,
+      currentStatus: outcomePriority.currentStatus,
       missionProgress,
-      currentAction: currentAction ? {
-        kind: currentAction.kind, taskId: currentAction.kind === "task" ? currentAction.taskId : null,
-        stepId: currentItem?.step_id ?? null, occurrenceId: currentAction.kind === "routine" ? currentAction.activityOccurrenceId : null,
-        planItemId: currentAction.planItemId,
-        title: currentItem?.step_title ?? currentAction.title, minutes: currentItem?.planned_minutes ?? null,
-        context: currentItem?.context_title ?? null, source: currentAction.source,
+      currentAction: selectedAction ? {
+        kind: selectedAction.kind, taskId: selectedAction.kind === "task" ? selectedAction.taskId : null,
+        stepId: currentItem?.step_id ?? null, occurrenceId: selectedAction.kind === "routine" ? selectedAction.activityOccurrenceId || null : null,
+        planItemId: selectedAction.planItemId,
+        title: selectedAction.source === "current_status" ? selectedAction.title : currentItem?.step_title ?? selectedAction.title,
+        minutes: statusPriority?.minutes ?? currentItem?.planned_minutes ?? null,
+        context: currentItem?.context_title ?? null, source: selectedAction.source,
         whyNow
       } : null,
       approvedPlan: approved ? { id: approved.id, revisionNo: approved.revision_no } : null,
-      availableMinutes: approved ? remainingAvailableMinutes(approved.input_snapshot, now, timeline) : null,
+      availableMinutes: outcomePriority.currentStatus.remainingCapacityMinutes
+        ?? (approved ? remainingAvailableMinutes(approved.input_snapshot, now, timeline) : null),
       planReview: reviewPlan ? {
         planId: reviewPlan.id, revisionNo: reviewPlan.revision_no,
         status: reviewPlan.status === "pending_approval" ? "pending_approval" : "approved",
         approvalKind: reviewApprovalKind,
         totalMinutes: reviewItems.reduce((sum, item) => sum + item.planned_minutes, 0),
         items: [
-          ...reviewItems.filter((item) => item.status !== "completed" && item.task_status !== "DONE"
-            && !(item.task_id && ((item.internal_deadline && localDate(item.internal_deadline, timeZone) < date)
-              || (item.official_deadline && item.official_deadline < now)))).map((item) => ({
+          ...reviewItems.filter((item) => item.status !== "completed" && item.task_status !== "DONE").map((item) => ({
           id: item.id, taskId: item.task_id, stepId: item.step_id, occurrenceId: item.activity_occurrence_id, title: item.step_title ?? item.title, context: item.context_title,
           itemType: item.item_type === "task" && item.context_kind === "course" ? "study" as const : item.item_type,
           startsAt: item.planned_start_at.toISOString(), endsAt: item.planned_end_at.toISOString(),
-          minutes: item.planned_minutes, current: approved?.id === reviewPlan.id && currentAction?.planItemId === item.id
+          minutes: item.planned_minutes, current: approved?.id === reviewPlan.id && selectedAction?.planItemId === item.id
         })),
           ...(week.find((day) => day.date === date)?.items.filter((item) => item.kind === "calendar").map((item) => ({
             id: item.id, taskId: null, stepId: null, occurrenceId: null, title: item.title, context: item.context,
@@ -443,7 +452,7 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
       reviewArtifacts,
       timeline,
       week: week.map((day) => ({ ...day, items: day.items.map((item) => ({
-        ...item, current: day.date === date && currentAction?.planItemId === item.id
+        ...item, current: day.date === date && selectedAction?.planItemId === item.id
       })) })),
       goals,
       agents: agents.map((item) => ({
@@ -457,7 +466,7 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
   } catch (error) {
     return {
       configured: false, error: error instanceof Error ? error.message : "Home 데이터를 불러오지 못했습니다.",
-      date: localDate(now, "Asia/Seoul"), timeZone: "Asia/Seoul", outcomePriority: null, missionProgress: {}, currentAction: null, approvedPlan: null, availableMinutes: null, planReview: null,
+      date: localDate(now, "Asia/Seoul"), timeZone: "Asia/Seoul", outcomePriority: null, currentStatus: null, missionProgress: {}, currentAction: null, approvedPlan: null, availableMinutes: null, planReview: null,
       planState: { status: "no_plan", revisionNo: null, message: null },
       calendar: { activeProviders: [], lastSyncedAt: null, fixedCommitmentCount: 0 }, focus: null, reviewArtifacts: [],
       timeline: [], week: weekDates(localDate(now, "Asia/Seoul")).map((date) => ({ date, items: [] })), goals: [], agents: [], decisionCount: 0, proposal: null,
