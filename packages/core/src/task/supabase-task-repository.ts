@@ -14,6 +14,7 @@ interface TaskRow {
   execution_mode: string;
   official_deadline: Date | null;
   internal_deadline: Date | null;
+  planned_date: string | Date | null;
   estimated_minutes: number | null;
   estimated_user_minutes: number | null;
   actual_minutes: number;
@@ -37,6 +38,7 @@ const mapTask = (row: TaskRow): Task => ({
   executionMode: row.execution_mode as TaskExecutionMode,
   officialDeadline: row.official_deadline,
   internalDeadline: row.internal_deadline,
+  plannedDate: row.planned_date instanceof Date ? row.planned_date.toISOString().slice(0, 10) : row.planned_date,
   estimatedMinutes: row.estimated_minutes,
   estimatedUserMinutes: row.estimated_user_minutes,
   actualMinutes: row.actual_minutes,
@@ -97,12 +99,12 @@ export class SupabaseTaskRepository implements TaskRepository {
       const rows = await tx<TaskRow[]>`
         insert into public.tasks (
           user_id, work_context_id, objective_id, title, description, execution_mode,
-          official_deadline, internal_deadline, estimated_minutes, estimated_user_minutes,
+          official_deadline, internal_deadline, planned_date, estimated_minutes, estimated_user_minutes,
           importance, status, next_action, completion_criteria
         ) values (
           ${input.userId}, ${input.workContextId ?? null}, ${input.objectiveId ?? null}, ${input.title},
           ${input.description ?? null}, ${input.executionMode}, ${input.officialDeadline ?? null},
-          ${input.internalDeadline ?? null}, ${input.estimatedMinutes ?? null}, ${input.estimatedUserMinutes ?? null},
+          ${input.internalDeadline ?? null}, ${input.plannedDate ?? null}, ${input.estimatedMinutes ?? null}, ${input.estimatedUserMinutes ?? null},
           ${input.importance}, 'INBOX', ${input.nextAction ?? null}, ${input.completionCriteria ?? null}
         ) returning *
       `;
@@ -130,6 +132,7 @@ export class SupabaseTaskRepository implements TaskRepository {
           description=${patch.description === undefined ? current.description : patch.description},
           official_deadline=${patch.officialDeadline === undefined ? current.officialDeadline : patch.officialDeadline},
           internal_deadline=${patch.internalDeadline === undefined ? current.internalDeadline : patch.internalDeadline},
+          planned_date=${patch.plannedDate === undefined ? current.plannedDate ?? null : patch.plannedDate},
           estimated_minutes=${patch.estimatedMinutes === undefined ? current.estimatedMinutes : patch.estimatedMinutes},
           estimated_user_minutes=${patch.estimatedUserMinutes === undefined ? current.estimatedUserMinutes : patch.estimatedUserMinutes},
           importance=${patch.importance ?? current.importance},

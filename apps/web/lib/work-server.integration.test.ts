@@ -14,6 +14,8 @@ const connectionString = process.env.TEST_DATABASE_URL ?? "postgresql://postgres
 const sql = postgres(connectionString, { max: 5 });
 const userId = randomUUID() as UserId;
 const contextId = randomUUID();
+const weeklyGoalId = randomUUID();
+const objectiveId = randomUUID();
 const clock = new FixedClock(new Date("2026-09-13T00:00:00.000Z"));
 const taskRepository = new SupabaseTaskRepository(sql);
 const taskService = new TaskService(taskRepository, clock);
@@ -34,7 +36,12 @@ const inputService = new InputService(inputRepository, candidateInterpreter, tas
 beforeAll(async () => {
   await sql`insert into auth.users(id,email,created_at,updated_at) values (${userId},${`work-${userId}@example.test`},now(),now())`;
   await sql`insert into public.profiles(id,timezone) values (${userId},'Asia/Seoul')`;
+  await sql`insert into public.user_settings(user_id,planning_buffer_minutes,week_starts_on) values(${userId},15,1)`;
   await sql`insert into public.work_contexts(id,user_id,kind,title,status,agent_mode) values (${contextId},${userId},'project','Work Board Project','active','auto')`;
+  await sql`insert into public.goals(id,user_id,title,importance,status,origin,level,period_start,period_end)
+    values(${weeklyGoalId},${userId},'Weekly Win',4,'active','user','WEEKLY','2026-09-07','2026-09-13')`;
+  await sql`insert into public.objectives(id,user_id,goal_id,work_context_id,title,success_criteria,importance,status,origin)
+    values(${objectiveId},${userId},${weeklyGoalId},${contextId},'Weekly milestone','완료',4,'active','user')`;
 });
 
 afterAll(async () => {
@@ -46,7 +53,8 @@ describe("Work Board V1", () => {
   it("shows canonical work together and applies candidate and Task corrections", async () => {
     const manual = await taskService.createTask({
       userId, title: "오늘 수동 업무", officialDeadline: new Date("2026-09-13T06:00:00.000Z"),
-      internalDeadline: new Date("2026-09-15T06:00:00.000Z"), estimatedMinutes: 20, importance: 3, source: "snowboard"
+      internalDeadline: new Date("2026-09-15T06:00:00.000Z"), estimatedMinutes: 20, importance: 3, source: "snowboard",
+      workContextId: contextId, objectiveId
     });
     await sql`insert into public.external_references(user_id,source,external_type,external_id,ownership,internal_entity_type,internal_entity_id,sync_status,first_seen_at,last_seen_at)
       values (${userId},'snowboard','assignment',${randomUUID()},'external','task',${manual.id},'active',now(),now())`;
@@ -68,26 +76,26 @@ describe("Work Board V1", () => {
 
     const board = await readWorkBoard(sql, userId, "Asia/Seoul", new Date("2026-09-13T01:00:00.000Z"));
     expect(board.candidates.map((item) => item.title)).toContain("확인할 후보");
-    const visible = board.groups.flatMap((group) => group.tasks);
+    const visible = board.week.flatMap((day) => day.tasks);
     expect(visible.map((task) => task.title)).toEqual(expect.arrayContaining(["오늘 수동 업무", "Notion 업무", "Project AI 업무", "빠른 추가 업무"]));
-    expect(visible.find((task) => task.id === notion.id)?.sourceLabel).toBe("Notion");
-    expect(visible.find((task) => task.title === "Project AI 업무")?.sourceLabel).toBe("Project AI");
     expect(visible.find((task) => task.id === manual.id)).toMatchObject({
       officialDeadlineLabel: expect.any(String),
-      officialDeadlineSourceLabel: "Snowboard",
-      targetDeadlineValue: "2026-09-15T15:00",
-      deadlineWarning: true
+      internalDeadlineLabel: expect.any(String),
+      goalTitle: "Weekly Win"
     });
+    expect(board.week).toHaveLength(7);
+    expect(board.weeklyWins[0]).toMatchObject({ title: "Weekly Win", progress: 0, remainingMinutes: 20 });
 
     const corrected = await taskService.updateTask({
       userId, taskId: manual.id, title: "수정된 업무", internalDeadline: new Date("2026-09-12T06:00:00.000Z"),
-      estimatedMinutes: 45, workContextId: contextId, source: "work_board"
+      estimatedMinutes: 45, plannedDate: "2026-09-11", workContextId: contextId, source: "work_board"
     });
     expect(corrected).toMatchObject({
       title: "수정된 업무",
       officialDeadline: new Date("2026-09-13T06:00:00.000Z"),
       internalDeadline: new Date("2026-09-12T06:00:00.000Z"),
       estimatedMinutes: 45,
+      plannedDate: "2026-09-11",
       workContextId: contextId
     });
     if (confirmable.status !== "waiting_for_confirmation") throw new Error("Expected confirmable candidate");
@@ -105,12 +113,16 @@ describe("Work Board V1", () => {
     await inputService.decideTaskCandidate({ userId, parsedEntityId: pending.parsedEntityId, decision: "dismiss" });
     const refreshed = await readWorkBoard(sql, userId, "Asia/Seoul", new Date("2026-09-13T01:00:00.000Z"));
     expect(refreshed.candidates.map((item) => item.title)).not.toContain("확인할 후보");
-    expect(refreshed.groups.flatMap((group) => group.tasks).map((task) => task.id)).not.toContain(quick.id);
-    expect(refreshed.groups.flatMap((group) => group.tasks).find((task) => task.id === manual.id)).toMatchObject({
+    expect(refreshed.week.flatMap((day) => day.tasks).map((task) => task.id)).not.toContain(quick.id);
+    expect(refreshed.week.flatMap((day) => day.tasks).find((task) => task.id === manual.id)).toMatchObject({
       officialDeadlineLabel: expect.any(String),
-      targetDeadlineValue: "2026-09-12T15:00",
-      deadlineWarning: false
+      internalDeadlineLabel: expect.any(String),
+      plannedDate: "2026-09-11"
     });
+    await taskService.planTask({ userId, taskId: manual.id, source: "work_board" });
+    await taskService.completeTask({ userId, taskId: manual.id, source: "work_board" });
+    const completed = await readWorkBoard(sql, userId, "Asia/Seoul", new Date("2026-09-13T01:00:00.000Z"));
+    expect(completed.weeklyWins[0]).toMatchObject({ title: "Weekly Win", progress: 100, remainingMinutes: 0 });
     const dismissedTasks = await sql<{ count: number }[]>`select count(*)::int count from public.tasks where user_id=${userId} and title='확인할 후보'`;
     expect(dismissedTasks[0]?.count).toBe(0);
   });

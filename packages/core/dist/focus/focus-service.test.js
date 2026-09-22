@@ -2,7 +2,7 @@ import { FixedClock } from "@amber/shared";
 import { describe, expect, it, vi } from "vitest";
 import { classifyBlockReason, FocusWorkflowService, formatRecovery } from "./focus-service.js";
 const context = {
-    sessionId: "session", taskId: "task", planItemId: "item", taskTitle: "운영체제 과제",
+    sessionId: "session", taskId: "task", activityOccurrenceId: null, planItemId: "item", taskTitle: "운영체제 과제",
     taskCompletionCriteria: "보고서 제출 가능 상태", estimatedMinutes: 60, nextAction: "개요 작성",
     steps: [{
             id: "step", position: 1, title: "서론 작성", owner: "user", estimatedMinutes: 20,
@@ -51,7 +51,7 @@ describe("Focus decision learning", () => {
         };
         const repository = {
             findCurrentWorkflow: vi.fn().mockResolvedValue(workflow),
-            start: vi.fn(), complete: vi.fn(), requestBlockReason: vi.fn(), waitForBlockDetail: vi.fn(),
+            start: vi.fn(), complete: vi.fn(), extend: vi.fn(), pause: vi.fn(), requestBlockReason: vi.fn(), waitForBlockDetail: vi.fn(),
             recordBlock: vi.fn(), resume: vi.fn(), requestSwitch: vi.fn(),
             confirmSwitch: vi.fn().mockResolvedValue({ previousTaskTitle: "운영체제 과제", nextAction: null })
         };
@@ -63,6 +63,32 @@ describe("Focus decision learning", () => {
         expect(repository.confirmSwitch).toHaveBeenCalledOnce();
         expect(decisionLearning.recordMaterialDecision).toHaveBeenCalledOnce();
         expect(response.reply).toContain("왜 바꾸고 싶어?");
+    });
+});
+describe("Home Focus timer commands", () => {
+    const userId = "10000000-0000-4000-8000-000000000001";
+    const now = new Date("2026-09-19T03:00:00.000Z");
+    const repository = () => ({
+        findCurrentWorkflow: vi.fn().mockResolvedValue(null),
+        start: vi.fn().mockResolvedValue({ context, action: { kind: "task", source: "plan_item", title: context.taskTitle, taskId: context.taskId, planItemId: context.planItemId }, duplicate: false }),
+        complete: vi.fn(), extend: vi.fn().mockResolvedValue(true), pause: vi.fn().mockResolvedValue(true),
+        requestBlockReason: vi.fn(), waitForBlockDetail: vi.fn(), recordBlock: vi.fn(), resume: vi.fn(),
+        requestSwitch: vi.fn(), confirmSwitch: vi.fn()
+    });
+    it("passes the selected duration to the existing Focus session", async () => {
+        const repo = repository();
+        await new FocusWorkflowService({ repository: repo, clock: new FixedClock(now) }).handleFocusMessage({
+            userId, timeZone: "Asia/Seoul", text: "시작:45", messageId: "web:start", receivedAt: now
+        });
+        expect(repo.start).toHaveBeenCalledWith(userId, "2026-09-19", now, "web:start", 45, "Asia/Seoul", undefined);
+    });
+    it("extends and pauses through repository transitions", async () => {
+        const repo = repository();
+        const service = new FocusWorkflowService({ repository: repo, clock: new FixedClock(now) });
+        await service.handleFocusMessage({ userId, timeZone: "Asia/Seoul", text: "15분 더", messageId: "web:extend", receivedAt: now });
+        await service.handleFocusMessage({ userId, timeZone: "Asia/Seoul", text: "나중에 이어하기", messageId: "web:pause", receivedAt: now });
+        expect(repo.extend).toHaveBeenCalledWith(userId, now, "web:extend");
+        expect(repo.pause).toHaveBeenCalledWith(userId, "2026-09-19", now, "web:pause");
     });
 });
 //# sourceMappingURL=focus-service.test.js.map

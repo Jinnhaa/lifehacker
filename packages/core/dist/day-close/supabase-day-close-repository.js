@@ -1,3 +1,4 @@
+import { readExecutionEvidence, storeExecutionLearning } from "./execution-learning.js";
 import { zonedDateTimeToUtc } from "@amber/shared";
 const asRecord = (value) => value && typeof value === "object" && !Array.isArray(value)
     ? value : {};
@@ -26,6 +27,7 @@ const mapResult = (value) => {
     if (typeof item.date !== "string" || typeof item.closedAt !== "string")
         return undefined;
     return {
+        ...(item.executionEvidence && typeof item.executionEvidence === "object" ? { executionEvidence: item.executionEvidence } : {}),
         date: item.date,
         completedTaskIds: stringArray(item.completedTaskIds),
         incompleteTaskIds: stringArray(item.incompleteTaskIds),
@@ -147,6 +149,7 @@ export class SupabaseDayCloseRepository {
       select id from public.daily_plans where user_id=${userId} and plan_date=${date} and status='approved' order by revision_no desc limit 1
     `;
         const planId = plans[0]?.id ?? null;
+        const executionEvidence = await readExecutionEvidence(this.sql, userId, date, bounds.start, bounds.end);
         const planItems = planId ? await this.sql `
       select i.item_type,i.status,i.planned_minutes,i.task_id,t.status task_status,o.recurring_activity_id,
         a.title recurring_title,o.status occurrence_status
@@ -182,7 +185,7 @@ export class SupabaseDayCloseRepository {
       `,
             this.sql `
         with relevant_tasks as (
-          select i.task_id id from public.plan_items i where i.user_id=${userId} and i.daily_plan_id=${planId} and i.task_id is not null
+          select i.task_id id from public.plan_items i join public.daily_plans p on p.id=i.daily_plan_id and p.user_id=i.user_id where i.user_id=${userId} and p.plan_date=${date} and (p.status in ('approved','closed') or (p.status='superseded' and p.approved_at is not null)) and i.task_id is not null
           union select f.task_id from public.focus_sessions f where f.user_id=${userId} and f.started_at>=${bounds.start} and f.started_at<${bounds.end}
           union select e.aggregate_id from public.domain_events e where e.user_id=${userId} and e.aggregate_type='task'
             and e.event_type in ('task_completed','task_blocked') and e.occurred_at>=${bounds.start} and e.occurred_at<${bounds.end}
@@ -199,9 +202,10 @@ export class SupabaseDayCloseRepository {
         }));
         const taskOutcomes = outcomes.map((item) => ({
             taskId: item.task_id, title: item.title, status: item.status, estimatedMinutes: item.estimated_minutes, actualMinutes: item.actual_minutes,
-            deltaMinutes: item.estimated_minutes === null ? null : item.actual_minutes - item.estimated_minutes
+            deltaMinutes: executionEvidence.estimates.find(e => e.taskId === item.task_id && e.completed && e.actualMinutes === item.actual_minutes)?.deltaMinutes ?? null
         }));
         return {
+            executionEvidence,
             planId,
             planItems: planItems.map((item) => ({
                 itemType: item.item_type, status: item.status, plannedMinutes: item.planned_minutes, taskId: item.task_id,
@@ -238,6 +242,8 @@ export class SupabaseDayCloseRepository {
         values(${run.userId},'day_closed',${plan[0] ? "daily_plan" : "workflow_run"},${plan[0]?.id ?? run.id},'user',${now},${run.correlationId},${run.id},
           ${`day-closed:${run.checkpoint.date}`},1,${tx.json(result)}) on conflict(user_id,idempotency_key) do nothing
       `;
+            const [closedEvent] = await tx `select id from public.domain_events where user_id=${run.userId} and idempotency_key=${`day-closed:${run.checkpoint.date}`}`;
+            await storeExecutionLearning(tx, run.userId, result, closedEvent.id, now);
             return { result, duplicate: false };
         });
     }

@@ -47,6 +47,14 @@ export interface MorningRecurringActivity {
     readonly importance: number;
     readonly completedCount: number;
     readonly occurrenceId: string | null;
+    readonly courseStudy?: {
+        readonly workContextId: string;
+        readonly weeklyMinutes: number;
+        readonly todayMinutes: number;
+        readonly priorityRank: 0 | 1 | 2 | 3 | 4;
+        readonly reasons: readonly string[];
+        readonly signals: Readonly<Record<string, unknown>>;
+    };
 }
 export interface MorningStrategicDirective {
     readonly id: string;
@@ -54,6 +62,9 @@ export interface MorningStrategicDirective {
     readonly priorityOrder: unknown;
 }
 export interface MorningObservation {
+    readonly learningContext?: import("../day-close/execution-learning.js").GroundedLearningContext;
+    readonly outcomeEvidence?: import("../chief/outcome-priority.js").OutcomeEvidence;
+    readonly chiefTaskOrder?: readonly string[];
     readonly timeZone: string;
     readonly planningBufferMinutes: number;
     readonly planningPolicy: Readonly<Record<string, unknown>>;

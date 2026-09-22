@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
+import { DomainError } from "@amber/shared";
 import { shouldReplanForTrigger } from "../rules/replan.js";
 import { classifyReplanImpact } from "./replan-impact.js";
-import { buildReplanDraft, resolveReplanWorkUntil } from "./replan-planner.js";
+import { applyDirectPlanEdit, buildReplanDraft, resolveReplanWorkUntil } from "./replan-planner.js";
+import { interpretChiefReplanRequest } from "./chief-replan-request.js";
 const localDate = (value, timeZone) => {
     const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
         timeZone, year: "numeric", month: "2-digit", day: "2-digit"
@@ -33,7 +35,9 @@ const stateHash = (trigger, state, observation) => createHash("sha256")
     routines: observation.recurringActivities.map((value) => [value.id, value.completedCount]),
     directives: observation.strategicDirectives.map((value) => value.id),
     activeTaskId: state.activeTaskId,
-    workUntil: state.workUntil.toISOString()
+    workUntil: state.workUntil.toISOString(),
+    adjustment: trigger.adjustment ?? null,
+    manualTriggerId: trigger.reason === "manual_replan" ? trigger.id : null
 }))
     .digest("hex");
 const asMorningWorkflow = (workflow) => ({
@@ -61,6 +65,36 @@ export class DynamicReplanningService {
         this.observationReader = dependencies.observationReader;
         this.clock = dependencies.clock;
         this.decisionLearning = dependencies.decisionLearning;
+    }
+    async editPlan(request) {
+        const previous = await this.repository.loadEditablePlanState(request.userId, request.planId);
+        if (!previous)
+            throw new DomainError("INVALID_INPUT", "검토 가능한 오늘 계획을 찾지 못했습니다.");
+        if (localDate(request.receivedAt, previous.timeZone) !== previous.planDate) {
+            throw new DomainError("INVALID_INPUT", "오늘 계획만 직접 수정할 수 있습니다.");
+        }
+        if (request.edit.kind === "reschedule") {
+            if (!Number.isInteger(request.edit.durationMinutes) || request.edit.durationMinutes < 5 || request.edit.durationMinutes > 720) {
+                throw new DomainError("INVALID_INPUT", "duration은 5분부터 720분 사이여야 합니다.");
+            }
+            const end = new Date(request.edit.start.getTime() + request.edit.durationMinutes * 60_000);
+            if (localDate(request.edit.start, previous.timeZone) !== previous.planDate
+                || localDate(new Date(end.getTime() - 1), previous.timeZone) !== previous.planDate) {
+                throw new DomainError("INVALID_INPUT", "이번 버전에서는 오늘 안의 시간으로만 이동할 수 있습니다.");
+            }
+        }
+        const { draft, interpretation } = applyDirectPlanEdit(previous, request.edit);
+        if (interpretation.affectedItems.length) {
+            throw new DomainError("INVALID_INPUT", `다른 계획 항목과 겹칩니다: ${interpretation.affectedItems.map((item) => item.title).join(", ")}`);
+        }
+        if (interpretation.after) {
+            const observation = await this.observationReader.loadObservation(request.userId, previous.planDate, previous.timeZone, request.receivedAt);
+            const conflict = observation.constraints.find((value) => value.blocksCapacity
+                && value.start < interpretation.after.end && value.end > interpretation.after.start);
+            if (conflict)
+                throw new DomainError("INVALID_INPUT", "고정 일정과 겹치는 시간으로 이동할 수 없습니다.");
+        }
+        return this.repository.createDirectEditRevision(request.userId, request.idempotencyKey, previous, draft, interpretation, this.clock.now());
     }
     async processLatestTrigger(userId, timeZone, receivedAt) {
         const trigger = await this.repository.findLatestPendingTrigger(userId);
@@ -97,7 +131,8 @@ export class DynamicReplanningService {
                 ? await this.recordImportantDecision(message, workflow, "reject") : null;
             return { handled: true, reply: followUp ? `${baseReply}\n\n${followUp}` : baseReply };
         }
-        if (text !== "다시 짜줘" && text !== "오늘 일정 다시 짜줘")
+        const adjustment = interpretChiefReplanRequest(text);
+        if (!adjustment)
             return { handled: false };
         const pending = await this.repository.findPendingApproval(message.userId, planDate);
         if (pending) {
@@ -111,7 +146,7 @@ export class DynamicReplanningService {
         if (!await this.repository.loadPlanState(message.userId, planDate)) {
             return { handled: true, reply: "승인된 오늘 계획이 없어. 먼저 오늘 계획을 만들어줘." };
         }
-        const trigger = await this.repository.createManualTrigger(message.userId, this.clock.now(), message.messageId);
+        const trigger = await this.repository.createManualTrigger(message.userId, this.clock.now(), message.messageId, adjustment);
         const reply = await this.processTrigger(trigger, message.timeZone, message.receivedAt);
         return { handled: true, reply: reply ?? "승인된 오늘 계획이 없어. 먼저 오늘 계획을 만들어줘." };
     }
@@ -154,9 +189,19 @@ export class DynamicReplanningService {
             return null;
         const now = this.clock.now();
         const observation = await this.observationReader.loadObservation(trigger.userId, planDate, timeZone, now);
+        const prioritizedTask = trigger.adjustment?.kind === "prioritize_task" ? trigger.adjustment : null;
+        if (prioritizedTask && !observation.tasks.some((task) => task.title.toLocaleLowerCase().includes(prioritizedTask.taskQuery.toLocaleLowerCase()))) {
+            throw new DomainError("INVALID_INPUT", `우선 배치할 작업을 찾지 못했습니다: ${prioritizedTask.taskQuery}`);
+        }
         const current = { ...previous, workUntil: resolveReplanWorkUntil(observation, previous) };
-        const draft = buildReplanDraft({ observation, previous: current, now });
-        const decision = classifyReplanImpact(current, draft, observation, localWeekday(now, timeZone));
+        const draft = buildReplanDraft({
+            observation, previous: current, now,
+            ...(trigger.adjustment ? { adjustment: trigger.adjustment } : {})
+        });
+        const classified = classifyReplanImpact(current, draft, observation, localWeekday(now, timeZone));
+        const decision = trigger.adjustment && trigger.adjustment.kind !== "rebalance"
+            ? { impact: "IMPORTANT_CHANGE", reasons: [...new Set([`user_${trigger.adjustment.kind}`, ...classified.reasons])] }
+            : classified;
         const result = await this.repository.createRevision(trigger, stateHash(trigger, current, observation), current, draft, decision, now);
         if (result.workflow.impact === "SMALL_CHANGE") {
             const action = await this.repository.deriveCurrentAction(trigger.userId, previous.planDate);

@@ -13,6 +13,7 @@ export interface Task {
     readonly executionMode: TaskExecutionMode;
     readonly officialDeadline: Date | null;
     readonly internalDeadline: Date | null;
+    readonly plannedDate?: string | null;
     readonly estimatedMinutes: number | null;
     readonly estimatedUserMinutes: number | null;
     readonly actualMinutes: number;
@@ -34,6 +35,7 @@ export interface CreateTaskRecord {
     readonly executionMode: TaskExecutionMode;
     readonly officialDeadline?: Date | null;
     readonly internalDeadline?: Date | null;
+    readonly plannedDate?: string | null;
     readonly estimatedMinutes?: number | null;
     readonly estimatedUserMinutes?: number | null;
     readonly importance: number;
@@ -41,10 +43,13 @@ export interface CreateTaskRecord {
     readonly completionCriteria?: string | null;
 }
 export interface UpdateTaskRecord {
+    readonly workContextId?: string | null;
+    readonly objectiveId?: string | null;
     readonly title?: string;
     readonly description?: string | null;
     readonly officialDeadline?: Date | null;
     readonly internalDeadline?: Date | null;
+    readonly plannedDate?: string | null;
     readonly estimatedMinutes?: number | null;
     readonly estimatedUserMinutes?: number | null;
     readonly importance?: number;

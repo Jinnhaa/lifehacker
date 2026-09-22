@@ -16,6 +16,7 @@ import type { TaskRepository } from "./task-repository.js";
 import { assertTaskTransition } from "./task-state-machine.js";
 
 const nullableDate = z.union([z.date(), z.null()]).optional();
+const nullableLocalDate = z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.null()]).optional();
 const createTaskSchema = z.object({
   userId: userIdSchema,
   workContextId: z.uuid().nullable().optional(),
@@ -25,6 +26,7 @@ const createTaskSchema = z.object({
   executionMode: z.enum(taskExecutionModes).default("standard"),
   officialDeadline: nullableDate,
   internalDeadline: nullableDate,
+  plannedDate: nullableLocalDate,
   estimatedMinutes: z.number().int().nonnegative().nullable().optional(),
   estimatedUserMinutes: z.number().int().nonnegative().nullable().optional(),
   importance: z.number().int().min(1).max(5),
@@ -44,6 +46,7 @@ const updateTaskSchema = z.object({
   objectiveId: z.uuid().nullable().optional(),
   title: z.string().trim().min(1).optional(),
   internalDeadline: nullableDate,
+  plannedDate: nullableLocalDate,
   estimatedMinutes: z.number().int().positive().nullable().optional(),
   source: z.string().trim().min(1).default("user"),
   correlationId: correlationIdSchema.optional(),
@@ -102,6 +105,7 @@ export class TaskService {
       ...(parsed.description !== undefined && { description: parsed.description }),
       ...(parsed.officialDeadline !== undefined && { officialDeadline: parsed.officialDeadline }),
       ...(parsed.internalDeadline !== undefined && { internalDeadline: parsed.internalDeadline }),
+      ...(parsed.plannedDate !== undefined && { plannedDate: parsed.plannedDate }),
       ...(parsed.estimatedMinutes !== undefined && { estimatedMinutes: parsed.estimatedMinutes }),
       ...(parsed.estimatedUserMinutes !== undefined && { estimatedUserMinutes: parsed.estimatedUserMinutes }),
       ...(parsed.nextAction !== undefined && { nextAction: parsed.nextAction }),
@@ -142,6 +146,7 @@ export class TaskService {
         next: parsed.internalDeadline?.toISOString() ?? null
       };
     }
+    if (parsed.plannedDate !== undefined) changes.planned_date = { previous: current.plannedDate ?? null, next: parsed.plannedDate };
     if (parsed.estimatedMinutes !== undefined) {
       changes.estimated_minutes = { previous: current.estimatedMinutes, next: parsed.estimatedMinutes };
     }
@@ -152,6 +157,7 @@ export class TaskService {
       }),
       ...(parsed.title !== undefined && { title: parsed.title }),
       ...(parsed.internalDeadline !== undefined && { internalDeadline: parsed.internalDeadline }),
+      ...(parsed.plannedDate !== undefined && { plannedDate: parsed.plannedDate }),
       ...(parsed.estimatedMinutes !== undefined && { estimatedMinutes: parsed.estimatedMinutes })
     }, {
       userId: parsed.userId,

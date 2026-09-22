@@ -184,7 +184,7 @@ describe("ChiefAgentService", () => {
         expect(result.reply).toContain("데이터구조 복습");
         expect(result.reply).not.toContain("지금 할 일\n운영체제 과제");
     });
-    it("uses an approved planning preference only when it changes an ambiguous priority", async () => {
+    it("does not let an old planning preference override unambiguous P0 evidence", async () => {
         const recorder = {
             findCompleted: vi.fn(async () => null),
             recordCompleted: vi.fn(async () => undefined)
@@ -204,8 +204,8 @@ describe("ChiefAgentService", () => {
         const { service } = serviceWith(loaded, recorder);
         const result = await service.handleChiefMessage(message("뭐부터 할까?"));
         expect(result.reply).toContain("운영체제 과제");
-        expect(result.reply).toContain("이전에 승인한 기준대로");
-        expect(recorder.recordCompleted).toHaveBeenCalledWith(expect.objectContaining({ usedPrincipleIds: ["principle-1"] }));
+        expect(result.reply).not.toContain("이전에 승인한 기준대로");
+        expect(recorder.recordCompleted).toHaveBeenCalledWith(expect.objectContaining({ usedPrincipleIds: [] }));
     });
     it("keeps user identity scoped through the context read", async () => {
         const { service, reader } = serviceWith(context({ userId: otherUserId }));

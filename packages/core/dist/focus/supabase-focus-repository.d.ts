@@ -6,12 +6,17 @@ export declare class SupabaseFocusRepository implements FocusRepository {
     private readonly sql;
     constructor(sql: Sql);
     findCurrentWorkflow(userId: UserId): Promise<FocusWorkflowRun | null>;
-    start(userId: UserId, planDate: string, now: Date, messageId: string): Promise<{
+    start(userId: UserId, planDate: string, now: Date, messageId: string, durationMinutes?: number, timeZone?: string, target?: {
+        readonly kind: "task" | "routine";
+        readonly id: string;
+    }): Promise<{
         context: FocusContext | null;
         action: DerivedCurrentAction | null;
         duplicate: boolean;
     }>;
-    complete(userId: UserId, planDate: string, now: Date, messageId: string): Promise<CompleteFocusResult | null>;
+    extend(userId: UserId, now: Date, messageId: string): Promise<boolean>;
+    pause(userId: UserId, planDate: string, now: Date, messageId: string): Promise<boolean>;
+    complete(userId: UserId, planDate: string, now: Date, messageId: string, timeZone?: string): Promise<CompleteFocusResult | null>;
     requestBlockReason(userId: UserId, now: Date, messageId: string): Promise<FocusContext | null>;
     waitForBlockDetail(userId: UserId, category: "missing_material" | "other", initialDetail: string, now: Date, messageId: string): Promise<void>;
     recordBlock(userId: UserId, planDate: string, category: BlockCategory, detail: string, now: Date, messageId: string): Promise<RecoveryResult | null>;

@@ -235,3 +235,31 @@ Chief가 학습으로 변경하면 안 되는 것:
 - 공식 마감
 - 공식 시험/일정
 - 외부 완료 사실
+
+---
+
+## 13. Work / Chief Goal Planning
+
+Work와 Chief planning에서만 다음 최소 계층을 사용한다.
+
+```text
+Long-term Goal → Monthly Win → Weekly Win → Objective/Milestone → Task
+```
+
+- Goal은 기간의 결과이며 Calendar day cell의 Task처럼 취급하지 않는다.
+- Task는 기존 `objective_id → goal_id` 연결을 통해 Goal에 기여한다.
+- 명시적 milestone이 있으면 milestone 달성 상태를 우선한다.
+- milestone이 없으면 연결 Task의 예상 작업량을 가중치로 progress를 계산한다. Task 개수만 세지 않는다.
+- 완료와 Focus evidence의 기존 Task/Objective/Goal 연결을 보존한다.
+
+## 14. Goal / Task / Event와 Planned Day
+
+- Goal = 기간 상단에서 보여주는 달성 결과.
+- Task = 완료해야 하는 일이며 `planned_date`로 실행할 날짜를 가질 수 있다.
+- Event = authoritative source가 소유하는 실제 고정 시간.
+
+`planned_date`는 Chief 또는 사용자가 옮길 수 있는 실행 계획이다. Drag는 `planned_date`만 변경하며 `internal_deadline`과 `official_deadline`은 변경하지 않는다.
+
+```text
+Planned Day ≠ Internal Deadline ≠ Official Deadline
+```

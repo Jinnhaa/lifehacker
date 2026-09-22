@@ -236,6 +236,16 @@ Task와 Calendar를 한 공간에서 관리한다.
 시각적으로 일반 SaaS Dashboard가 아니라
 **Tycoon Office의 Planning Room / Operations Desk**처럼 느껴져야 한다.
 
+기본 진입은 Week이며 상단 view는 `Today / Week / Month`다.
+
+- Week: Weekly Wins와 Mon–Sun Planned Day board. Task와 fixed Calendar Event를 함께 보되 의미는 분리한다.
+- Today: Home과 같은 canonical priority를 사용한 ordered Quest, workload, capacity, deadline warning과 고정 일정의 시간 흐름.
+- Month: Monthly Wins를 먼저 보여주고 Exam/Quiz, official deadline, 중요한 internal deadline, milestone, 큰 fixed event만 표시한다.
+
+Home은 Work Today의 복사본이 아니다. Home은 지금 실행할 Main Quest를 압축한 cockpit이고, Work Today는 오늘 계획 전체를 확인·수정하는 planning surface다.
+
+일상 수정은 확인 modal 없이 즉시 반영한다. Task 완료는 canonical manual completion을 사용하고, day drag는 Planned Day만 변경한다.
+
 Home보다 게임성은 약해도 동일한 세계관과 디자인 시스템을 유지한다.
 
 ---

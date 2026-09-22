@@ -89,19 +89,28 @@ describe("Supabase dynamic replanning", () => {
         expect(events[0]).toEqual({ replanned: 1, approved: 1, executed: 1 });
         expect(await repository.loadPlanState(otherUser, "2026-09-04")).toBeNull();
     });
-    it("creates an important proposed revision and approves it through the durable approval", async () => {
-        await sql `
-      insert into public.domain_events(user_id,event_type,aggregate_type,aggregate_id,actor_type,occurred_at,correlation_id,idempotency_key,payload_version,payload)
-      values(${importantUser},'replan_triggered','daily_plan',${importantPlan},'system',${now},gen_random_uuid(),'important-trigger',1,
-        ${sql.json({ reason: "task_overrun", delta_minutes: 20, replan_executed: false })})
-    `;
-        const proposal = await service.processLatestTrigger(importantUser, "Asia/Seoul", now);
-        expect(proposal).toContain("중요한 일정 변경");
-        expect(proposal).toContain("승인");
+    it("keeps the approved plan before review, then persists the approved rest revision and current action", async () => {
+        const proposal = await service.handleReplanMessage({
+            userId: importantUser, timeZone: "Asia/Seoul", text: "나 지금 2시간 쉬고 싶어", messageId: "web:rest-proposal", receivedAt: now
+        });
+        expect(proposal.reply).toContain("중요한 일정 변경");
+        expect(proposal.reply).toContain("승인");
         const before = await sql `
       select revision_no,status from public.daily_plans where user_id=${importantUser} order by revision_no
     `;
-        expect(before).toEqual([{ revision_no: 1, status: "superseded" }, { revision_no: 2, status: "pending_approval" }]);
+        expect(before).toEqual([{ revision_no: 1, status: "approved" }, { revision_no: 2, status: "pending_approval" }]);
+        expect(await repository.deriveCurrentAction(importantUser, "2026-09-04")).toMatchObject({ taskId: importantTask });
+        const rejection = await service.handleReplanMessage({
+            userId: importantUser, timeZone: "Asia/Seoul", text: "거절", messageId: "web:rest-reject", receivedAt: now
+        });
+        expect(rejection.reply).toContain("기존 계획을 유지할게");
+        expect(await sql `
+      select revision_no,status from public.daily_plans where user_id=${importantUser} order by revision_no
+    `).toEqual([{ revision_no: 1, status: "approved" }, { revision_no: 2, status: "superseded" }]);
+        expect(await repository.deriveCurrentAction(importantUser, "2026-09-04")).toMatchObject({ taskId: importantTask });
+        await service.handleReplanMessage({
+            userId: importantUser, timeZone: "Asia/Seoul", text: "나 지금 1시간 쉬고 싶어", messageId: "web:rest-proposal-v2", receivedAt: now
+        });
         const approval = await service.handleReplanMessage({
             userId: importantUser, timeZone: "Asia/Seoul", text: "승인", messageId: "discord:important-approval", receivedAt: now
         });
@@ -116,6 +125,48 @@ describe("Supabase dynamic replanning", () => {
         (select count(*)::int from public.approval_requests where user_id=${importantUser} and status='approved') approval
     `;
         expect(after[0]).toEqual({ approved: 1, approval: 1 });
+        const persisted = await repository.loadPlanState(importantUser, "2026-09-04");
+        expect(persisted).toMatchObject({ revisionNo: 3 });
+        expect(await repository.deriveCurrentAction(importantUser, "2026-09-04")).toMatchObject({ source: "plan_item", title: "휴식" });
+        const editable = persisted.items[0];
+        await service.editPlan({
+            userId: importantUser, planId: persisted.planId, receivedAt: now, idempotencyKey: "direct-edit-reject",
+            edit: { kind: "exclude", itemId: editable.id }
+        });
+        expect(await sql `
+      select revision_no,status from public.daily_plans where user_id=${importantUser} and revision_no in (3,4) order by revision_no
+    `).toEqual([{ revision_no: 3, status: "approved" }, { revision_no: 4, status: "pending_approval" }]);
+        await service.handleReplanMessage({
+            userId: importantUser, timeZone: "Asia/Seoul", text: "거절", messageId: "web:direct-reject", receivedAt: now
+        });
+        expect((await repository.loadPlanState(importantUser, "2026-09-04"))?.revisionNo).toBe(3);
+        await service.editPlan({
+            userId: importantUser, planId: persisted.planId, receivedAt: now, idempotencyKey: "direct-edit-approve",
+            edit: { kind: "reschedule", itemId: editable.id, start: editable.start, durationMinutes: Math.max(5, editable.plannedMinutes - 5) }
+        });
+        await service.handleReplanMessage({
+            userId: importantUser, timeZone: "Asia/Seoul", text: "승인", messageId: "web:direct-approve", receivedAt: now
+        });
+        expect(await sql `
+      select revision_no,status from public.daily_plans where user_id=${importantUser} and revision_no in (3,5) order by revision_no
+    `).toEqual([{ revision_no: 3, status: "superseded" }, { revision_no: 5, status: "approved" }]);
+        const approvedV5 = await repository.loadPlanState(importantUser, "2026-09-04");
+        const firstEdit = await service.editPlan({
+            userId: importantUser, planId: approvedV5.planId, receivedAt: now, idempotencyKey: "direct-edit-first-proposal",
+            edit: { kind: "reschedule", itemId: approvedV5.items[0].id, start: approvedV5.items[0].start, durationMinutes: 20 }
+        });
+        const pendingState = await repository.loadEditablePlanState(importantUser, firstEdit.plan.id);
+        await service.editPlan({
+            userId: importantUser, planId: firstEdit.plan.id, receivedAt: now, idempotencyKey: "direct-edit-replace-proposal",
+            edit: { kind: "reschedule", itemId: pendingState.items[0].id, start: pendingState.items[0].start, durationMinutes: 15 }
+        });
+        expect(await sql `
+      select revision_no,status from public.daily_plans where user_id=${importantUser} and revision_no in (5,6,7) order by revision_no
+    `).toEqual([
+            { revision_no: 5, status: "approved" },
+            { revision_no: 6, status: "superseded" },
+            { revision_no: 7, status: "pending_approval" }
+        ]);
     });
 });
 //# sourceMappingURL=supabase-replan-repository.integration.test.js.map
