@@ -612,7 +612,7 @@ button { color: inherit; }
 .tycoon-office { min-height: min(830px, calc(100vh - 90px)); border-width: 0; border-radius: 32px; box-shadow: inset 0 1px rgba(255,255,255,.76); }
 .office-floor { opacity: .62; background-size: 168px 168px; }
 .office-zone { border-color: rgba(130,81,55,.1); background: rgba(239,203,150,.18); box-shadow: inset 0 8px rgba(255,255,255,.13); }.zone-chief { width: 26%; }.zone-project { width: 26%; }.zone-learning { width: 24%; }
-.office-wordmark { position: absolute; z-index: 7; top: 18px; left: 24px; color: var(--lh-wood-dark); font-size: 13px; font-weight: 900; letter-spacing: -.03em; opacity: .72; }.office-wordmark::before { content: ""; display: inline-block; width: 8px; height: 8px; margin: 0 6px 1px 0; border: 2px solid var(--lh-outline); border-radius: 3px; background: var(--lh-yellow); vertical-align: middle; }
+.office-wordmark { position: absolute; z-index: 7; top: 18px; left: 24px; width: 112px; height: auto; opacity: .92; }
 .world-calendar-button { position: absolute; z-index: 7; top: 14px; right: 18px; display: grid; grid-auto-flow: column; place-items: center; gap: 5px; width: 34px; height: 34px; padding: 0; border: 2px solid var(--lh-outline); border-radius: 10px; background: var(--lh-panel); box-shadow: 0 3px 0 rgba(93,73,61,.18); cursor: pointer; font-size: 14px; }.world-calendar-button span { font-size: 9px; font-weight: 900; }
 .quest-console { top: 8%; min-height: 0; padding: 12px 14px 16px; border: 3px solid var(--lh-outline); border-radius: 25px; background: linear-gradient(90deg, var(--lh-wood-dark) 0 8px, var(--lh-wood) 8px 12px, var(--lh-panel-warm) 12px calc(100% - 12px), var(--lh-wood-light) calc(100% - 12px) calc(100% - 8px), var(--lh-wood-dark) calc(100% - 8px)); box-shadow: 0 8px 0 rgba(93,73,61,.27), inset 0 1px rgba(255,255,255,.47); }
 .quest-console > header { min-height: 29px; margin: 0 -3px 8px; padding: 0 8px; border: 2px solid var(--lh-outline); border-radius: 10px; background: linear-gradient(180deg, var(--lh-wood-light), var(--lh-wood)); box-shadow: inset 0 1px rgba(255,255,255,.3); }.quest-console > header small { color: #fff5df; text-shadow: 0 1px var(--lh-wood-dark); }.quest-console > header button { border-color: var(--lh-wood-dark); background: var(--lh-panel); box-shadow: 0 2px 0 rgba(74,49,34,.25); }
@@ -794,3 +794,13 @@ button { color: inherit; }
 .planning-utility { display:flex; gap:8px; margin-top:15px; }.planning-utility > details { flex:1; padding:10px 12px; border:2px solid rgba(93,73,61,.3); border-radius:12px; background:var(--lh-panel-soft); }.planning-utility summary { cursor:pointer; font-size:10px; font-weight:900; }.planning-utility form { display:grid; grid-template-columns:1fr 190px auto; gap:6px; margin-top:8px; }.planning-candidate { grid-template-columns:1fr 100px 180px auto auto !important; }
 @media (max-width:950px) { .week-planning-board { grid-template-columns:repeat(7,minmax(180px,1fr)); }.work-today-grid { grid-template-columns:1fr; }.month-grid article { min-height:86px; }.planning-utility { display:grid; }.planning-utility form,.planning-candidate { grid-template-columns:1fr !important; } }
 @media (max-width:620px) { .planning-room { width:min(100% - 16px,1500px); }.planning-room .work-header { padding:14px; }.work-view-tabs { width:100%; }.work-view-tabs button { flex:1; min-width:0; }.wins-grid { grid-template-columns:1fr; }.month-board { padding:8px; overflow-x:auto; }.month-weekdays,.month-grid { min-width:720px; } }
+
+/* Global overview navigation: route visibility is decided once in RootLayout. */
+.global-game-dock a { display:grid; place-items:center; width:56px; height:52px; padding:0; border:2px solid transparent; border-radius:13px; color:#fff5df; text-decoration:none; }
+.global-game-dock a:not(.active) { opacity:.72; }
+.global-game-dock a:hover { background:rgba(255,244,220,.18); }
+.global-game-dock a.active { border-color:var(--lh-outline); background:var(--lh-panel); color:var(--lh-text); box-shadow:0 5px 0 rgba(72,48,34,.28); transform:translateY(-6px) scale(1.04); }
+.global-nav-icon { width:27px; height:27px; object-fit:contain; }
+.global-game-dock span { margin-top:1px; font-size:8px; font-weight:900; }
+body:has(.is-focus-mode) .global-game-dock { display:none; }
+@media (max-width:720px) { .global-game-dock { max-width:calc(100vw - 12px); }.global-game-dock a { width:calc((100vw - 46px) / 5); max-width:49px; height:46px; }.global-nav-icon { width:24px; height:24px; } }

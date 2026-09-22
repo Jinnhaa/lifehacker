@@ -243,11 +243,6 @@ function MissionsBoard({ data }: { data: HomeViewModel }) {
   })}</div></aside>;
 }
 
-function GameDock({ router }: { router: ReturnType<typeof useRouter> }) {
-  const items = [["⌂", "Home", "/"], ["✓", "Work", "/work"], ["▣", "Projects", "/projects"], ["✦", "Learning", "/learning"], ["⚙", "Settings", "/settings"]] as const;
-  return <nav className="game-dock" aria-label="게임 도크">{items.map(([icon, label, href], index) => <button type="button" className={index === 0 ? "active" : ""} key={label} onClick={() => router.push(href)} aria-label={label}><i>{icon}</i><span>{label}</span></button>)}</nav>;
-}
-
 const readinessLabel = { NOT_STARTED: "미시작", IN_PROGRESS: "진행 중", READY: "준비됨", UNKNOWN: "확인 필요" } as const;
 const capacityLabel = (minutes: number | null): string => minutes === null ? "확인 전"
   : minutes < 60 ? `${minutes}분` : `${Math.floor(minutes / 60)}h${minutes % 60 ? `${minutes % 60}m` : ""}`;
@@ -337,7 +332,7 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
 
   return <main className={`tycoon-shell tycoon-home ${initialData.focus?.step === "active" ? "is-focus-mode" : ""}`}>
     <section className="tycoon-office" aria-label="Lifehacker Office World">
-      <div className="office-wordmark">Lifehacker</div><button className="world-calendar-button" type="button" onClick={() => setWeekOpen(true)} aria-label="주간 일정 열기">▦ <span>{calendarCount}</span></button>
+      <img className="office-wordmark" src="/assets/lifehacker/lifehacker-logo.png" alt="Lifehacker" /><button className="world-calendar-button" type="button" onClick={() => setWeekOpen(true)} aria-label="주간 일정 열기">▦ <span>{calendarCount}</span></button>
       <div className="office-floor" /><div className="office-zone zone-chief" /><div className="office-zone zone-project" /><div className="office-zone zone-learning" />
       <OfficeStation kind="chief" title="Chief" detail="Current Status" onClick={() => setStatusOpen(true)} />
       <OfficeStation kind="project" title="Project PM" detail="Projects" onClick={() => router.push("/projects")} />
@@ -348,7 +343,6 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
       {initialData.focus?.step === "active" && <div className="focus-spotlight" aria-hidden="true" />}
     </section>
     {(initialData.decisionCount > 0 || initialData.proposal) && <aside className="review-toast"><span>!</span><div><small>REVIEW READY</small><strong>{initialData.proposal ? "계획 변경안 검토 대기" : initialData.planState.status === "pending_approval" ? "오늘 계획 승인 대기" : initialData.reviewArtifacts.length ? `${initialData.reviewArtifacts.length}개의 산출물 검토 대기` : "확인이 필요한 제안이 있습니다"}</strong></div><button type="button" onClick={() => initialData.proposal ? setProposalOpen(true) : initialData.planState.status === "pending_approval" ? setPlanOpen(true) : setReviewOpen(true)}>검토</button></aside>}
-    <GameDock router={router} />
     {proposalOpen && initialData.proposal && <div className="runtime-overlay"><ProposalPanel proposal={initialData.proposal} action={submitDecision} pending={decisionPending} /></div>}
     {planOpen && <div className="runtime-overlay" role="dialog" aria-modal="true" aria-label="오늘 계획"><section className="plan-dialog"><button className="dialog-close" type="button" onClick={() => setPlanOpen(false)} aria-label="오늘 계획 닫기">×</button><PlanReviewPanel data={initialData} morningAction={submitMorning} morningPending={morningPending} completeAction={submitComplete} completePending={completePending} /></section></div>}
     {weekOpen && <WeekCalendarOverlay days={initialData.week} today={initialData.date} timeZone={initialData.timeZone} onClose={() => setWeekOpen(false)} />}
