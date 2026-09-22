@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { GlobalBottomNavigation } from "../components/global-bottom-navigation";
+import { GlobalAppShell } from "../components/global-app-shell";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <html lang="ko">
-      <body>{children}<GlobalBottomNavigation /></body>
+      <body><GlobalAppShell>{children}</GlobalAppShell></body>
     </html>
   );
 }

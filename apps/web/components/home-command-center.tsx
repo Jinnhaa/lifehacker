@@ -332,7 +332,7 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
 
   return <main className={`tycoon-shell tycoon-home ${initialData.focus?.step === "active" ? "is-focus-mode" : ""}`}>
     <section className="tycoon-office" aria-label="Lifehacker Office World">
-      <img className="office-wordmark" src="/assets/lifehacker/lifehacker-logo.png" alt="Lifehacker" /><button className="world-calendar-button" type="button" onClick={() => setWeekOpen(true)} aria-label="주간 일정 열기">▦ <span>{calendarCount}</span></button>
+      <button className="world-calendar-button" type="button" onClick={() => setWeekOpen(true)} aria-label="주간 일정 열기">▦ <span>{calendarCount}</span></button>
       <div className="office-floor" /><div className="office-zone zone-chief" /><div className="office-zone zone-project" /><div className="office-zone zone-learning" />
       <OfficeStation kind="chief" title="Chief" detail="Current Status" onClick={() => setStatusOpen(true)} />
       <OfficeStation kind="project" title="Project PM" detail="Projects" onClick={() => router.push("/projects")} />

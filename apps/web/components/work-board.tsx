@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { startTransition, useActionState, useState } from "react";
 import {
   completeWorkTaskAction,
@@ -109,7 +108,7 @@ export function WorkBoard({ data }: { data: WorkBoardViewModel }) {
   const [estimateState, estimateAction, estimatePending] = useActionState(updateWorkEstimateAction, initialState);
   const states = [candidateState, updateState, completeState, createState, moveState, estimateState]; const feedback = states.find((state) => state.message)?.message;
   const pending = updatePending || completePending || movePending || estimatePending;
-  return <main className="work-shell planning-room"><header className="work-header"><div><small>TYCOON PLANNING ROOM</small><h1>Work & Calendar</h1><p>Chief가 Goal, Status, Deadline과 Capacity를 바탕으로 배치한 계획입니다.</p></div><Link href="/">Home</Link></header>
+  return <main className="work-shell planning-room">
     <nav className="work-view-tabs" aria-label="Work 보기">{(["today","week","month"] as const).map((item) => <button className={view === item ? "active" : ""} type="button" onClick={() => setView(item)} key={item}>{item === "today" ? "Today" : item === "week" ? "Week" : "Month"}</button>)}</nav>
     {!data.configured ? <section className="work-empty"><strong>Work & Calendar를 연결할 수 없습니다.</strong><p>{data.error}</p></section> : <>
       {view !== "month" && <Wins title="THIS WEEK WINS" wins={data.weeklyWins} selected={selectedGoalId} onSelect={setSelectedGoalId} />}

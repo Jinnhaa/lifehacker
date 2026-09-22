@@ -612,7 +612,6 @@ button { color: inherit; }
 .tycoon-office { min-height: min(830px, calc(100vh - 90px)); border-width: 0; border-radius: 32px; box-shadow: inset 0 1px rgba(255,255,255,.76); }
 .office-floor { opacity: .62; background-size: 168px 168px; }
 .office-zone { border-color: rgba(130,81,55,.1); background: rgba(239,203,150,.18); box-shadow: inset 0 8px rgba(255,255,255,.13); }.zone-chief { width: 26%; }.zone-project { width: 26%; }.zone-learning { width: 24%; }
-.office-wordmark { position: absolute; z-index: 7; top: 18px; left: 24px; width: 112px; height: auto; opacity: .92; }
 .world-calendar-button { position: absolute; z-index: 7; top: 14px; right: 18px; display: grid; grid-auto-flow: column; place-items: center; gap: 5px; width: 34px; height: 34px; padding: 0; border: 2px solid var(--lh-outline); border-radius: 10px; background: var(--lh-panel); box-shadow: 0 3px 0 rgba(93,73,61,.18); cursor: pointer; font-size: 14px; }.world-calendar-button span { font-size: 9px; font-weight: 900; }
 .quest-console { top: 8%; min-height: 0; padding: 12px 14px 16px; border: 3px solid var(--lh-outline); border-radius: 25px; background: linear-gradient(90deg, var(--lh-wood-dark) 0 8px, var(--lh-wood) 8px 12px, var(--lh-panel-warm) 12px calc(100% - 12px), var(--lh-wood-light) calc(100% - 12px) calc(100% - 8px), var(--lh-wood-dark) calc(100% - 8px)); box-shadow: 0 8px 0 rgba(93,73,61,.27), inset 0 1px rgba(255,255,255,.47); }
 .quest-console > header { min-height: 29px; margin: 0 -3px 8px; padding: 0 8px; border: 2px solid var(--lh-outline); border-radius: 10px; background: linear-gradient(180deg, var(--lh-wood-light), var(--lh-wood)); box-shadow: inset 0 1px rgba(255,255,255,.3); }.quest-console > header small { color: #fff5df; text-shadow: 0 1px var(--lh-wood-dark); }.quest-console > header button { border-color: var(--lh-wood-dark); background: var(--lh-panel); box-shadow: 0 2px 0 rgba(74,49,34,.25); }
@@ -795,12 +794,20 @@ button { color: inherit; }
 @media (max-width:950px) { .week-planning-board { grid-template-columns:repeat(7,minmax(180px,1fr)); }.work-today-grid { grid-template-columns:1fr; }.month-grid article { min-height:86px; }.planning-utility { display:grid; }.planning-utility form,.planning-candidate { grid-template-columns:1fr !important; } }
 @media (max-width:620px) { .planning-room { width:min(100% - 16px,1500px); }.planning-room .work-header { padding:14px; }.work-view-tabs { width:100%; }.work-view-tabs button { flex:1; min-width:0; }.wins-grid { grid-template-columns:1fr; }.month-board { padding:8px; overflow-x:auto; }.month-weekdays,.month-grid { min-width:720px; } }
 
-/* Global overview navigation: route visibility is decided once in RootLayout. */
-.global-game-dock a { display:grid; place-items:center; width:56px; height:52px; padding:0; border:2px solid transparent; border-radius:13px; color:#fff5df; text-decoration:none; }
-.global-game-dock a:not(.active) { opacity:.72; }
-.global-game-dock a:hover { background:rgba(255,244,220,.18); }
-.global-game-dock a.active { border-color:var(--lh-outline); background:var(--lh-panel); color:var(--lh-text); box-shadow:0 5px 0 rgba(72,48,34,.28); transform:translateY(-6px) scale(1.04); }
-.global-nav-icon { width:27px; height:27px; object-fit:contain; }
-.global-game-dock span { margin-top:1px; font-size:8px; font-weight:900; }
-body:has(.is-focus-mode) .global-game-dock { display:none; }
-@media (max-width:720px) { .global-game-dock { max-width:calc(100vw - 12px); }.global-game-dock a { width:calc((100vw - 46px) / 5); max-width:49px; height:46px; }.global-nav-icon { width:24px; height:24px; } }
+/* Global shell: the header reserves room for the logo, while the dock reserves the bottom edge. */
+.global-brand-area { display:flex; align-items:center; width:min(1720px, calc(100% - 48px)); height:118px; margin:0 auto; padding:22px 0 14px; }
+.global-brand-area img { display:block; width:clamp(190px, 16vw, 230px); height:auto; }
+.global-shell-content { min-height:calc(100vh - 118px); padding-bottom:154px; }
+
+/* Global overview navigation: one wooden game tray in the shared app shell. */
+.global-game-dock { display:grid; grid-template-columns:repeat(5, minmax(92px, 1fr)); align-items:end; width:min(680px, calc(100vw - 32px)); gap:5px; padding:9px 15px 11px; border:3px solid var(--lh-outline); border-radius:20px 20px 16px 16px; background:linear-gradient(180deg, var(--lh-wood-light) 0 16%, var(--lh-wood) 17% 82%, var(--lh-wood-dark) 83%); box-shadow:0 7px 0 rgba(72,48,34,.42), inset 0 2px rgba(255,244,220,.34), inset 0 -3px rgba(74,48,35,.22); }
+.global-game-dock::before { content:""; position:absolute; inset:6px 9px auto; height:5px; border-radius:99px; background:rgba(255,246,220,.26); pointer-events:none; }
+.global-game-dock a { display:grid; place-items:center; min-width:0; height:82px; padding:4px 5px 3px; border:2px solid transparent; border-radius:13px; color:#fff5df; text-decoration:none; transition:transform 150ms ease, background 150ms ease, filter 150ms ease; }
+.global-game-dock a:not(.active) { filter:saturate(.78) brightness(.93); }
+.global-game-dock a:hover { background:rgba(255,244,220,.14); filter:none; }
+.global-game-dock a.active { border-color:var(--lh-outline); background:linear-gradient(180deg, #fff5cf, var(--lh-yellow)); box-shadow:0 6px 0 rgba(72,48,34,.34), inset 0 2px rgba(255,255,255,.8); color:var(--lh-text); transform:translateY(-12px) scale(1.06); }
+.global-nav-icon { width:50px; height:50px; object-fit:contain; filter:drop-shadow(0 3px 1px rgba(68,45,31,.32)); }
+.global-game-dock a.active .global-nav-icon { width:56px; height:56px; filter:drop-shadow(0 5px 1px rgba(68,45,31,.34)); }
+.global-game-dock span { margin-top:-2px; font-size:8px; font-weight:900; letter-spacing:.035em; }
+body:has(.is-focus-mode) .global-brand-area, body:has(.is-focus-mode) .global-game-dock { display:none; }
+@media (max-width:720px) { .global-brand-area { width:calc(100% - 28px); height:86px; padding:13px 0 9px; }.global-brand-area img { width:clamp(176px, 56vw, 205px); }.global-shell-content { min-height:calc(100vh - 86px); padding-bottom:127px; }.global-game-dock { width:calc(100vw - 16px); grid-template-columns:repeat(5, minmax(0, 1fr)); gap:1px; padding:6px 6px 8px; border-radius:17px 17px 13px 13px; }.global-game-dock a { height:66px; padding:2px; }.global-nav-icon { width:37px; height:37px; }.global-game-dock a.active { transform:translateY(-9px) scale(1.04); }.global-game-dock a.active .global-nav-icon { width:42px; height:42px; }.global-game-dock span { font-size:7px; } }
