@@ -7,8 +7,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { readWorkBoard } from "./work-server";
 
 vi.mock("server-only", () => ({}));
-vi.mock("@amber/core", async () => import("../../../packages/core/src/index.ts"));
-vi.mock("@amber/input", async () => import("../../../packages/input/src/index.ts"));
+vi.mock("@amber/core", async () => import("../../../packages/core/src/index"));
+vi.mock("@amber/input", async () => import("../../../packages/input/src/index"));
 
 const connectionString = process.env.TEST_DATABASE_URL ?? "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
 const sql = postgres(connectionString, { max: 5 });
