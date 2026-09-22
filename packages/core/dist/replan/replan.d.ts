@@ -3,6 +3,7 @@ import type { DerivedCurrentAction } from "../execution/current-action.js";
 import type { MorningObservation, MorningPlan, MorningPlanDraft, MorningPlanItemDraft, MorningRepository } from "../morning/morning.js";
 import type { ReplanTriggerReason } from "../rules/replan.js";
 import type { DecisionLearningRecorder } from "../decision-learning/decision-learning.js";
+import type { ChiefReplanAdjustment } from "./chief-replan-request.js";
 export type ReplanImpact = "SMALL_CHANGE" | "IMPORTANT_CHANGE";
 export interface ReplanTrigger {
     readonly id: string;
@@ -11,6 +12,7 @@ export interface ReplanTrigger {
     readonly deltaMinutes: number;
     readonly correlationId: string;
     readonly occurredAt: Date;
+    readonly adjustment?: ChiefReplanAdjustment;
 }
 export interface ReplanPlanItem extends MorningPlanItemDraft {
     readonly id: string;
@@ -56,14 +58,50 @@ export interface ReplanRevisionResult {
     readonly plan: MorningPlan;
     readonly duplicate: boolean;
 }
+export type DirectPlanEdit = {
+    readonly kind: "reschedule";
+    readonly itemId: string;
+    readonly start: Date;
+    readonly durationMinutes: number;
+} | {
+    readonly kind: "exclude";
+    readonly itemId: string;
+};
+export interface DirectPlanEditInterpretation {
+    readonly itemId: string;
+    readonly title: string;
+    readonly itemType: ReplanPlanItem["itemType"];
+    readonly context: string | null;
+    readonly before: {
+        readonly start: Date;
+        readonly end: Date;
+        readonly durationMinutes: number;
+    };
+    readonly after: {
+        readonly start: Date;
+        readonly end: Date;
+        readonly durationMinutes: number;
+    } | null;
+    readonly affectedItems: readonly {
+        readonly itemId: string;
+        readonly title: string;
+    }[];
+    readonly totalMinutesBefore: number;
+    readonly totalMinutesAfter: number;
+}
+export interface DirectPlanEditResult extends ReplanRevisionResult {
+    readonly interpretation: DirectPlanEditInterpretation;
+}
 export interface ReplanRepository {
     findLatestPendingTrigger(userId: UserId): Promise<ReplanTrigger | null>;
-    createManualTrigger(userId: UserId, now: Date, messageId: string): Promise<ReplanTrigger>;
+    createManualTrigger(userId: UserId, now: Date, messageId: string, adjustment: ChiefReplanAdjustment): Promise<ReplanTrigger>;
     findPendingApproval(userId: UserId, planDate: string): Promise<ReplanWorkflowRun | null>;
     findCompletedApprovalByMessage(userId: UserId, planDate: string, messageId: string): Promise<ReplanWorkflowRun | null>;
     findByTrigger(userId: UserId, triggerId: string): Promise<ReplanRevisionResult | null>;
     loadPlanState(userId: UserId, planDate: string): Promise<ReplanPlanState | null>;
+    loadEditablePlanState(userId: UserId, planId: string): Promise<ReplanPlanState | null>;
     createRevision(trigger: ReplanTrigger, stateHash: string, previous: ReplanPlanState, draft: MorningPlanDraft, decision: ReplanDecision, now: Date): Promise<ReplanRevisionResult>;
+    createDirectEditRevision(userId: UserId, idempotencyKey: string, previous: ReplanPlanState, draft: MorningPlanDraft, interpretation: DirectPlanEditInterpretation, now: Date): Promise<DirectPlanEditResult>;
     reject(workflow: ReplanWorkflowRun, now: Date, messageId: string): Promise<{
         readonly duplicate: boolean;
     }>;
@@ -92,9 +130,17 @@ export interface ReplanServiceDependencies {
     readonly clock: Clock;
     readonly decisionLearning?: DecisionLearningRecorder;
 }
+export interface DirectPlanEditRequest {
+    readonly userId: UserId;
+    readonly planId: string;
+    readonly edit: DirectPlanEdit;
+    readonly idempotencyKey: string;
+    readonly receivedAt: Date;
+}
 export interface BuildReplanDraftInput {
     readonly observation: MorningObservation;
     readonly previous: ReplanPlanState;
     readonly now: Date;
+    readonly adjustment?: ChiefReplanAdjustment;
 }
 //# sourceMappingURL=replan.d.ts.map

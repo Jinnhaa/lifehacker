@@ -4,6 +4,7 @@ import { taskExecutionModes } from "./task.js";
 import { getTaskEventType } from "./task-event.js";
 import { assertTaskTransition } from "./task-state-machine.js";
 const nullableDate = z.union([z.date(), z.null()]).optional();
+const nullableLocalDate = z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.null()]).optional();
 const createTaskSchema = z.object({
     userId: userIdSchema,
     workContextId: z.uuid().nullable().optional(),
@@ -13,6 +14,7 @@ const createTaskSchema = z.object({
     executionMode: z.enum(taskExecutionModes).default("standard"),
     officialDeadline: nullableDate,
     internalDeadline: nullableDate,
+    plannedDate: nullableLocalDate,
     estimatedMinutes: z.number().int().nonnegative().nullable().optional(),
     estimatedUserMinutes: z.number().int().nonnegative().nullable().optional(),
     importance: z.number().int().min(1).max(5),
@@ -22,6 +24,34 @@ const createTaskSchema = z.object({
     correlationId: correlationIdSchema.optional(),
     idempotencyKey: z.string().trim().min(1).max(500).optional()
 });
+const updateTaskSchema = z.object({
+    userId: userIdSchema,
+    taskId: taskIdSchema,
+    workContextId: z.uuid().nullable().optional(),
+    objectiveId: z.uuid().nullable().optional(),
+    title: z.string().trim().min(1).optional(),
+    internalDeadline: nullableDate,
+    plannedDate: nullableLocalDate,
+    estimatedMinutes: z.number().int().positive().nullable().optional(),
+    source: z.string().trim().min(1).default("user"),
+    correlationId: correlationIdSchema.optional(),
+    idempotencyKey: z.string().trim().min(1).max(500).optional()
+}).strict();
+const updateOfficialDeadlineFromExternalSchema = z.object({
+    userId: userIdSchema,
+    taskId: taskIdSchema,
+    officialDeadline: z.union([z.date(), z.null()]),
+    source: z.string().trim().min(1),
+    correlationId: correlationIdSchema.optional(),
+    idempotencyKey: z.string().trim().min(1).max(500).optional()
+}).strict();
+const completeTaskFromExternalSchema = z.object({
+    userId: userIdSchema,
+    taskId: taskIdSchema,
+    source: z.string().trim().min(1),
+    idempotencyKey: z.string().trim().min(1).max(500),
+    correlationId: correlationIdSchema.optional()
+}).strict();
 export class TaskService {
     repository;
     clock;
@@ -45,6 +75,7 @@ export class TaskService {
             ...(parsed.description !== undefined && { description: parsed.description }),
             ...(parsed.officialDeadline !== undefined && { officialDeadline: parsed.officialDeadline }),
             ...(parsed.internalDeadline !== undefined && { internalDeadline: parsed.internalDeadline }),
+            ...(parsed.plannedDate !== undefined && { plannedDate: parsed.plannedDate }),
             ...(parsed.estimatedMinutes !== undefined && { estimatedMinutes: parsed.estimatedMinutes }),
             ...(parsed.estimatedUserMinutes !== undefined && { estimatedUserMinutes: parsed.estimatedUserMinutes }),
             ...(parsed.nextAction !== undefined && { nextAction: parsed.nextAction }),
@@ -63,6 +94,134 @@ export class TaskService {
                 source: parsed.source,
                 changed_at: changedAt.toISOString()
             }
+        });
+    }
+    async updateTask(input) {
+        const parsed = this.parse(updateTaskSchema, input);
+        const current = await this.repository.getTaskById(parsed.userId, parsed.taskId);
+        if (!current)
+            throw this.notFound(parsed.taskId);
+        if (parsed.objectiveId !== undefined && parsed.objectiveId !== current.objectiveId) {
+            throw new DomainError("INVALID_INPUT", "Objective cannot be reassigned through Task correction");
+        }
+        const changedAt = this.clock.now();
+        const changes = {};
+        if (parsed.workContextId !== undefined) {
+            changes.work_context_id = { previous: current.workContextId, next: parsed.workContextId };
+        }
+        if (parsed.title !== undefined)
+            changes.title = { previous: current.title, next: parsed.title };
+        if (parsed.internalDeadline !== undefined) {
+            changes.internal_deadline = {
+                previous: current.internalDeadline?.toISOString() ?? null,
+                next: parsed.internalDeadline?.toISOString() ?? null
+            };
+        }
+        if (parsed.plannedDate !== undefined)
+            changes.planned_date = { previous: current.plannedDate ?? null, next: parsed.plannedDate };
+        if (parsed.estimatedMinutes !== undefined) {
+            changes.estimated_minutes = { previous: current.estimatedMinutes, next: parsed.estimatedMinutes };
+        }
+        const updated = await this.repository.updateTask(parsed.userId, parsed.taskId, {
+            ...(parsed.workContextId !== undefined && {
+                workContextId: parsed.workContextId,
+                ...(parsed.workContextId !== current.workContextId && { objectiveId: null })
+            }),
+            ...(parsed.title !== undefined && { title: parsed.title }),
+            ...(parsed.internalDeadline !== undefined && { internalDeadline: parsed.internalDeadline }),
+            ...(parsed.plannedDate !== undefined && { plannedDate: parsed.plannedDate }),
+            ...(parsed.estimatedMinutes !== undefined && { estimatedMinutes: parsed.estimatedMinutes })
+        }, {
+            userId: parsed.userId,
+            eventType: "task_updated",
+            actorType: parsed.source,
+            occurredAt: changedAt,
+            correlationId: parsed.correlationId ?? this.ids.generateCorrelationId(),
+            ...(parsed.idempotencyKey && { idempotencyKey: parsed.idempotencyKey }),
+            payload: {
+                previous_status: current.status,
+                next_status: current.status,
+                source: parsed.source,
+                changed_at: changedAt.toISOString(),
+                changes
+            }
+        });
+        if (!updated)
+            throw this.notFound(parsed.taskId);
+        return updated;
+    }
+    async updateOfficialDeadlineFromExternal(input) {
+        const parsed = this.parse(updateOfficialDeadlineFromExternalSchema, input);
+        const current = await this.repository.getTaskById(parsed.userId, parsed.taskId);
+        if (!current)
+            throw this.notFound(parsed.taskId);
+        if (current.officialDeadline?.getTime() === parsed.officialDeadline?.getTime()
+            || (current.officialDeadline === null && parsed.officialDeadline === null)) {
+            return current;
+        }
+        const changedAt = this.clock.now();
+        const updated = await this.repository.updateTask(parsed.userId, parsed.taskId, {
+            officialDeadline: parsed.officialDeadline
+        }, {
+            userId: parsed.userId,
+            eventType: "task_updated",
+            actorType: parsed.source,
+            occurredAt: changedAt,
+            correlationId: parsed.correlationId ?? this.ids.generateCorrelationId(),
+            ...(parsed.idempotencyKey && { idempotencyKey: parsed.idempotencyKey }),
+            payload: {
+                previous_status: current.status,
+                next_status: current.status,
+                source: parsed.source,
+                changed_at: changedAt.toISOString(),
+                changes: {
+                    official_deadline: {
+                        previous: current.officialDeadline?.toISOString() ?? null,
+                        next: parsed.officialDeadline?.toISOString() ?? null
+                    }
+                }
+            }
+        });
+        if (!updated)
+            throw this.notFound(parsed.taskId);
+        return updated;
+    }
+    async completeTaskFromExternal(input) {
+        const parsed = this.parse(completeTaskFromExternalSchema, input);
+        const current = await this.repository.getTaskById(parsed.userId, parsed.taskId);
+        if (!current)
+            throw this.notFound(parsed.taskId);
+        if (current.status === "DONE")
+            return current;
+        const changedAt = this.clock.now();
+        const result = await this.repository.transitionTask(parsed.userId, parsed.taskId, current.status, "DONE", changedAt, {
+            userId: parsed.userId,
+            aggregateId: parsed.taskId,
+            eventType: "task_completed",
+            actorType: parsed.source,
+            occurredAt: changedAt,
+            correlationId: parsed.correlationId ?? this.ids.generateCorrelationId(),
+            idempotencyKey: parsed.idempotencyKey,
+            payload: {
+                previous_status: current.status,
+                next_status: "DONE",
+                reason: "authoritative_external_completion",
+                source: parsed.source,
+                changed_at: changedAt.toISOString()
+            }
+        });
+        if (result.kind === "updated")
+            return result.task;
+        if (result.kind === "not_found")
+            throw this.notFound(parsed.taskId);
+        if (result.currentStatus === "DONE") {
+            const completed = await this.repository.getTaskById(parsed.userId, parsed.taskId);
+            if (completed)
+                return completed;
+        }
+        throw new DomainError("CONFLICT", "Task changed during external completion", {
+            expectedStatus: current.status,
+            currentStatus: result.currentStatus
         });
     }
     planTask(options) {

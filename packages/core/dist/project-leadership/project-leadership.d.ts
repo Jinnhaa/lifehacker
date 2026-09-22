@@ -5,10 +5,10 @@ export declare const PROJECT_LEADERSHIP_POLICY_VERSION = "project-leadership-v1"
 export declare const sourceEvidenceSchema: z.ZodObject<{
     ref: z.ZodString;
     kind: z.ZodEnum<{
-        work_context: "work_context";
-        goal: "goal";
         objective: "objective";
         task: "task";
+        work_context: "work_context";
+        goal: "goal";
         task_step: "task_step";
         artifact: "artifact";
         decision: "decision";
@@ -16,9 +16,9 @@ export declare const sourceEvidenceSchema: z.ZodObject<{
         external_reference: "external_reference";
     }>;
     freshness: z.ZodEnum<{
+        stale: "stale";
         unknown: "unknown";
         current: "current";
-        stale: "stale";
     }>;
     observedAt: z.ZodNullable<z.ZodISODateTime>;
     contentHash: z.ZodNullable<z.ZodString>;
@@ -112,10 +112,10 @@ export declare const projectStateSnapshotSchema: z.ZodObject<{
     sourceRefs: z.ZodArray<z.ZodObject<{
         ref: z.ZodString;
         kind: z.ZodEnum<{
-            work_context: "work_context";
-            goal: "goal";
             objective: "objective";
             task: "task";
+            work_context: "work_context";
+            goal: "goal";
             task_step: "task_step";
             artifact: "artifact";
             decision: "decision";
@@ -123,9 +123,9 @@ export declare const projectStateSnapshotSchema: z.ZodObject<{
             external_reference: "external_reference";
         }>;
         freshness: z.ZodEnum<{
+            stale: "stale";
             unknown: "unknown";
             current: "current";
-            stale: "stale";
         }>;
         observedAt: z.ZodNullable<z.ZodISODateTime>;
         contentHash: z.ZodNullable<z.ZodString>;

@@ -11,7 +11,7 @@ export declare class SupabaseTaskRepository implements TaskRepository {
     getTaskById(userId: UserId, taskId: TaskId): Promise<Task | null>;
     listActiveTasks(userId: UserId): Promise<readonly Task[]>;
     createTask(input: CreateTaskRecord, event: Omit<TaskDomainEventInput, "aggregateId">): Promise<Task>;
-    updateTask(userId: UserId, taskId: TaskId, patch: UpdateTaskRecord): Promise<Task | null>;
+    updateTask(userId: UserId, taskId: TaskId, patch: UpdateTaskRecord, event?: Omit<TaskDomainEventInput, "aggregateId">): Promise<Task | null>;
     transitionTask(userId: UserId, taskId: TaskId, expectedStatus: TaskStatus, nextStatus: TaskStatus, completedAt: Date | null, event: TaskDomainEventInput): Promise<TransitionTaskResult>;
     appendDomainEvent(event: TaskDomainEventInput & {
         readonly aggregateId: TaskId;

@@ -1,4 +1,6 @@
+import { readGroundedLearning } from "../day-close/execution-learning.js";
 import { createHash } from "node:crypto";
+import { loadOutcomeEvidence, persistOutcomeJudgment } from "../chief/supabase-outcome-priority.js";
 import { zonedDateTimeToUtc } from "@amber/shared";
 import { deriveCurrentAction } from "../execution/current-action.js";
 import { SupabasePrincipleReader } from "../principle-application/supabase-principle-reader.js";
@@ -110,7 +112,7 @@ export class SupabaseMorningRepository {
         const setting = settings[0] ?? { planning_buffer_minutes: 0, planning_policy: {}, week_starts_on: 1 };
         const week = weekRange(planDate, setting.week_starts_on);
         const [taskRows, constraintRows, activityRows, directiveRows, carryoverRows, principles] = await Promise.all([
-            this.sql `select * from public.tasks where user_id=${userId} and status<>'DONE' order by created_at`,
+            this.sql `select * from public.tasks where user_id=${userId} and status in ('INBOX','PLANNED','IN_PROGRESS','BLOCKED','WAITING_FOR_USER') order by created_at`,
             this.sql `
         select id,constraint_type,value,hardness,valid_from,valid_until,origin from public.constraints
         where user_id=${userId} and valid_from<${dayEnd} and (valid_until is null or valid_until>${dayStart})
@@ -118,12 +120,19 @@ export class SupabaseMorningRepository {
             this.sql `
         select a.id,a.title,a.target_count,a.expected_minutes,a.minimum_minutes,a.preferred_days,a.importance,
           count(o.id) filter(where o.status='completed' and o.counts_toward_target)::int completed_count,
-          min(o.id::text) filter(where o.planned_date=${planDate} and o.status not in ('cancelled','skipped')) occurrence_id
+          min(o.id::text) filter(where o.planned_date=${planDate} and o.status not in ('cancelled','skipped')) occurrence_id,
+          study.payload course_study
         from public.recurring_activities a left join public.activity_occurrences o
           on o.recurring_activity_id=a.id and o.user_id=a.user_id and o.planned_date between ${week.start} and ${week.end}
+        left join lateral (
+          select e.payload from public.domain_events e
+          where e.user_id=a.user_id and e.aggregate_type='recurring_activity' and e.aggregate_id=a.id
+            and e.event_type='course_study_workload_reconciled'
+          order by e.occurred_at desc limit 1
+        ) study on true
         where a.user_id=${userId} and a.active=true and a.effective_from<=${planDate}
           and (a.effective_until is null or a.effective_until>=${planDate})
-        group by a.id order by a.created_at
+        group by a.id,study.payload order by a.created_at
       `,
             this.sql `
         select id,directive,priority_order from public.strategic_directives
@@ -146,27 +155,46 @@ export class SupabaseMorningRepository {
                 start: row.valid_from, end: row.valid_until ?? dayEnd
             };
         });
+        const tasks = taskRows.map(mapTask);
+        const liveIds = new Set(tasks.map(t => String(t.id)));
+        const learningContext = await readGroundedLearning(this.sql, userId, dayStart, tasks.map(t => t.id), tasks.flatMap(t => t.workContextId ? [t.workContextId] : []));
         const carryover = carryoverRows[0] ? asRecord(carryoverRows[0].result) : null;
         return {
             timeZone,
+            outcomeEvidence: await loadOutcomeEvidence(this.sql, userId, planDate, timeZone),
             planningBufferMinutes: setting.planning_buffer_minutes,
             planningPolicy: asRecord(setting.planning_policy),
             constraints,
-            tasks: taskRows.map(mapTask),
-            recurringActivities: activityRows.map((row) => ({
-                id: row.id, title: row.title, targetCount: row.target_count,
-                expectedMinutes: row.expected_minutes, minimumMinutes: row.minimum_minutes,
-                preferredDays: row.preferred_days, importance: row.importance,
-                completedCount: row.completed_count, occurrenceId: row.occurrence_id
-            })),
+            tasks,
+            learningContext,
+            recurringActivities: activityRows.map((row) => {
+                const study = asRecord(row.course_study);
+                const rank = Number(study.priorityRank);
+                return {
+                    id: row.id, title: row.title, targetCount: row.target_count,
+                    expectedMinutes: row.expected_minutes, minimumMinutes: row.minimum_minutes,
+                    preferredDays: row.preferred_days, importance: row.importance,
+                    completedCount: row.completed_count, occurrenceId: row.occurrence_id,
+                    ...(typeof study.workContextId === "string" && Number.isInteger(rank) && rank >= 0 && rank <= 4
+                        ? { courseStudy: {
+                                workContextId: study.workContextId,
+                                weeklyMinutes: Number(study.weeklyMinutes),
+                                todayMinutes: Number(study.todayMinutes),
+                                priorityRank: rank,
+                                reasons: Array.isArray(study.reasons) ? study.reasons.filter((value) => typeof value === "string") : [],
+                                signals: asRecord(study.signals)
+                            } }
+                        : {})
+                };
+            }),
             strategicDirectives: directiveRows.map((row) => ({ id: row.id, directive: row.directive, priorityOrder: row.priority_order })),
             principles,
             carryoverContext: carryoverRows[0] && carryover ? {
                 sourceDate: carryoverRows[0].source_date,
                 taskIds: Array.isArray(carryover.carryoverTaskIds)
-                    ? carryover.carryoverTaskIds.filter((id) => typeof id === "string") : [],
+                    ? carryover.carryoverTaskIds.filter((id) => typeof id === "string" && liveIds.has(id)) : [],
                 blockedTaskIds: Array.isArray(carryover.blockedTaskIds)
-                    ? carryover.blockedTaskIds.filter((id) => typeof id === "string") : []
+                    ? carryover.blockedTaskIds.filter((id) => typeof id === "string" && tasks.some(t => t.id === id && t.status === 'BLOCKED')) : []
             } : null
         };
     }
@@ -185,6 +213,10 @@ export class SupabaseMorningRepository {
         return current;
     }
     async createProposal(run, draft, now, messageId) {
+        if (draft.inputSnapshot.chiefJudgment && draft.inputSnapshot.chiefInput) {
+            const decisionId = await persistOutcomeJudgment(this.sql, run.userId, draft.inputSnapshot.chiefInput, draft.inputSnapshot.chiefJudgment);
+            draft = { ...draft, inputSnapshot: { ...draft.inputSnapshot, chiefDecisionId: decisionId } };
+        }
         return this.sql.begin(async (tx) => {
             const locked = await tx `select * from public.workflow_runs where id=${run.id} and user_id=${run.userId} for update`;
             const current = mapWorkflow(locked[0]);

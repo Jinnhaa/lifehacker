@@ -1,12 +1,16 @@
 import type { CorrelationId, TaskId, UserId } from "@amber/shared";
 import type { TaskStatus } from "./task.js";
-export type TaskEventType = "task_created" | "task_planned" | "task_started" | "task_blocked" | "task_waiting_for_user" | "task_resumed" | "task_completed";
+export type TaskEventType = "task_created" | "task_updated" | "task_planned" | "task_started" | "task_blocked" | "task_waiting_for_user" | "task_resumed" | "task_completed";
 export interface TaskEventPayload {
     readonly previous_status: TaskStatus | null;
     readonly next_status: TaskStatus;
     readonly reason?: string;
     readonly source: string;
     readonly changed_at: string;
+    readonly changes?: Readonly<Record<string, {
+        readonly previous: string | number | null;
+        readonly next: string | number | null;
+    }>>;
 }
 export interface TaskDomainEventInput {
     readonly userId: UserId;

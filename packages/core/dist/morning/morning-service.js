@@ -1,5 +1,6 @@
 import { zonedDateTimeToUtc } from "@amber/shared";
 import { createMorningPlan } from "./morning-planner.js";
+import { judgeOutcomes } from "../chief/outcome-priority.js";
 const CONTEXT_QUESTION = "오늘은 몇 시까지 할까? 컨디션이나 캘린더에 없는 일정이 있으면 같이 알려줘.";
 const localParts = (value, timeZone) => Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
     timeZone,
@@ -189,7 +190,11 @@ export class MorningWorkflowService {
             return { handled: true, reply: CONTEXT_QUESTION };
         const source = loaded ?? await this.repository.loadObservation(message.userId, run.checkpoint.planDate, message.timeZone, this.clock.now());
         const excluded = new Set(run.checkpoint.excludedTaskIds ?? []);
-        const observation = { ...source, tasks: source.tasks.filter((task) => !excluded.has(task.id)) };
+        let observation = { ...source, tasks: source.tasks.filter((task) => !excluded.has(task.id)) };
+        const chiefInput = { observation, now: this.clock.now(), workUntil, privateIntervals: run.checkpoint.privateIntervals ?? [], localWeekday: localWeekday(this.clock.now(), message.timeZone) };
+        const chiefJudgment = source.outcomeEvidence ? judgeOutcomes(chiefInput) : null;
+        if (chiefJudgment)
+            observation = { ...observation, tasks: observation.tasks.filter(t => chiefJudgment.selectedTaskIds.includes(t.id)), chiefTaskOrder: chiefJudgment.selectedTaskIds };
         const calculated = createMorningPlan({
             observation,
             now: this.clock.now(),
@@ -201,6 +206,7 @@ export class MorningWorkflowService {
             ...calculated,
             inputSnapshot: {
                 ...calculated.inputSnapshot,
+                ...(chiefJudgment ? { chiefJudgment, chiefInput } : {}),
                 ...(run.checkpoint.contextReply ? { contextReply: run.checkpoint.contextReply } : {}),
                 ...(run.checkpoint.revisionRequest ? { revisionRequest: run.checkpoint.revisionRequest } : {}),
                 ...(run.checkpoint.excludedTaskIds ? { excludedTaskIds: run.checkpoint.excludedTaskIds } : {})

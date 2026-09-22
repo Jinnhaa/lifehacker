@@ -31,6 +31,8 @@ const reasonType = (reason) => {
     return null;
 };
 const outcomeType = (outcome) => {
+    if (typeof outcome.signal === "string")
+        return outcome.signal;
     if (Array.isArray(outcome.blockedTaskIds) && outcome.blockedTaskIds.length > 0)
         return "task_blocked";
     if (Array.isArray(outcome.completedTaskIds) && outcome.completedTaskIds.length > 0)
@@ -116,6 +118,10 @@ export const derivePatternCandidates = (cases) => {
             .filter(([, evidence]) => evidence.length >= MIN_PATTERN_EVIDENCE)
             .map(([value, evidence]) => ["outcome", value, evidence]));
         for (const [kind, value, evidence] of groups) {
+            if (decisionType.startsWith("execution_") && new Set(evidence.map(e => e.observedOutcome.date)).size < MIN_PATTERN_EVIDENCE)
+                continue;
+            if (decisionType === "execution_estimate" && new Set(evidence.map(e => e.observedOutcome.taskId)).size < MIN_PATTERN_EVIDENCE)
+                continue;
             candidates.push({
                 signature: `${PATTERN_EVALUATOR_VERSION}:${base}|${kind}:${value}`,
                 decisionType,
@@ -123,7 +129,9 @@ export const derivePatternCandidates = (cases) => {
                 choiceAction: action,
                 consistencyKind: kind,
                 consistencyValue: value,
-                observedBehavior: `${contextText(decisionType, situation)} ${choiceText(action)}이 반복됨 (${signalText(kind, value)})`,
+                observedBehavior: decisionType.startsWith("execution_")
+                    ? `${situation} 범위에서 ${value} 관찰 ${evidence.length}건; 원인이나 성향은 미확정`
+                    : `${contextText(decisionType, situation)} ${choiceText(action)}이 반복됨 (${signalText(kind, value)})`,
                 evidence: [...evidence].sort((a, b) => a.observedAt.getTime() - b.observedAt.getTime()),
                 confidence: confidence(evidence)
             });

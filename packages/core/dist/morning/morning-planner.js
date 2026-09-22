@@ -1,7 +1,33 @@
 import { calculateRecurringActivityRisk } from "../rules/recurring-activity.js";
 import { getDaysUntilDeadline } from "../rules/deadline.js";
+import { isTaskOverdue } from "../rules/task-overdue.js";
 import { applyApprovedPrinciples } from "../principle-application/principle-application.js";
+import { courseStudyStrategy } from "../chief/current-status.js";
 const MINUTE = 60_000;
+const DAY = 86_400_000;
+export const calculateTaskWorkload = (task, now, timeZone, localWeekday) => {
+    const remainingMinutes = Math.max((task.estimatedUserMinutes ?? task.estimatedMinutes ?? 0) - task.actualMinutes, 0);
+    let targetDeadline = task.internalDeadline;
+    let targetSource = targetDeadline ? "internal" : "none";
+    if (targetDeadline && task.officialDeadline && targetDeadline > task.officialDeadline) {
+        const officialDays = getDaysUntilDeadline(task.officialDeadline, now, timeZone) ?? 0;
+        const leadDays = officialDays >= 2 ? 2 : officialDays >= 1 ? 1 : 0;
+        targetDeadline = new Date(task.officialDeadline.getTime() - leadDays * DAY);
+        targetSource = "official_default";
+    }
+    else if (!targetDeadline && task.officialDeadline) {
+        const officialDays = getDaysUntilDeadline(task.officialDeadline, now, timeZone) ?? 0;
+        const leadDays = officialDays >= 2 ? 2 : officialDays >= 1 ? 1 : 0;
+        targetDeadline = new Date(task.officialDeadline.getTime() - leadDays * DAY);
+        targetSource = "official_default";
+    }
+    const targetDays = getDaysUntilDeadline(targetDeadline, now, timeZone);
+    const planningDays = targetDays === null ? 1 : Math.max(1, targetDays + 1);
+    const todayRequiredMinutes = remainingMinutes === 0 ? 0 : Math.ceil(remainingMinutes / planningDays);
+    const daysRemainingThisWeek = Math.max(1, 8 - localWeekday);
+    const weekRequiredMinutes = Math.min(remainingMinutes, todayRequiredMinutes * Math.min(planningDays, daysRemainingThisWeek));
+    return { remainingMinutes, targetDeadline, targetSource, todayRequiredMinutes, weekRequiredMinutes };
+};
 const minutesBetween = (interval) => Math.max(0, Math.floor((interval.end.getTime() - interval.start.getTime()) / MINUTE));
 const mergeIntervals = (intervals, horizon) => {
     const clipped = intervals
@@ -52,15 +78,20 @@ const remainingSuitableDays = (activity, localWeekday) => {
 const buildCandidates = (observation, now, localWeekday) => {
     const directiveOrders = observation.strategicDirectives.map((value) => value.priorityOrder);
     const tasks = observation.tasks.flatMap((task) => {
-        if (task.status === "DONE" || task.status === "BLOCKED" || task.status === "WAITING_FOR_USER")
+        if (task.status === "DONE" || task.status === "BLOCKED" || task.status === "WAITING_FOR_USER"
+            || isTaskOverdue(task, now, observation.timeZone))
             return [];
-        const minutes = Math.max((task.estimatedUserMinutes ?? task.estimatedMinutes ?? 0) - task.actualMinutes, 0);
-        if (minutes === 0)
+        const workload = calculateTaskWorkload(task, now, observation.timeZone, localWeekday);
+        if (workload.remainingMinutes === 0)
             return [];
-        const deadlines = [task.officialDeadline, task.internalDeadline].filter((value) => value !== null);
-        const deadline = deadlines.length > 0 ? new Date(Math.min(...deadlines.map((value) => value.getTime()))) : null;
-        const days = getDaysUntilDeadline(deadline, now, observation.timeZone);
-        const deadlineRank = days !== null && days < 0 ? 0 : days === 0 ? 1 : days !== null && days <= 3 ? 3 : 5;
+        const minutes = workload.todayRequiredMinutes;
+        const officialDays = getDaysUntilDeadline(task.officialDeadline, now, observation.timeZone);
+        const internalDays = getDaysUntilDeadline(task.internalDeadline, now, observation.timeZone);
+        const deadline = task.officialDeadline ?? workload.targetDeadline;
+        const deadlineRank = officialDays !== null && officialDays <= 0 ? 0
+            : internalDays !== null && internalDays <= 3 ? 2
+                : observation.carryoverContext?.taskIds.includes(task.id) && task.importance >= 4 ? 2
+                    : officialDays !== null && officialDays <= 3 ? 3 : 4;
         const directed = directiveOrders.some((order) => containsId(order, task.id));
         return [{
                 type: "task",
@@ -70,7 +101,8 @@ const buildCandidates = (observation, now, localWeekday) => {
                 minimumMinutes: Math.min(minutes, 30),
                 rank: directed ? Math.max(0, deadlineRank - 1) : deadlineRank,
                 importance: task.importance,
-                deadline
+                deadline,
+                workload
             }];
     });
     const routines = observation.recurringActivities.flatMap((activity) => {
@@ -79,21 +111,29 @@ const buildCandidates = (observation, now, localWeekday) => {
             completedCount: activity.completedCount,
             remainingSuitableDays: remainingSuitableDays(activity, localWeekday)
         });
-        if (result.remainingCount === 0 || result.risk === "LOW")
+        if (result.remainingCount === 0 || (!activity.courseStudy && result.risk === "LOW"))
             return [];
+        const minutes = activity.courseStudy?.todayMinutes ?? activity.expectedMinutes;
+        const strategy = activity.courseStudy ? courseStudyStrategy(observation.strategicDirectives, activity.courseStudy.workContextId) : null;
         return [{
                 type: "routine",
                 id: activity.id,
-                title: activity.title,
-                minutes: activity.expectedMinutes,
-                minimumMinutes: activity.minimumMinutes ?? activity.expectedMinutes,
-                rank: result.risk === "HIGH" ? 2 : 4,
+                title: strategy?.directMaterialStudy ? `${activity.title.replace(/ 학습$/, "")} 교안 직접 학습` : activity.title,
+                minutes,
+                minimumMinutes: activity.courseStudy ? Math.min(minutes, activity.minimumMinutes ?? 15) : activity.minimumMinutes ?? activity.expectedMinutes,
+                rank: activity.courseStudy
+                    ? activity.courseStudy.priorityRank <= 1 ? 1 : activity.courseStudy.priorityRank === 2 ? 2 : 3
+                    : result.risk === "HIGH" ? 2 : 4,
                 importance: activity.importance,
                 deadline: null,
-                risk: result.risk
+                risk: result.risk,
+                ...(activity.courseStudy ? { courseStudy: activity.courseStudy } : {})
             }];
     });
-    return [...tasks, ...routines];
+    return [...tasks, ...routines].sort((left, right) => left.rank - right.rank
+        || (left.deadline?.getTime() ?? Number.MAX_SAFE_INTEGER) - (right.deadline?.getTime() ?? Number.MAX_SAFE_INTEGER)
+        || right.importance - left.importance
+        || left.title.localeCompare(right.title, "ko-KR"));
 };
 const allocate = (intervals, candidate, maximumMinutes) => {
     const available = intervals.reduce((sum, value) => sum + minutesBetween(value), 0);
@@ -137,13 +177,20 @@ export const createMorningPlan = (input) => {
     const bufferMinutes = Math.min(input.observation.planningBufferMinutes, availableMinutes);
     let workBudget = Math.min(availableMinutes - bufferMinutes, input.maximumWorkMinutes ?? Number.MAX_SAFE_INTEGER);
     const items = [];
+    const taskAllocations = new Map();
     const principleResult = applyApprovedPrinciples(buildCandidates(input.observation, input.now, input.localWeekday), input.observation.principles ?? [], input.now, input.observation.timeZone);
-    const candidates = principleResult.candidates;
+    const orderedTasks = principleResult.candidates.filter(c => c.type === 'task').sort((a, b) => (input.observation.chiefTaskOrder?.indexOf(a.id) ?? -1) - (input.observation.chiefTaskOrder?.indexOf(b.id) ?? -1));
+    let taskIndex = 0;
+    const candidates = input.observation.chiefTaskOrder
+        ? principleResult.candidates.map(c => c.type === 'task' ? orderedTasks[taskIndex++] : c)
+        : principleResult.candidates;
     for (const candidate of candidates) {
         if (workBudget <= 0)
             break;
         const allocated = allocate(intervals, candidate, workBudget);
         items.push(...allocated.items);
+        if (candidate.type === "task")
+            taskAllocations.set(candidate.id, allocated.used);
         workBudget -= allocated.used;
     }
     if (bufferMinutes > 0) {
@@ -159,6 +206,11 @@ export const createMorningPlan = (input) => {
     }
     items.sort((a, b) => a.start.getTime() - b.start.getTime());
     const highlights = [];
+    const deadlineRisks = candidates.filter((value) => value.type === "task" && value.workload
+        && (taskAllocations.get(value.id) ?? 0) < value.workload.todayRequiredMinutes);
+    for (const candidate of deadlineRisks) {
+        highlights.push(`${candidate.title}: 마감 위험 · 오늘 필요 ${candidate.workload.todayRequiredMinutes}분 / 배치 ${taskAllocations.get(candidate.id) ?? 0}분`);
+    }
     const urgent = candidates.find((value) => value.type === "task" && value.rank <= 1);
     if (urgent)
         highlights.push(`${urgent.title}: 마감 우선`);
@@ -169,6 +221,12 @@ export const createMorningPlan = (input) => {
     }
     if (principleResult.explanation)
         highlights.push(principleResult.explanation);
+    for (const candidate of candidates.filter((value) => value.type === "routine" && value.courseStudy)) {
+        const planned = items.filter((item) => item.recurringActivityId === candidate.id).reduce((sum, item) => sum + item.plannedMinutes, 0);
+        if (planned < candidate.courseStudy.todayMinutes) {
+            highlights.push(`${candidate.title}: 학습량 미배치 · 오늘 추천 ${candidate.courseStudy.todayMinutes}분 / 배치 ${planned}분`);
+        }
+    }
     return {
         items,
         fixedEvents,
@@ -183,6 +241,26 @@ export const createMorningPlan = (input) => {
             usedPrincipleIds: principleResult.usedPrincipleIds,
             carryoverSourceDate: input.observation.carryoverContext?.sourceDate ?? null,
             carryoverTaskIds: input.observation.carryoverContext?.taskIds ?? [],
+            workload: candidates.flatMap((candidate) => candidate.type === "task" && candidate.workload ? [{
+                    taskId: candidate.id,
+                    remainingMinutes: candidate.workload.remainingMinutes,
+                    targetDeadline: candidate.workload.targetDeadline?.toISOString() ?? null,
+                    targetSource: candidate.workload.targetSource,
+                    todayRequiredMinutes: candidate.workload.todayRequiredMinutes,
+                    weekRequiredMinutes: candidate.workload.weekRequiredMinutes,
+                    plannedMinutes: taskAllocations.get(candidate.id) ?? 0,
+                    deadlineRisk: (taskAllocations.get(candidate.id) ?? 0) < candidate.workload.todayRequiredMinutes
+                }] : []),
+            courseStudyWorkload: candidates.flatMap((candidate) => candidate.type === "routine" && candidate.courseStudy ? [{
+                    recurringActivityId: candidate.id,
+                    workContextId: candidate.courseStudy.workContextId,
+                    weeklyMinutes: candidate.courseStudy.weeklyMinutes,
+                    todayMinutes: candidate.courseStudy.todayMinutes,
+                    plannedMinutes: items.filter((item) => item.recurringActivityId === candidate.id).reduce((sum, item) => sum + item.plannedMinutes, 0),
+                    priorityRank: candidate.courseStudy.priorityRank,
+                    reasons: candidate.courseStudy.reasons,
+                    signals: candidate.courseStudy.signals
+                }] : []),
             workUntil: input.workUntil.toISOString(),
             privateIntervals: input.privateIntervals.map((value) => ({ start: value.start.toISOString(), end: value.end.toISOString() }))
         }
