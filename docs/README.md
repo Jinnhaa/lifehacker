@@ -1,4 +1,4 @@
-# Amber HQ Documentation
+  # Lifehacker Documentation
 
 Amber HQ의 제품 비전, 정책, 구조, 데이터 모델을 찾기 위한 문서 인덱스다.
 
