@@ -881,3 +881,19 @@ body:has(.is-focus-mode) .game-dock { display:none; }
 .work-top-logo { display:block; width:clamp(190px, 16vw, 220px); height:auto; }
 .work-top-row .work-view-tabs { position:absolute; top:50%; left:50%; margin:0; transform:translate(-50%, -50%); }
 @media (max-width:720px) { .global-shell-content { padding-bottom:127px; }.office-wordmark { top:20px; left:20px; width:184px; }.quest-console { top:108px; }.game-dock { width:calc(100vw - 24px); height:100px; }.game-dock-bg { top:0; }.game-dock-item { height:88px; padding:5px 1px 8px; }.game-dock-icon { width:48px; height:48px; transform:translateY(-8px); }.game-dock-label { margin-top:-8px; font-size:8px; }.game-dock-item.active { transform:translateY(-8px) scale(1.08); }.game-dock-item.active::after { top:42px; width:48px; height:10px; }.planning-room { padding-top:20px; }.work-top-row { min-height:58px; margin-bottom:20px; }.work-top-logo { width:80px; }.work-top-row .work-view-tabs { left:50%; right:auto; transform:translate(-50%, -50%) scale(.62); transform-origin:center; } }
+
+.game-dock-item {
+  position: relative;
+  top: 20px;
+}
+.game-dock-label {
+  margin-top: -24px;
+}
+.game-dock-bg {
+  width: calc(100% - 24px);
+  left: 12px;
+}
+.game-dock-items {
+  left: 55px;
+  right: 55px;
+}
