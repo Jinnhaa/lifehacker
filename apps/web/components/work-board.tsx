@@ -109,7 +109,7 @@ export function WorkBoard({ data }: { data: WorkBoardViewModel }) {
   const states = [candidateState, updateState, completeState, createState, moveState, estimateState]; const feedback = states.find((state) => state.message)?.message;
   const pending = updatePending || completePending || movePending || estimatePending;
   return <main className="work-shell planning-room">
-    <nav className="work-view-tabs" aria-label="Work 보기">{(["today","week","month"] as const).map((item) => <button className={view === item ? "active" : ""} type="button" onClick={() => setView(item)} key={item}>{item === "today" ? "Today" : item === "week" ? "Week" : "Month"}</button>)}</nav>
+    <div className="work-top-row"><img className="work-top-logo" src="/assets/lifehacker/lifehacker-logo.png" alt="Lifehacker" /><nav className="work-view-tabs" aria-label="Work 보기">{(["today","week","month"] as const).map((item) => <button className={view === item ? "active" : ""} type="button" onClick={() => setView(item)} key={item}>{item === "today" ? "Today" : item === "week" ? "Week" : "Month"}</button>)}</nav></div>
     {!data.configured ? <section className="work-empty"><strong>Work & Calendar를 연결할 수 없습니다.</strong><p>{data.error}</p></section> : <>
       {view !== "month" && <Wins title="THIS WEEK WINS" wins={data.weeklyWins} selected={selectedGoalId} onSelect={setSelectedGoalId} />}
       {view === "week" && <WeekView data={data} selectedGoalId={selectedGoalId} updateAction={updateAction} estimateAction={estimateAction} completeAction={completeAction} moveAction={moveAction} pending={pending} />}

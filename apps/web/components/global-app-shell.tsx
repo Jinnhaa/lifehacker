@@ -9,7 +9,6 @@ export function GlobalAppShell({ children }: { readonly children: ReactNode }) {
   const showGlobalChrome = isOverviewPath(pathname);
 
   return <>
-    {showGlobalChrome && <header className="global-brand-area"><img src="/assets/lifehacker/lifehacker-logo.png" alt="Lifehacker" /></header>}
     <div className={showGlobalChrome ? "global-shell-content" : undefined}>{children}</div>
     {showGlobalChrome && <GlobalBottomNavigation pathname={pathname} />}
   </>;
