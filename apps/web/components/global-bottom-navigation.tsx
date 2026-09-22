@@ -3,11 +3,11 @@
 import Link from "next/link";
 
 export const overviewItems = [
-  { label: "Home", href: "/", icon: "/assets/lifehacker/nav-home.png" },
-  { label: "Plan", href: "/work", icon: "/assets/lifehacker/nav-plan.png" },
-  { label: "Learning", href: "/learning", icon: "/assets/lifehacker/nav-learning.png" },
-  { label: "Projects", href: "/projects", icon: "/assets/lifehacker/nav-projects.png" },
-  { label: "Settings", href: "/settings", icon: "/assets/lifehacker/nav-settings.png" }
+  { label: "홈", href: "/", icon: "/assets/lifehacker/nav-home.png" },
+  { label: "플랜", href: "/work", icon: "/assets/lifehacker/nav-plan.png" },
+  { label: "학습", href: "/learning", icon: "/assets/lifehacker/nav-learning.png" },
+  { label: "프로젝트", href: "/projects", icon: "/assets/lifehacker/nav-projects.png" },
+  { label: "설정", href: "/settings", icon: "/assets/lifehacker/nav-settings.png" }
 ] as const;
 
 export const isOverviewPath = (pathname: string): boolean => overviewItems.some((item) => item.href === pathname);
