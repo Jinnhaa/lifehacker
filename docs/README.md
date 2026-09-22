@@ -1,6 +1,6 @@
   # Lifehacker Documentation
 
-Amber HQ의 제품 비전, 정책, 구조, 데이터 모델을 찾기 위한 문서 인덱스다.
+Lifehacker의 제품 비전, 정책, 구조, 데이터 모델을 찾기 위한 문서 인덱스다.
 
 ## 처음 읽는 순서
 
@@ -16,7 +16,7 @@ Amber HQ의 제품 비전, 정책, 구조, 데이터 모델을 찾기 위한 문
 
 | 문서 | 답하는 질문 |
 |---|---|
-| [System Context](./diagrams/system-context.md) | 사용자, Amber HQ, 외부 서비스는 어떻게 연결되는가? |
+| [System Context](./diagrams/system-context.md) | 사용자, lifehacker, 외부 서비스는 어떻게 연결되는가? |
 | [Operating Loop](./diagrams/operating-loop.md) | 발견부터 학습까지 전체 루프는 어떻게 닫히는가? |
 | [Proactive Boundary](./diagrams/proactive-boundary.md) | Amber가 어디까지 먼저 하고 언제 승인을 받는가? |
 | [Core ERD](./diagrams/erd-core.md) | 목표, 업무, 계획, 실행 데이터는 어떻게 연결되는가? |
