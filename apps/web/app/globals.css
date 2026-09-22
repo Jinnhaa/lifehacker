@@ -796,33 +796,33 @@ button { color: inherit; }
 /* Global shell keeps only bottom space for the fixed dock; logos live in each page's top content row. */
 .global-shell-content { min-height:100vh; padding-bottom:154px; }
 
-/* Global game dock: one wooden shelf, with transparent icon-only links. */
+/* Global game dock: the supplied wooden shelf image sits below transparent icon links. */
 .game-dock {
   position:fixed;
   z-index:79;
   left:50%;
-  bottom:18px;
-  display:grid;
-  grid-template-columns:repeat(5, minmax(86px, 1fr));
-  align-items:end;
-  width:min(650px, calc(100vw - 32px));
-  height:86px;
-  gap:2px;
-  padding:7px 13px 9px;
-  border:3px solid var(--lh-outline);
-  border-radius:20px 20px 16px 16px;
-  background:linear-gradient(180deg, var(--lh-wood-light) 0 15%, var(--lh-wood) 16% 81%, var(--lh-wood-dark) 82%);
-  box-shadow:0 6px 0 rgba(72,48,34,.42), inset 0 2px rgba(255,244,220,.34), inset 0 -3px rgba(74,48,35,.22);
+  bottom:0;
+  width:min(650px, calc(100vw - 24px));
+  height:130px;
   transform:translateX(-50%);
 }
-.game-dock::before {
-  content:"";
+.game-dock-bg {
   position:absolute;
-  inset:6px 10px auto;
-  height:4px;
-  border-radius:99px;
-  background:rgba(255,246,220,.26);
+  z-index:0;
+  top:-20px;
+  left:0;
+  display:block;
+  width:100%;
+  height:auto;
   pointer-events:none;
+}
+.game-dock-items {
+  position:absolute;
+  z-index:1;
+  inset:0;
+  display:grid;
+  grid-template-columns:repeat(5, minmax(0, 1fr));
+  align-items:start;
 }
 .game-dock-item {
   position:relative;
@@ -830,8 +830,8 @@ button { color: inherit; }
   grid-template-rows:1fr auto;
   place-items:center;
   min-width:0;
-  height:70px;
-  padding:0 3px 2px;
+  height:104px;
+  padding:12px 3px 11px;
   border:0;
   border-radius:0;
   background:transparent;
@@ -846,12 +846,13 @@ button { color: inherit; }
   width:62px;
   height:62px;
   object-fit:contain;
-  filter:saturate(.88) brightness(.96) drop-shadow(0 3px 1px rgba(68,45,31,.32));
+  transform:translateY(-10px);
+  filter:saturate(.88) brightness(.96) drop-shadow(0 4px 1px rgba(68,45,31,.35));
 }
 .game-dock-label {
   position:relative;
   z-index:1;
-  margin-top:-7px;
+  margin-top:-11px;
   color:#fff5df;
   font-size:10px;
   font-weight:900;
@@ -865,7 +866,7 @@ button { color: inherit; }
   content:"";
   position:absolute;
   z-index:0;
-  top:48px;
+  top:57px;
   width:64px;
   height:13px;
   border-radius:50%;
@@ -879,4 +880,4 @@ body:has(.is-focus-mode) .game-dock { display:none; }
 .work-top-row { position:relative; display:flex; align-items:center; min-height:76px; margin-bottom:22px; }
 .work-top-logo { display:block; width:clamp(190px, 16vw, 220px); height:auto; }
 .work-top-row .work-view-tabs { position:absolute; top:50%; left:50%; margin:0; transform:translate(-50%, -50%); }
-@media (max-width:720px) { .global-shell-content { padding-bottom:127px; }.office-wordmark { top:20px; left:20px; width:184px; }.quest-console { top:108px; }.game-dock { width:calc(100vw - 16px); height:74px; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:1px; padding:5px 6px 7px; border-radius:17px 17px 13px 13px; }.game-dock-item { height:62px; padding:0 1px 1px; }.game-dock-icon { width:48px; height:48px; }.game-dock-label { margin-top:-5px; font-size:8px; }.game-dock-item.active { transform:translateY(-8px) scale(1.08); }.game-dock-item.active::after { top:37px; width:48px; height:10px; }.planning-room { padding-top:20px; }.work-top-row { min-height:58px; margin-bottom:20px; }.work-top-logo { width:80px; }.work-top-row .work-view-tabs { left:50%; right:auto; transform:translate(-50%, -50%) scale(.62); transform-origin:center; } }
+@media (max-width:720px) { .global-shell-content { padding-bottom:127px; }.office-wordmark { top:20px; left:20px; width:184px; }.quest-console { top:108px; }.game-dock { width:calc(100vw - 24px); height:100px; }.game-dock-bg { top:0; }.game-dock-item { height:88px; padding:5px 1px 8px; }.game-dock-icon { width:48px; height:48px; transform:translateY(-8px); }.game-dock-label { margin-top:-8px; font-size:8px; }.game-dock-item.active { transform:translateY(-8px) scale(1.08); }.game-dock-item.active::after { top:42px; width:48px; height:10px; }.planning-room { padding-top:20px; }.work-top-row { min-height:58px; margin-bottom:20px; }.work-top-logo { width:80px; }.work-top-row .work-view-tabs { left:50%; right:auto; transform:translate(-50%, -50%) scale(.62); transform-origin:center; } }

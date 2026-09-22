@@ -14,9 +14,12 @@ export const isOverviewPath = (pathname: string): boolean => overviewItems.some(
 
 export function GlobalBottomNavigation({ pathname }: { readonly pathname: string }) {
   return <nav className="game-dock" aria-label="주요 탐색">
-    {overviewItems.map((item) => <Link className={`game-dock-item${pathname === item.href ? " active" : ""}`} href={item.href} key={item.href} aria-current={pathname === item.href ? "page" : undefined}>
-      <img className="game-dock-icon" src={item.icon} alt="" />
-      <span className="game-dock-label">{item.label}</span>
-    </Link>)}
+    <img className="game-dock-bg" src="/assets/lifehacker/nav-wood-dock.png" alt="" aria-hidden="true" />
+    <div className="game-dock-items">
+      {overviewItems.map((item) => <Link className={`game-dock-item${pathname === item.href ? " active" : ""}`} href={item.href} key={item.href} aria-current={pathname === item.href ? "page" : undefined}>
+        <img className="game-dock-icon" src={item.icon} alt="" />
+        <span className="game-dock-label">{item.label}</span>
+      </Link>)}
+    </div>
   </nav>;
 }
