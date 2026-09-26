@@ -26,7 +26,7 @@ export interface OutcomeEvidence {
 }
 
 export const reasonCodeSchema = z.enum(["OVERDUE", "DUE_TODAY", "INTERNAL_DEADLINE", "ASSESSMENT_RISK", "WEEKLY_GAP", "DEADLINE_RISK", "COMMITMENT", "IMPORTANT", "GOAL", "UNBLOCKS", "REVIEW_NEXT", "CONTINUITY", "SCHEDULE_FIT", "BLOCKED", "CAPACITY", "UNKNOWN_EFFORT", "NOT_SELECTED", "ACTIVE_FOCUS", "APPROVED_PLAN", "CARRYOVER", "ESTIMATE_HISTORY", "BLOCKER_HISTORY", "USER_FEEDBACK", "FUTURE_CAPACITY_DEFICIT", "FUTURE_CAPACITY_UNKNOWN", "REQUIRED_COMMITMENT", "WEEKLY_FOCUS", "MONTHLY_FOCUS", "STRATEGIC_IMPORTANCE", "CUMULATIVE_PROTECTION", "OPTIONAL_YIELDS", "CAPACITY_UNKNOWN", "LEARNING_STATE"]);
-const choiceSchema = z.object({ taskId: z.string(), outcome: z.string(), reasonCodes: z.array(reasonCodeSchema).min(1), rationale: z.string(), evidenceRefs: z.array(z.string()), minutes: z.number().nonnegative(), completionCriteria: z.string().nullable().optional() });
+const choiceSchema = z.object({ taskId: z.string(), outcome: z.string(), reasonCodes: z.array(reasonCodeSchema).min(1), rationale: z.string(), evidenceRefs: z.array(z.string()), minutes: z.number().nonnegative(), completionCriteria: z.string().nullable().optional(), capacityWindowSlackMinutes: z.number().nullable().optional() });
 export const outcomeJudgmentSchema = z.object({
   version: z.literal("chief-outcome-v1"),
   todayPriority: z.array(choiceSchema).max(3), futureRelief: choiceSchema.nullable(),
@@ -161,7 +161,8 @@ export function judgeOutcomes(input: OutcomeInput): OutcomeJudgment {
       return evidence?.contexts?.find(c => c.id === dependent?.workContextId)?.commitmentLevel === "REQUIRED";
     });
     return { taskId: task.id as string, outcome: task.completionCriteria || task.title, completionCriteria: task.completionCriteria, reasonCodes: [...new Set(codes)], rationale: "", evidenceRefs: refs, minutes, deadline: task.officialDeadline?.getTime() ?? task.internalDeadline?.getTime() ?? Infinity, importance: task.importance, unlocks: downstream.length,
-      commitment: context?.commitmentLevel ?? null, strategicImportance: context?.strategicImportance ?? null, studyMode: context?.studyMode ?? null, seriousDependency };
+      commitment: context?.commitmentLevel ?? null, strategicImportance: context?.strategicImportance ?? null, studyMode: context?.studyMode ?? null, seriousDependency,
+      capacityWindowSlackMinutes: windows.length && windows.every(window=>window.slackMinutes!==null) ? Math.min(...windows.map(window=>window.slackMinutes!)) : null };
   });
   // Ordered policy bands, not a weighted score. Calendar only validates fit.
   const band = (c: typeof choices[number]) => c.reasonCodes.includes("OVERDUE") || c.reasonCodes.includes("DUE_TODAY") ? 0
@@ -199,7 +200,7 @@ export function judgeOutcomes(input: OutcomeInput): OutcomeJudgment {
     && !(c.commitment === "OPTIONAL" && choices.some(other => !blocked.has(other.taskId) && other.commitment !== "OPTIONAL" && band(other) <= 1 && !selected.includes(other)))) { relief=c; selected.push(c); break; }
   const finish = (c: typeof choices[number], extra: Choice["reasonCodes"][number]): Choice => {
     const reasonCodes = [...new Set([...c.reasonCodes, extra])];
-    return { taskId:c.taskId, outcome:c.outcome, completionCriteria:c.completionCriteria, minutes:c.minutes, evidenceRefs:c.evidenceRefs, reasonCodes, rationale:reasonCodes.map(code=>labels[code]).join(". ") + "." };
+    return { taskId:c.taskId, outcome:c.outcome, completionCriteria:c.completionCriteria, capacityWindowSlackMinutes:c.capacityWindowSlackMinutes, minutes:c.minutes, evidenceRefs:c.evidenceRefs, reasonCodes, rationale:reasonCodes.map(code=>labels[code]).join(". ") + "." };
   };
   const notToday = choices.filter(c=>!selected.includes(c)).map(c => {
     const capacityMiss = !blocked.has(c.taskId) && c.minutes > 0 && !fit(c);

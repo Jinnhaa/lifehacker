@@ -109,6 +109,8 @@ Home은 다음 질문에 답한다.
 
 P0 Home은 오늘의 상황, Main Quest, why now, completion boundary, 다른 중요한 업무의 보호/유예 근거와 남은 위험을 압축한다. 전체 Task dashboard로 정의하지 않는다. Morning 완료 여부에 관계없이 현재 상태에서 답한다.
 
+Home의 Main Quest 및 최대 2개 Next Quest는 canonical `judgeOutcomes` 결과를 그대로 사용하며 server/React에서 다시 순위를 매기지 않는다. Morning 계획은 선택적 검토이며 추천·직접 Focus 시작의 전제조건이 아니다. 완료 기준과 제외 범위는 저장된 Task 사실만 표시한다. 기존 남은 여력 영역은 최대 3개 중요 업무의 보호·제약·불확실 근거를 압축한다. 양의 확인된 deadline-window slack만 유예 근거로 사용하며 unknown effort/capacity 또는 deficit을 안전하다고 표시하지 않는다. 새 추천이 활성 Focus와 달라도 실제 Focus는 종료/전환하지 않고 사용자의 선택을 기다린다. Office World·Quest Console·timer·navigation 배치는 유지한다.
+
 Home은 항상 2.5D Tycoon Office를 중심으로 구성한다.
 
 - Office World 약 70~75%

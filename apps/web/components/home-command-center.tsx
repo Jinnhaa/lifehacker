@@ -4,7 +4,8 @@ import { useActionState, useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation";
 import { completeHomeQuestAction, decideChiefReplan, decideProjectBacklogAction, editTodayPlan, requestChiefReplan, reviewArtifactAction, runFocusAction, runMorningAction, runProjectRuntimeAction, saveChiefStatusOverride } from "../app/actions";
 import type { ChiefActionState, HomeViewModel } from "../lib/home-types";
-import { activeHomeQuests, defaultFocusMinutes, focusRemainingSeconds, splitTodayPlan } from "../lib/home-presentation";
+import { defaultFocusMinutes, focusRemainingSeconds, splitTodayPlan } from "../lib/home-presentation";
+import { canStartHomeQuest, homeFocusMatchesRecommendation } from "../lib/home-chief-presentation";
 import { WeekCalendarOverlay } from "./calendar-views";
 
 const initialActionState: ChiefActionState = { status: "idle", message: "" };
@@ -98,17 +99,18 @@ function CurrentMission({ data, onOpenWork, focusAction, focusPending, focusFeed
   morningAction: (payload: FormData) => void; morningPending: boolean; morningFeedback: ChiefActionState;
 }) {
   const action = data.currentAction;
-  const recommendation = !action ? data.outcomePriority?.judgment.todayPriority[0] ?? null : null;
   const activeFocus = data.focus?.step === "active";
-  const estimate = action?.minutes ?? recommendation?.minutes ?? null;
+  const focusMatches = homeFocusMatchesRecommendation(data);
+  const canStart = canStartHomeQuest(data);
+  const estimate = action?.minutes ?? null;
   const defaultDuration = defaultFocusMinutes(estimate);
   const [duration, setDuration] = useState(String(defaultDuration));
   const [customDuration, setCustomDuration] = useState(defaultDuration);
   const [durationOpen, setDurationOpen] = useState(false);
-  useEffect(() => { setDuration(String(defaultDuration)); setCustomDuration(defaultDuration); setDurationOpen(false); }, [action?.planItemId, defaultDuration]);
+  useEffect(() => { setDuration(String(defaultDuration)); setCustomDuration(defaultDuration); setDurationOpen(false); }, [action?.taskId, action?.planItemId, defaultDuration]);
   const chosenDuration = duration === "custom" ? customDuration : Number(duration);
-  const title = action?.title ?? recommendation?.outcome ?? "지금 실행할 항목이 없습니다";
-  const reason = action?.whyNow ?? "오늘 계획에서 우선 실행하도록 배치했어요.";
+  const title = action?.title ?? "지금 실행할 항목이 없습니다";
+  const reason = action?.whyNow ?? "현재 근거에서 실행 가능한 Quest가 없습니다.";
   const feedback = focusFeedback.message ? focusFeedback : morningFeedback;
   const feedbackMessage = morningFeedback.status === "success"
     ? "오늘 Quest를 준비했습니다. 계획 보기에서 검토할 수 있습니다."
@@ -116,13 +118,15 @@ function CurrentMission({ data, onOpenWork, focusAction, focusPending, focusFeed
   return <section className={`mission-hud ${activeFocus ? "is-focusing" : ""}`} data-testid="current-action">
     <div className="mission-copy"><small>{activeFocus ? "FOCUS MODE" : "MAIN QUEST"}</small>
       {!data.configured ? <><h1>연결 설정이 필요합니다</h1><p>{data.error}</p></>
-        : activeFocus ? <><h1>{title}</h1><FocusTimer startedAt={data.focus?.startedAt ?? null} durationMinutes={data.focus?.durationMinutes ?? 25} action={focusAction} pending={focusPending} /></>
-          : <><button type="button" className="main-quest-link" onClick={onOpenWork}><h1>{title}</h1></button>{action && <p className="mission-reason"><strong>왜 지금?</strong> {reason}</p>}{!action && <p>{data.approvedPlan ? "오늘 계획의 실행 가능한 항목을 모두 확인했습니다." : "Morning에서 오늘 계획을 승인해 주세요."}</p>}</>}</div>
+        : <><button type="button" className="main-quest-link" onClick={onOpenWork}><h1>{title}</h1></button><p className="mission-reason">{action && <strong>왜 지금? </strong>}{reason}</p>
+          {action?.context && <p>{action.context}</p>}{action?.completionCriteria && <p><strong>완료 기준</strong> {action.completionCriteria}</p>}{action?.scopeExclusions && <p><strong>이번에는 하지 않음</strong> {action.scopeExclusions}</p>}
+          {activeFocus && <><p>진행 중인 집중: {data.focus?.title ?? data.focus?.stepTitle ?? "현재 Focus"}{!focusMatches && action ? " · 새 추천으로 전환하려면 현재 집중을 먼저 마무리하세요." : ""}</p><FocusTimer startedAt={data.focus?.startedAt ?? null} durationMinutes={data.focus?.durationMinutes ?? 25} action={focusAction} pending={focusPending} /></>}
+        </>}</div>
     {!activeFocus && <div className="mission-meta"><button type="button" className="mission-estimate" onClick={() => setDurationOpen((open) => !open)} disabled={!action || action.kind === "rest"} aria-expanded={durationOpen}><small>예상시간 · 집중 시간 변경</small><strong>{estimate ? `${estimate}분` : "—"}</strong><span>⌄</span></button></div>}
-    {!activeFocus && durationOpen && data.planState.status === "approved" && action && action.kind !== "rest" && <FocusDurationSelector duration={duration} setDuration={setDuration} customDuration={customDuration} setCustomDuration={setCustomDuration} />}
+    {!activeFocus && durationOpen && action && action.kind !== "rest" && <FocusDurationSelector duration={duration} setDuration={setDuration} customDuration={customDuration} setCustomDuration={setCustomDuration} />}
     <div className="mission-actions">
-      {data.planState.status === "no_plan" && <form action={morningAction}><input type="hidden" name="command" value="일어남" /><button className="focus-button" type="submit" disabled={morningPending}>{morningPending ? "계획 준비 중…" : "오늘 계획 만들기"}</button></form>}
-      {data.planState.status === "approved" && !data.focus && action && action.kind !== "rest" && <><form action={focusAction}><input type="hidden" name="command" value={`시작:${chosenDuration}:${action.kind}:${action.taskId ?? action.occurrenceId ?? ""}`} /><button className="focus-button is-ready" type="submit" disabled={focusPending || (!action.taskId && !action.occurrenceId) || !Number.isInteger(chosenDuration) || chosenDuration < 1 || chosenDuration > 240}>▶ 집중 시작</button></form><form action={completeAction}><input type="hidden" name="taskId" value={action.taskId ?? ""} /><input type="hidden" name="stepId" value={action.stepId ?? ""} /><input type="hidden" name="occurrenceId" value={action.occurrenceId ?? ""} /><button className="focus-button" type="submit" disabled={completePending || (!action.taskId && !action.occurrenceId)}>이미 완료했어요</button></form></>}
+      {canStart && action && <><form action={focusAction}><input type="hidden" name="command" value={`시작:${chosenDuration}:${action.kind}:${action.taskId ?? ""}`} /><button className="focus-button is-ready" type="submit" disabled={focusPending || !Number.isInteger(chosenDuration) || chosenDuration < 1 || chosenDuration > 240}>▶ 집중 시작</button></form><form action={completeAction}><input type="hidden" name="taskId" value={action.taskId ?? ""} /><input type="hidden" name="stepId" value={action.stepId ?? ""} /><input type="hidden" name="occurrenceId" value="" /><button className="focus-button" type="submit" disabled={completePending}>이미 완료했어요</button></form></>}
+      {data.planState.status === "no_plan" && <form action={morningAction}><input type="hidden" name="command" value="일어남" /><button className="focus-button" type="submit" disabled={morningPending}>{morningPending ? "계획 준비 중…" : "오늘 계획 만들기 (선택)"}</button></form>}
       {data.focus?.step === "awaiting_switch_confirmation" && <form action={focusAction}><button name="command" value="다른 거 할래" className="focus-button" type="submit" disabled={focusPending}>집중 종료 확인</button></form>}
       {data.focus?.step === "recovery_ready" && <form action={focusAction}><button name="command" value="다시 할게" className="focus-button is-ready" type="submit" disabled={focusPending}>다시 할게</button></form>}
     </div>
@@ -216,24 +220,29 @@ function FocusDurationSelector({ duration, setDuration, customDuration, setCusto
 }
 
 function NextQuests({ data, onOpenWork, onOpenPlan, completeAction, completePending }: { data: HomeViewModel; onOpenWork: () => void; onOpenPlan: () => void; completeAction: (payload: FormData) => void; completePending: boolean }) {
-  const items = activeHomeQuests(data.timeline, data.currentAction?.taskId ?? null).slice(0, 2);
+  const items = data.nextQuests;
   return <section className="next-quests" aria-labelledby="next-quests-title"><header><small>QUEUE</small><h2 id="next-quests-title">Up Next</h2></header>
-    {items.length ? <ol>{items.map((item) => <li key={item.id}><div className="next-quest-row">{(item.taskId || item.occurrenceId) && <form action={completeAction}><input type="hidden" name="taskId" value={item.taskId ?? ""} /><input type="hidden" name="stepId" value={item.stepId ?? ""} /><input type="hidden" name="occurrenceId" value={item.occurrenceId ?? ""} /><button className="quest-check" disabled={completePending} aria-label={`${item.title} 완료`} type="submit">✓</button></form>}<button type="button" onClick={onOpenWork}><span><strong>{item.title}</strong><small>{item.context ?? "오늘 Quest"}</small></span><em>~{item.minutes}분</em><i>›</i></button></div></li>)}</ol> : <p className="quest-empty">다음 Quest는 오늘 계획이 준비되면 표시됩니다.</p>}
+    {items.length ? <ol>{items.map((item) => <li key={item.taskId}><div className="next-quest-row"><form action={completeAction}><input type="hidden" name="taskId" value={item.taskId} /><input type="hidden" name="stepId" value="" /><input type="hidden" name="occurrenceId" value="" /><button className="quest-check" disabled={completePending} aria-label={`${item.title} 완료`} type="submit">✓</button></form><button type="button" onClick={onOpenWork}><span><strong>{item.title}</strong><small>{item.context ?? "오늘 Quest"} · {item.whyNow}</small></span><em>~{item.minutes}분</em><i>›</i></button></div></li>)}</ol> : <p className="quest-empty">현재 근거에서 다음 Quest가 없습니다.</p>}
     <button type="button" className="all-quests-link" onClick={onOpenPlan}>오늘 Quest 전체 보기 →</button>
   </section>;
 }
 
 function Capacity({ data }: { data: HomeViewModel }) {
-  const required = data.timeline.filter((item) => (item.kind === "task" || item.kind === "routine") && item.source !== "pending").reduce((sum, item) => sum + item.minutes, 0);
+  const judgment = data.outcomePriority?.judgment;
+  const required = [...(judgment?.todayPriority ?? []),...(judgment?.futureRelief ? [judgment.futureRelief] : [])].reduce((sum,item)=>sum+item.minutes,0);
   const available = data.availableMinutes;
   const difference = available === null ? null : available - required;
-  return <section className="capacity-panel" aria-labelledby="capacity-title"><header><small>TODAY CAPACITY</small><h2 id="capacity-title">남은 여력</h2></header><div className="capacity-values"><span><small>가용</small><b>{available === null ? "확인 전" : `${available}분`}</b></span><span><small>Quest</small><b>{required ? `${required}분` : "0분"}</b></span><span className={difference !== null && difference < 0 ? "risk" : ""}><small>차이</small><b>{difference === null ? "—" : `${difference > 0 ? "+" : ""}${difference}분`}</b></span></div>{available === null && <p>가용시간이 확인되면 차이를 표시합니다.</p>}</section>;
+  return <section className="capacity-panel" aria-labelledby="capacity-title"><header><small>TODAY CAPACITY</small><h2 id="capacity-title">남은 여력</h2></header><div className="capacity-values"><span><small>가용</small><b>{available === null ? "확인 전" : `${available}분`}</b></span><span><small>추천 분량</small><b>{required ? `${required}분` : "0분"}</b></span><span className={difference !== null && difference < 0 ? "risk" : ""}><small>차이</small><b>{difference === null ? "—" : `${difference > 0 ? "+" : ""}${difference}분`}</b></span></div>
+    <p>오늘 고정 일정 {data.timeline.filter(item=>item.kind==="calendar").length}개 · 공식 마감 {data.currentStatus?.officialDueToday.length ?? 0}개</p>
+    {available === null && <p>현재 가용시간은 확인 전입니다.</p>}{Boolean(judgment?.capacityConflicts.length) && <p>확인된 마감 용량 충돌 {judgment!.capacityConflicts.length}개</p>}
+    {data.reassurance.map(item=><p key={item.taskId}><strong>{item.title}</strong> · {item.whyNotNow} · {item.explanation}</p>)}
+  </section>;
 }
 
 function MissionsBoard({ data }: { data: HomeViewModel }) {
   const judgment = data.outcomePriority?.judgment;
   const clear = judgment?.todayPriority[0] ?? null;
-  const levelUp = judgment?.todayPriority.slice(1).find((item) => item.reasonCodes.includes("GOAL")) ?? judgment?.todayPriority[1] ?? null;
+  const levelUp = judgment?.todayPriority[1] ?? null;
   const bonus = judgment?.futureRelief ?? null;
   const rows = [["🔥", "CLEAR", "Clear Quest", clear], ["🌱", "LEVEL UP", "Level-up Quest", levelUp], ["✨", "BONUS", "Bonus Quest", bonus]] as const;
   return <aside className="missions-board" aria-labelledby="missions-title"><header><small>DAILY MISSION BOARD</small><h2 id="missions-title">Today's Missions</h2></header><div>{rows.map(([icon, status, label, item]) => {

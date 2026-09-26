@@ -28,7 +28,7 @@ import { OpenAIAiTaskExecutor, OpenAIProjectAnalysisProvider, SupabaseAIExecutio
 import { SystemClock, zonedDateTimeToUtc, type UserId } from "@amber/shared";
 import type { Sql } from "postgres";
 import type { HomeProposalChange, HomeTimelineItem, HomeViewModel, HomeWeekDay } from "./home-types";
-import { remainingAvailableMinutes } from "./home-presentation";
+import { mapHomeChief } from "./home-chief-presentation";
 import { getWebSql, getWebUserId } from "./web-runtime";
 export { getWebSql, getWebUserId } from "./web-runtime";
 
@@ -263,7 +263,14 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
     if (!profiles[0]) throw new Error("AMBER_USER_ID에 해당하는 profile을 찾지 못했습니다.");
     const timeZone = profiles[0].timezone;
     const date = localDate(now, timeZone);
-    const outcomePriority = await getHomeOutcome(sql,userId,date,await new SupabaseMorningRepository(sql).loadObservation(userId,date,timeZone),now);
+    const observation = await new SupabaseMorningRepository(sql).loadObservation(userId,date,timeZone);
+    const outcomePriority = await getHomeOutcome(sql,userId,date,observation,now);
+    const taskDetails = observation.tasks.length ? await sql<{ id:string;title:string;context:string|null;completion_criteria:string|null;scope_exclusions:string|null }[]>`
+      select t.id,t.title,coalesce(w.title,g.title) context,t.completion_criteria,t.scope_exclusions
+      from public.tasks t left join public.objectives o on o.id=t.objective_id and o.user_id=t.user_id
+      left join public.work_contexts w on w.id=coalesce(t.work_context_id,o.work_context_id) and w.user_id=t.user_id
+      left join public.goals g on g.id=o.goal_id and g.user_id=o.user_id
+      where t.user_id=${userId} and t.id=any(${observation.tasks.map(task=>task.id)}::uuid[])` : [];
     const missionIds = [...new Set([...outcomePriority.judgment.todayPriority.map((item) => item.taskId),
       ...(outcomePriority.judgment.futureRelief ? [outcomePriority.judgment.futureRelief.taskId] : [])])];
     const missionSteps = missionIds.length ? await sql<{ task_id: string; total: number; completed: number }[]>`
@@ -312,24 +319,12 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
       approved ? readItems(sql, userId, approved.id) : [],
       pendingPlan ? readItems(sql, userId, pendingPlan.id) : []
     ]);
-    const statusPriority = outcomePriority.currentStatus.priorities[0] ?? null;
-    const focused = currentAction?.source === "focus_session";
-    const statusItem = statusPriority?.taskId
-      ? approvedItems.find((item) => item.task_id === statusPriority.taskId) ?? null
-      : statusPriority?.recurringActivityId
-        ? approvedItems.find((item) => item.recurring_activity_id === statusPriority.recurringActivityId) ?? null
-        : null;
-    const selectedAction = focused ? currentAction : statusPriority ? statusPriority.kind === "task" ? {
-      kind: "task" as const, source: "current_status" as const, title: statusPriority.title,
-      taskId: statusPriority.taskId!, planItemId: statusItem?.id ?? null
-    } : {
-      kind: "routine" as const, source: "current_status" as const, title: statusPriority.title,
-      activityOccurrenceId: statusPriority.occurrenceId ?? statusItem?.activity_occurrence_id ?? "",
-      planItemId: statusItem?.id ?? null
-    } : currentAction;
-    const currentItem = selectedAction?.planItemId ? approvedItems.find((item) => item.id === selectedAction.planItemId) ?? null : null;
-    const whyNow = focused ? "진행 중인 집중을 마칠 때까지 현재 Quest를 유지해요."
-      : statusPriority?.whyNow ?? "현재 사실과 남은 가용시간을 기준으로 선택했어요.";
+    const chief = mapHomeChief(outcomePriority.judgment,taskDetails.map(task=>{
+      const item = approvedItems.find(item=>item.task_id===task.id);
+      return {id:task.id,title:task.title,context:task.context,completionCriteria:task.completion_criteria,scopeExclusions:task.scope_exclusions,
+        stepId:item?.step_id ?? null,planItemId:item?.id ?? null};
+    }));
+    const selectedAction = chief.currentAction;
     const approvedByKey = new Map(approvedItems.map((item) => [itemKey(item), item]));
     const pendingChanges = pendingItems.filter((item) => {
       const previous = approvedByKey.get(itemKey(item));
@@ -400,18 +395,9 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
       outcomePriority,
       currentStatus: outcomePriority.currentStatus,
       missionProgress,
-      currentAction: selectedAction ? {
-        kind: selectedAction.kind, taskId: selectedAction.kind === "task" ? selectedAction.taskId : null,
-        stepId: currentItem?.step_id ?? null, occurrenceId: selectedAction.kind === "routine" ? selectedAction.activityOccurrenceId || null : null,
-        planItemId: selectedAction.planItemId,
-        title: selectedAction.source === "current_status" ? selectedAction.title : currentItem?.step_title ?? selectedAction.title,
-        minutes: statusPriority?.minutes ?? currentItem?.planned_minutes ?? null,
-        context: currentItem?.context_title ?? null, source: selectedAction.source,
-        whyNow
-      } : null,
+      ...chief,
       approvedPlan: approved ? { id: approved.id, revisionNo: approved.revision_no } : null,
-      availableMinutes: outcomePriority.currentStatus.remainingCapacityMinutes
-        ?? (approved ? remainingAvailableMinutes(approved.input_snapshot, now, timeline) : null),
+      availableMinutes: outcomePriority.currentStatus.remainingCapacityMinutes,
       planReview: reviewPlan ? {
         planId: reviewPlan.id, revisionNo: reviewPlan.revision_no,
         status: reviewPlan.status === "pending_approval" ? "pending_approval" : "approved",
@@ -447,7 +433,8 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
         category: focus.checkpoint.blockCategory ?? null,
         startedAt: focusSessions[0]?.id === focus.checkpoint.sessionId ? focusSessions[0].started_at.toISOString() : null,
         durationMinutes: focusSessions[0]?.id === focus.checkpoint.sessionId ? focusSessions[0].planned_minutes ?? focus.checkpoint.durationMinutes ?? 25 : focus.checkpoint.durationMinutes ?? 25,
-        stepTitle: approvedItems.find((item) => item.task_id === focus.checkpoint.taskId)?.step_title ?? null
+        stepTitle: approvedItems.find((item) => item.task_id === focus.checkpoint.taskId)?.step_title ?? null,
+        title:currentAction?.source==="focus_session" ? currentAction.title : null
       } : null,
       reviewArtifacts,
       timeline,
@@ -466,7 +453,7 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
   } catch (error) {
     return {
       configured: false, error: error instanceof Error ? error.message : "Home 데이터를 불러오지 못했습니다.",
-      date: localDate(now, "Asia/Seoul"), timeZone: "Asia/Seoul", outcomePriority: null, currentStatus: null, missionProgress: {}, currentAction: null, approvedPlan: null, availableMinutes: null, planReview: null,
+      date: localDate(now, "Asia/Seoul"), timeZone: "Asia/Seoul", outcomePriority: null, currentStatus: null, missionProgress: {}, currentAction: null, nextQuests:[],reassurance:[],approvedPlan: null, availableMinutes: null, planReview: null,
       planState: { status: "no_plan", revisionNo: null, message: null },
       calendar: { activeProviders: [], lastSyncedAt: null, fixedCommitmentCount: 0 }, focus: null, reviewArtifacts: [],
       timeline: [], week: weekDates(localDate(now, "Asia/Seoul")).map((date) => ({ date, items: [] })), goals: [], agents: [], decisionCount: 0, proposal: null,

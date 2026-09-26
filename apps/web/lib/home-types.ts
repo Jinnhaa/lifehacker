@@ -52,9 +52,26 @@ export type HomeWeekDay = {
   readonly items: readonly HomeTimelineItem[];
 };
 
+export type HomeChiefQuest = {
+  readonly taskId: string;
+  readonly title: string;
+  readonly context: string | null;
+  readonly minutes: number;
+  readonly whyNow: string;
+};
+export type HomeReassurance = {
+  readonly taskId: string;
+  readonly title: string;
+  readonly whyNotNow: string;
+  readonly status: "safe" | "protected" | "constrained" | "uncertain";
+  readonly explanation: string;
+};
+
 export type HomeViewModel = {
   readonly outcomePriority?: { readonly judgment: OutcomeJudgment; readonly decisionId: string } | null;
   readonly currentStatus: ChiefCurrentStatus | null;
+  readonly nextQuests: readonly HomeChiefQuest[];
+  readonly reassurance: readonly HomeReassurance[];
   readonly missionProgress: Readonly<Record<string, { readonly completed: number; readonly total: number }>>;
   readonly configured: boolean;
   readonly error: string | null;
@@ -71,6 +88,8 @@ export type HomeViewModel = {
     readonly context: string | null;
     readonly source: string;
     readonly whyNow: string;
+    readonly completionCriteria?: string | null;
+    readonly scopeExclusions?: string | null;
   };
   readonly approvedPlan: null | { readonly id: string; readonly revisionNo: number };
   readonly availableMinutes: number | null;
@@ -93,6 +112,7 @@ export type HomeViewModel = {
     readonly startedAt: string | null;
     readonly durationMinutes: number;
     readonly stepTitle: string | null;
+    readonly title?: string | null;
   };
   readonly reviewArtifacts: readonly {
     readonly id: string;
