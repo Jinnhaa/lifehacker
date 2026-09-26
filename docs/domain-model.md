@@ -271,6 +271,8 @@ Course / Certification의 사용자 근거 학습 상태다.
 
 동일 사용자 WorkContext composite FK와 cascade delete, owner RLS를 사용한다. 학습용 Context kind는 domain 계약이다. 재생 기록만으로 상태를 변경하지 않으며 사용자 선언이 실제 학습 근거다. AI 필드는 없다.
 
+Learning Unit 관리는 활성 Course/Certification에 한정한다. 세 상태 차원은 수동으로 독립 수정하며 Focus 시간·재생·동기화로 자동 승격하지 않는다. 기본 position은 해당 Context의 최대 position + 1이며, 중복 position은 다른 항목을 옮기거나 덮어쓰지 않고 거절한다. 보관 필드와 참조 테이블이 없으므로 P0에서 사용자 명시 확인 후 hard delete를 허용하되, 변경 전후 값 및 삭제 전 snapshot은 별도 DomainEvent로 보존한다. Context 요약은 전체 개수, Exposure COMPLETE 개수, Understanding WEAK 개수, Validation PASSED가 아닌 개수를 계산하며 저장된 percentage를 만들지 않는다.
+
 ### CourseAssessment
 
 - `id`

@@ -2,6 +2,8 @@ import type {
   CertificationContextRecord,
   ContextKind,
   CourseContextRecord,
+  LearningUnit,
+  LearningUnitSummary,
   ProjectContextRecord
 } from "@amber/core";
 
@@ -12,6 +14,7 @@ export interface LearningContextsViewModel {
   readonly error: string | null;
   readonly courses: readonly CourseContextRecord[];
   readonly certifications: readonly CertificationContextRecord[];
+  readonly learningUnits: Readonly<Record<string, { readonly units: readonly LearningUnit[]; readonly summary: LearningUnitSummary }>>;
 }
 
 export interface ProjectContextsViewModel {

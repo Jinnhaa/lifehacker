@@ -899,6 +899,7 @@ body:has(.is-focus-mode) .game-dock { display:none; }
 }
 
 /* Context management Wave: intentionally plain operational graybox. */
+.learning-unit-detail { margin-top:10px; }.learning-unit-detail p { font-size:12px; color:#555; }.learning-unit-detail summary { cursor:pointer; }.learning-unit-row { margin-top:12px; padding-top:12px; border-top:1px solid #aaa; }.learning-unit-row > strong { font-size:14px; }
 .period-goal-management details { margin:8px 0; }.period-goal-management summary { cursor:pointer; font-size:12px; font-weight:800; }
 .period-goal-card { padding:12px; border:2px solid rgba(93,73,61,.28); border-radius:10px; background:var(--lh-panel-soft); }.period-goal-card > button { width:100%; }.period-goal-card > small { display:block; margin-top:8px; }.period-goal-card p { font-size:11px; }.period-goal-card ul { padding:0; list-style:none; }.period-goal-card li { margin:8px 0; padding:8px; border-top:1px solid rgba(93,73,61,.25); }.period-goal-card li > strong,.period-goal-card li > b { display:block; font-size:12px; }.period-goal-card li > b { margin-top:5px; color:var(--lh-green); }
 .period-goal-form { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; }.period-goal-form label { display:grid; gap:4px; min-width:130px; flex:1; font-size:11px; }.period-goal-form input,.period-goal-form select { width:100%; min-height:34px; }.period-goal-management .work-feedback { position:static; }

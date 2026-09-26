@@ -1,6 +1,6 @@
 import "server-only";
 
-import { ContextManagementService, SupabaseContextManagementRepository } from "@amber/core";
+import { ContextManagementService, SupabaseContextManagementRepository, LearningUnitService, SupabaseLearningUnitRepository, summarizeLearningUnits } from "@amber/core";
 import type { Sql } from "postgres";
 import { getWebSql, getWebUserId } from "./web-runtime";
 import type { LearningContextsViewModel, ProjectContextsViewModel } from "./context-management-types";
@@ -8,13 +8,22 @@ import type { LearningContextsViewModel, ProjectContextsViewModel } from "./cont
 export const createWebContextManagementService = (sql: Sql) => new ContextManagementService(
   new SupabaseContextManagementRepository(sql)
 );
+export const createWebLearningUnitService = (sql: Sql) => new LearningUnitService(new SupabaseLearningUnitRepository(sql));
 
 export const loadLearningContexts = async (): Promise<LearningContextsViewModel> => {
   try {
-    const [courses, certifications] = await createWebContextManagementService(getWebSql()).listLearning(getWebUserId());
-    return { configured: true, error: null, courses, certifications };
+    const sql = getWebSql();
+    const userId = getWebUserId();
+    const [[courses, certifications], allUnits] = await Promise.all([
+      createWebContextManagementService(sql).listLearning(userId), createWebLearningUnitService(sql).list(userId)
+    ]);
+    const learningUnits = Object.fromEntries([...courses, ...certifications].map((context) => {
+      const units = allUnits.filter((unit) => unit.workContextId === context.id);
+      return [context.id, { units, summary: summarizeLearningUnits(units) }];
+    }));
+    return { configured: true, error: null, courses, certifications, learningUnits };
   } catch (error) {
-    return { configured: false, error: error instanceof Error ? error.message : "학습 Context를 불러오지 못했습니다.", courses: [], certifications: [] };
+    return { configured: false, error: error instanceof Error ? error.message : "학습 Context를 불러오지 못했습니다.", courses: [], certifications: [], learningUnits: {} };
   }
 };
 

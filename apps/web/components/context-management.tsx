@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { LearningUnitManagement } from "./learning-unit-management";
 import { saveLearningContextAction } from "../app/learning/actions";
 import { saveProjectContextAction } from "../app/projects/actions";
 import type {
@@ -69,7 +70,7 @@ export function LearningContextManager({ model }: { readonly model: LearningCont
         <details className="context-editor"><summary>수정</summary><form action={action} className="context-form">
           <input type="hidden" name="intent" value="update" /><input type="hidden" name="kind" value="course" /><input type="hidden" name="contextId" value={context.id} />
           <CommonFields context={context} /><label>목표 성적<input name="targetGrade" defaultValue={context.targetGrade ?? ""} /></label><label>학기<input name="term" defaultValue={context.term ?? ""} /></label><label>담당자<input name="instructor" defaultValue={context.instructor ?? ""} /></label><button disabled={pending}>변경 저장</button>
-        </form></details><ArchiveForm id={context.id} kind="course" action={action} />
+        </form></details><LearningUnitManagement contextId={context.id} data={model.learningUnits[context.id]} /><ArchiveForm id={context.id} kind="course" action={action} />
       </article>)}</div>
     </section>
     <section className="context-section"><header><h2>Certifications</h2><span>{model.certifications.length}</span></header>
@@ -78,7 +79,7 @@ export function LearningContextManager({ model }: { readonly model: LearningCont
         <details className="context-editor"><summary>수정</summary><form action={action} className="context-form">
           <input type="hidden" name="intent" value="update" /><input type="hidden" name="kind" value="certification" /><input type="hidden" name="contextId" value={context.id} />
           <CommonFields context={context} /><label>목표 결과<input name="targetOutcome" defaultValue={context.targetOutcome ?? ""} /></label><label>시험일<input type="date" name="examDate" defaultValue={context.examDate ?? ""} /></label><label>학습 방식<select name="studyMode" defaultValue={context.studyMode ?? ""}><option value="">선택 안 함</option><option value="CUMULATIVE">Cumulative</option><option value="MIXED">Mixed</option><option value="CRAMMABLE">Crammable</option></select></label><label>현재 수준<input name="currentLevel" defaultValue={context.currentLevel ?? ""} /></label><button disabled={pending}>변경 저장</button>
-        </form></details><ArchiveForm id={context.id} kind="certification" action={action} />
+        </form></details><LearningUnitManagement contextId={context.id} data={model.learningUnits[context.id]} /><ArchiveForm id={context.id} kind="certification" action={action} />
       </article>)}</div>
     </section>
   </div>;
