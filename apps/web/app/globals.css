@@ -897,3 +897,16 @@ body:has(.is-focus-mode) .game-dock { display:none; }
   left: 55px;
   right: 55px;
 }
+
+/* Context management Wave: intentionally plain operational graybox. */
+.context-shell { width:min(1120px,calc(100% - 32px)); padding:36px 0 170px; }
+.context-shell > header { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; margin-bottom:24px; }
+.context-shell > header h1 { margin:5px 0; }.context-shell > header p { margin:0; color:var(--lh-text-soft); }.context-shell > header a { color:var(--lh-wood-dark); font-weight:800; }
+.context-manager,.context-section { display:grid; gap:16px; }.context-create-grid,.context-card-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+.context-editor,.context-card,.context-section { border:1px solid #aaa; border-radius:8px; background:#f7f7f7; box-shadow:none; }
+.context-editor { padding:12px; }.context-editor summary { cursor:pointer; font-weight:800; }.context-section { margin-top:8px; padding:16px; background:#eee; }
+.context-section > header { display:flex; align-items:center; justify-content:space-between; }.context-section h2 { margin:0; font-size:20px; }.context-section > header span { min-width:28px; padding:4px 8px; border:1px solid #999; border-radius:20px; text-align:center; }
+.context-card { padding:14px; background:white; }.context-card h3 { margin:0 0 10px; }.context-card > p { color:#555; }.context-card dl { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin:0 0 14px; }.context-card dl div { padding:8px; background:#eee; }.context-card dt { color:#666; font-size:11px; }.context-card dd { margin:3px 0 0; font-weight:700; }
+.context-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:12px; }.context-form label { display:grid; gap:4px; color:#555; font-size:12px; font-weight:700; }.context-form input,.context-form select,.context-form textarea { width:100%; min-height:38px; padding:8px; border:1px solid #888; border-radius:4px; background:white; color:#222; }.context-form textarea { min-height:72px; resize:vertical; }.context-form button { min-height:40px; border:1px solid #555; border-radius:4px; background:#333; color:white; font-weight:800; cursor:pointer; }.context-form button:disabled { opacity:.55; }.context-span,.context-form > button { grid-column:1/-1; }.context-form .context-checkbox { display:flex; grid-column:1/-1; grid-template-columns:20px 1fr; align-items:center; }.context-form .context-checkbox input { min-height:0; }
+.context-archive-form { display:flex; justify-content:flex-end; margin-top:10px; }.context-muted-button { padding:7px 12px; border:1px solid #888; border-radius:4px; background:#eee; color:#444; cursor:pointer; }.context-feedback { padding:10px 12px; border:1px solid #777; border-radius:5px; background:#eee; }.context-feedback.success { border-color:#47785a; background:#e7f2e9; }.context-feedback.error { border-color:#a05a5a; background:#f6e7e7; }
+@media (max-width:760px) { .context-shell > header { display:grid; }.context-create-grid,.context-card-grid,.context-form { grid-template-columns:1fr; }.context-span,.context-form > button { grid-column:auto; } }
