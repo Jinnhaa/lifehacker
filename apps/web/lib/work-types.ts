@@ -1,3 +1,5 @@
+import type { GoalProgressEvidenceKind } from "@amber/core";
+
 export type WorkActionState = { readonly status: "idle" | "success" | "error"; readonly message: string };
 export type WorkView = "today" | "week" | "month";
 
@@ -6,6 +8,7 @@ export type WorkContextOption = { readonly id: string; readonly title: string; r
 export type WorkWin = {
   readonly id: string; readonly title: string; readonly level: "MONTHLY" | "WEEKLY";
   readonly progress: number; readonly remainingMinutes: number;
+  readonly evidenceKind: GoalProgressEvidenceKind;
 };
 
 export type WorkTaskItem = {

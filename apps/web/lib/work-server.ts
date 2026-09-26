@@ -7,7 +7,8 @@ import {
   deriveCurrentStatus,
   comparePriorityBands,
   projectPlannedDay,
-  projectGoalProgress
+  projectGoalProgress,
+  type ObjectiveProgressMode
 } from "@amber/core";
 import { DeterministicTestInterpreter, InputService, SupabaseInputRepository } from "@amber/input";
 import { SystemClock, zonedDateTimeToUtc, type UserId } from "@amber/shared";
@@ -26,7 +27,8 @@ type GoalRow = {
   id: string; title: string; level: "LONG_TERM" | "MONTHLY" | "WEEKLY"; parent_goal_id: string | null;
   period_start: string | null; period_end: string | null; status: string;
 };
-type ObjectiveRow = { id: string; goal_id: string; title: string; target_date: string | null; status: string; success_criteria: string | null };
+type ObjectiveRow = { id: string; goal_id: string; title: string; target_date: string | null; status: string; success_criteria: string | null;
+  progress_mode: ObjectiveProgressMode; target_value: string | null; current_value: string | null; unit: string | null };
 type EventRow = { id: string; title: string | null; valid_from: Date; valid_until: Date; value: unknown };
 
 const record = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -96,7 +98,7 @@ export const readWorkBoard = async (sql: Sql, userId: UserId, timeZone: string, 
   const [pending, taskRows, contexts, goals, objectives, events, observation, todayPlan] = await Promise.all([
     inputRepository.listPendingTaskConfirmations(userId), readTasks(sql, userId), inputRepository.getContextCandidates(userId),
     sql<GoalRow[]>`select id,title,level,parent_goal_id,period_start::text,period_end::text,status from public.goals where user_id=${userId} and status='active' order by level,created_at`,
-    sql<ObjectiveRow[]>`select id,goal_id,title,target_date::text,status,success_criteria from public.objectives where user_id=${userId} and goal_id is not null and status<>'cancelled'`,
+    sql<ObjectiveRow[]>`select id,goal_id,title,target_date::text,status,success_criteria,progress_mode,target_value::text,current_value::text,unit from public.objectives where user_id=${userId} and goal_id is not null and status<>'cancelled'`,
     readEvents(sql, userId, rangeStart, rangeEnd, timeZone),
     new SupabaseMorningRepository(sql).loadObservation(userId, today, timeZone),
     sql<{ input_snapshot: unknown }[]>`select input_snapshot from public.daily_plans where user_id=${userId} and plan_date=${today} and status='approved' order by revision_no desc limit 1`
@@ -109,7 +111,9 @@ export const readWorkBoard = async (sql: Sql, userId: UserId, timeZone: string, 
   const priority = new Map(currentStatus.priorities.flatMap((item) => item.taskId ? [[item.taskId, item.band] as const] : []));
   const projections = new Map(projectGoalProgress({
     goals: goals.map((goal) => ({ id: goal.id, title: goal.title, level: goal.level, parentGoalId: goal.parent_goal_id, periodStart: goal.period_start, periodEnd: goal.period_end, status: goal.status })),
-    objectives: objectives.map((objective) => ({ id: objective.id, goalId: objective.goal_id, status: objective.status, successCriteria: objective.success_criteria })),
+    objectives: objectives.map((objective) => ({ id: objective.id, goalId: objective.goal_id, status: objective.status, successCriteria: objective.success_criteria,
+      progressMode: objective.progress_mode, targetValue: objective.target_value === null ? null : Number(objective.target_value),
+      currentValue: objective.current_value === null ? null : Number(objective.current_value), unit: objective.unit })),
     tasks: taskRows.map((task) => ({ id: task.id, objectiveId: task.objective_id, status: task.status, estimatedMinutes: task.estimated_minutes, estimatedUserMinutes: task.estimated_user_minutes, actualMinutes: task.actual_minutes }))
   }).map((projection) => [projection.goalId, projection] as const));
   const suggestedDate = (row: TaskRow): { date: string; source: WorkTaskItem["plannedDateSource"] } => projectPlannedDay({
@@ -136,7 +140,7 @@ export const readWorkBoard = async (sql: Sql, userId: UserId, timeZone: string, 
   const wins = goals.flatMap((goal) => {
     const projection = projections.get(goal.id); if (!projection || (goal.level !== "WEEKLY" && goal.level !== "MONTHLY")) return [];
     if ((goal.period_start && goal.period_start > today) || (goal.period_end && goal.period_end < today)) return [];
-    return [{ id: goal.id, title: goal.title, level: goal.level, progress: projection.progress, remainingMinutes: projection.remainingMinutes }];
+    return [{ id: goal.id, title: goal.title, level: goal.level, progress: projection.progress, remainingMinutes: projection.remainingMinutes, evidenceKind: projection.evidenceKind }];
   });
   const todayTasks = tasks.filter((task) => task.plannedDate === today);
   const taskById = new Map(tasks.map((task) => [task.id, task]));

@@ -168,7 +168,7 @@ RecurringActivity
 - `origin`
 - `created_at`, `updated_at`, `archived_at?`
 
-`progress`의 의미적 값은 명시적 단위/Task 완료, milestone, completion criteria 근거로만 도출한다. 시간/예상 작업량 가중치 fallback은 금지하며 근거가 없으면 unknown이다. 기존 필드 존재는 fake percentage 허가가 아니다. Wave 2는 legacy/stale일 수 있는 `goals.progress`를 보존하며 실제 semantic Goal progress 계산 수정은 다음 Wave에서 수행한다.
+`progress`의 의미적 값은 명시적 단위/Task 완료, milestone, completion criteria 근거로만 도출한다. 시간/예상 작업량 가중치 fallback은 금지하며 근거가 없으면 unknown이다. 기존 필드 존재는 fake percentage 허가가 아니다. Wave 3는 legacy/stale일 수 있는 `goals.progress`를 보존하되 canonical 계산에서 읽지 않는다. `projectGoalProgress`의 derived explicit evidence가 canonical이다.
 
 ### Objective
 
@@ -182,6 +182,8 @@ RecurringActivity
 - `target_value?` (> 0), `current_value?` (>= 0), `unit?`
 
 STATUS는 milestone/명시적 state, TASK_COUNT는 명시적으로 정의된 child Task 완료, NUMERIC은 12 / 18 lessons 같은 측정값을 표현한다. 새 저장 percentage는 없으며 예상 workload/time을 이 필드로 이관하지 않는다. 기존 Objective는 STATUS로 유지된다.
+
+Wave 3 projection은 STATUS의 achieved/completed/done에 100, 나머지에 0을 부여한다. TASK_COUNT는 child Task 중 DONE 비율이며 child Task가 없으면 근거 없음이다. NUMERIC은 유효한 current_value / target_value 비율을 0–100으로 제한하며 값이 없거나 유효하지 않으면 근거 없음이다. usable Objective들을 동등하게 평균하고, 없으면 usable child Goal들을 동등하게 평균한다. 둘 다 없으면 progress=0, evidenceKind=none이다. 근거 종류는 status / task_count / numeric / children / mixed_objectives / none이다. remainingMinutes는 미완료 Task의 추정 effort에서 실제 effort를 차감한 값과 child Goal workload의 합으로 별도 계산한다. 진행률에는 시간 가중치를 사용하지 않는다.
 
 ### RecurringActivity
 

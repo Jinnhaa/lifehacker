@@ -228,7 +228,7 @@ Wave 2 (`0018`) 추가 column:
 
 STATUS는 milestone/명시적 상태, TASK_COUNT는 명시적으로 정의된 child Task 완료, NUMERIC은 명시적 측정값을 표현한다. 기존 Objective는 STATUS로 유지하며 예상시간/workload를 이관하지 않는다. 저장 percentage를 추가하지 않는다.
 
-`0017`의 goals LONG_TERM / MONTHLY / WEEKLY 계층과 기존 `progress` column은 그대로 유지한다. legacy/stale Goal progress의 semantic 계산은 다음 Wave에서 수정하며 Wave 2는 시간 기반 계산을 추가하지 않는다.
+`0017`의 goals LONG_TERM / MONTHLY / WEEKLY 계층과 기존 `progress` column은 그대로 유지한다. Wave 3의 semantic Goal progress는 Objective/child Goal의 explicit evidence에서 도출하며 legacy/stale일 수 있는 goals.progress는 읽거나 갱신하지 않는다. DB column은 보존하며 시간 기반 계산은 사용하지 않는다.
 
 ---
 
