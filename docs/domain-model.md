@@ -25,8 +25,8 @@ RecurringActivity  Principle
         ▼              │
 Work Domain ────── Decision / Evidence
 WorkContext         Decision
-Project / Course    DecisionFeedback
-CourseProfile       LearningCase
+Project / Course / Certification    DecisionFeedback
+CourseProfile / CertificationProfile / LearningUnit    LearningCase
 CourseAssessment    PatternEvidence / Outcome
 Task / TaskStep
         │
@@ -117,7 +117,7 @@ AI가 추론한 패턴과 절대 섞지 않는다.
 
 Planning hierarchy: Long-term Goal → Monthly Goal → Weekly Focus Goal → Objective / Measurable Subgoal → Task / Learning Mission → Daily Quest. Daily Quest는 derived execution choice이며 새 Goal entity가 아니다. Monthly / Weekly Goal은 capacity 집중 방향이며 hard deadline, critical loss, serious dependency, major risk를 덮어쓰지 않는다.
 
-Portfolio Context는 Project / Course / Certification을 개념적으로 지원한다. Certification은 Learning Context이며 CUMULATIVE / MIXED / CRAMMABLE 특성을 가진다. 기존 physical WorkContext kind는 아래와 같이 유지하며 이 Wave는 schema 확장을 제안하지 않는다.
+Portfolio Context는 Project / Course / Certification을 개념적으로 지원한다. Certification은 Learning Context이며 CUMULATIVE / MIXED / CRAMMABLE 특성을 가진다. Wave 2의 `0018_chief_p0_context_and_learning.sql`은 기존 WorkContext에 certification kind와 사용자 전략 필드를 추가하고 CertificationProfile / LearningUnit으로 학습 계약을 저장한다.
 
 사용자 소유: strategic importance, commitment, goals, 수동 공식 날짜, internal strategy, 시스템이 신뢰성 있게 알 수 없는 actual learning state. Chief-derived: urgency, pressure, risk, future capacity conflict, priority, recommended current action. 중요도와 현재 priority는 다르다. 공식 timeline과 internal plan은 분리한다.
 
@@ -131,7 +131,8 @@ Goal
 
 WorkContext
   ├─ Project
-  └─ Course
+  ├─ Course
+  └─ Certification
 
 Task
   └─ TaskStep
@@ -142,9 +143,10 @@ RecurringActivity
 
 - Goal = 장기 방향/상태.
 - Objective = 기간·완료조건이 있는 결과. Goal 없이 standalone 가능.
-- Project와 Course는 내부적으로 공통 `WorkContext`를 사용한다.
+- Project / Course / Certification은 내부적으로 공통 `WorkContext`를 사용한다.
 - Project = `WorkContext.kind = project`.
 - Course = `WorkContext.kind = course` + `CourseProfile` / `CourseAssessment`.
+- Certification = `WorkContext.kind = certification` + `CertificationProfile`. Course / Certification의 agent_mode는 not_applicable이다.
 - Task는 최대 하나의 WorkContext에 속한다.
 - Task는 optional하게 하나의 Objective에 연결한다.
 - Task에 goal/project/course FK를 중복 저장하지 않는다.
@@ -166,7 +168,7 @@ RecurringActivity
 - `origin`
 - `created_at`, `updated_at`, `archived_at?`
 
-`progress`의 의미적 값은 명시적 단위/Task 완료, milestone, completion criteria 근거로만 도출한다. 시간/예상 작업량 가중치 fallback은 금지하며 근거가 없으면 unknown이다. 기존 필드 존재는 fake percentage 허가가 아니다.
+`progress`의 의미적 값은 명시적 단위/Task 완료, milestone, completion criteria 근거로만 도출한다. 시간/예상 작업량 가중치 fallback은 금지하며 근거가 없으면 unknown이다. 기존 필드 존재는 fake percentage 허가가 아니다. Wave 2는 legacy/stale일 수 있는 `goals.progress`를 보존하며 실제 semantic Goal progress 계산 수정은 다음 Wave에서 수행한다.
 
 ### Objective
 
@@ -176,6 +178,10 @@ RecurringActivity
 - `importance`
 - `status`: active / achieved / cancelled / archived
 - `origin`, `created_at`
+- `progress_mode`: STATUS(default) / TASK_COUNT / NUMERIC
+- `target_value?` (> 0), `current_value?` (>= 0), `unit?`
+
+STATUS는 milestone/명시적 state, TASK_COUNT는 명시적으로 정의된 child Task 완료, NUMERIC은 12 / 18 lessons 같은 측정값을 표현한다. 새 저장 percentage는 없으며 예상 workload/time을 이 필드로 이관하지 않는다. 기존 Objective는 STATUS로 유지된다.
 
 ### RecurringActivity
 
@@ -217,15 +223,20 @@ Unique: `(recurring_activity_id, period_key, sequence_no)`
 
 ---
 
-## 4. Work Context / Course / Task Domain
+## 4. Work Context / Learning / Task Domain
 
 ### WorkContext
 
 - `id`, `user_id`
-- `kind`: project / course
+- `kind`: project / course / certification
 - `title`, `description?`
 - `status`: active / completed / archived
-- `start_date?`, `end_date?`
+- `start_date?`, `end_date?`: 공식/external timeline
+- `internal_start_date?`: 내부 운영 시작일
+- `strategic_importance?`: 사용자 지정 1–5; default 없음, null은 미설정
+- `commitment_level?`: REQUIRED / IMPORTANT / OPTIONAL; default 없음
+- `strategy_config`: jsonb, NOT NULL default `{}`; context-type별 전략 option만 저장하며 공통 canonical field를 넣지 않는다
+- `agent_mode`: auto / disabled / not_applicable; course/certification은 not_applicable
 - `scope_id`
 - `created_at`, `archived_at?`
 
@@ -235,6 +246,28 @@ Unique: `(recurring_activity_id, period_key, sequence_no)`
 - `target_grade?`
 - `self_reported_understanding?`
 - `term?`, `instructor?`
+
+### CertificationProfile
+
+- `work_context_id`: PK, `user_id`
+- `target_outcome?`, `exam_date?` (date), `current_level?`
+- `study_mode?`: CUMULATIVE / MIXED / CRAMMABLE
+- `created_at`, `updated_at`: default now()
+
+동일 사용자 `(work_context_id, user_id) → WorkContext(id, user_id)` FK와 cascade delete를 사용한다. exam_date는 planning anchor이며 Calendar fixed-time event를 대체하지 않는다. certification kind 연결은 domain 계약이며 Wave 2에서는 cross-table kind trigger를 추가하지 않는다. 기존 Course kind trigger는 유지한다.
+
+### LearningUnit
+
+Course / Certification의 사용자 근거 학습 상태다.
+
+- `id`: UUID default gen_random_uuid(), `user_id`, `work_context_id`, `title`
+- `position`: integer > 0; unique `(work_context_id, position)`
+- `exposure_state`: NOT_STARTED(default) / PARTIAL / COMPLETE
+- `understanding_state`: UNKNOWN(default) / WEAK / OK / STRONG
+- `validation_state`: NOT_TESTED(default) / FAILED / PASSED
+- `created_at`, `updated_at`: default now()
+
+동일 사용자 WorkContext composite FK와 cascade delete, owner RLS를 사용한다. 학습용 Context kind는 domain 계약이다. 재생 기록만으로 상태를 변경하지 않으며 사용자 선언이 실제 학습 근거다. AI 필드는 없다.
 
 ### CourseAssessment
 
@@ -260,6 +293,7 @@ Unique: `(recurring_activity_id, period_key, sequence_no)`
 - `planned_date?`: deadline과 독립된 이동 가능한 실행 예정일
 - `estimated_minutes?`, `estimated_user_minutes?`, `actual_minutes`
 - `importance`, `status`, `next_action?`, `completion_criteria?`
+- `scope_exclusions?`: 현재 Task/session에서 제외하는 작업
 
 P0 Task 완료는 explicit completion criteria에 의존한다. Minimum Sufficient Outcome과 이번 scope/session에서 제외하는 것을 명확히 할 수 있다. estimated/actual minutes는 workload/capacity/feasibility에 사용하며 semantic progress가 아니다.
 

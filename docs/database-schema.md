@@ -66,7 +66,9 @@ auth.users
       │   └─ recurring_activities ─ activity_occurrences
       ├─ work_contexts
       │   ├─ course_profiles
-      │   └─ course_assessments
+      │   ├─ course_assessments
+      │   ├─ certification_profiles
+      │   └─ learning_units
       ├─ tasks ─ task_steps ─ estimate_revisions
       ├─ constraints / strategic_directives
       ├─ daily_plans ─ plan_items ─ focus_sessions
@@ -215,12 +217,25 @@ Agent permission과 Context retrieval의 공통 boundary.
 
 Objective는 Goal 없이 standalone 가능하다.
 
+Wave 2 (`0018`) 추가 column:
+
+| column | type | null | constraint/default |
+|---|---|---:|---|
+| progress_mode | text | no | STATUS(default) / TASK_COUNT / NUMERIC |
+| target_value | numeric | yes | > 0 when present |
+| current_value | numeric | yes | >= 0 when present |
+| unit | text | yes | |
+
+STATUS는 milestone/명시적 상태, TASK_COUNT는 명시적으로 정의된 child Task 완료, NUMERIC은 명시적 측정값을 표현한다. 기존 Objective는 STATUS로 유지하며 예상시간/workload를 이관하지 않는다. 저장 percentage를 추가하지 않는다.
+
+`0017`의 goals LONG_TERM / MONTHLY / WEEKLY 계층과 기존 `progress` column은 그대로 유지한다. legacy/stale Goal progress의 semantic 계산은 다음 Wave에서 수정하며 Wave 2는 시간 기반 계산을 추가하지 않는다.
+
 ---
 
-# 7. Project / Course
+# 7. Project / Course / Certification
 
 ## work_contexts
-Project/Course 공통 boundary.
+Project / Course / Certification 공통 boundary.
 
 | column | type | null |
 |---|---|---:|
@@ -233,15 +248,22 @@ Project/Course 공통 boundary.
 | status | text | no |
 | start_date | date | yes |
 | end_date | date | yes |
+| internal_start_date | date | yes |
+| strategic_importance | smallint | yes |
+| commitment_level | text | yes |
+| strategy_config | jsonb | no |
 | agent_mode | text | no |
 | created_at | timestamptz | no |
 | archived_at | timestamptz | yes |
 
-`kind`: project/course.  
+`kind`: project/course/certification.
 `agent_mode`: auto/disabled/not_applicable.
 
 - Project 기본: auto
 - Course: not_applicable (School Agent가 담당)
+- Certification: not_applicable
+
+`0018`은 실제 기존 `work_contexts_kind_check` / `work_contexts_check`를 교체하며 기존 agent_mode 값 CHECK를 유지한다. strategic_importance는 존재하면 1–5, commitment_level은 REQUIRED / IMPORTANT / OPTIONAL이며 둘 다 default 없이 nullable이다. 기존 row에 임의 중요도/commitment를 부여하지 않는다. internal_start_date는 내부 운영 시작일이며 공식/external start_date / end_date와 구분한다. strategy_config는 NOT NULL default `{}`이고 context-type별 option만 사용한다. 공통 canonical field는 column에 둔다.
 
 ## course_profiles
 `work_context.kind=course` 전용 1:1 확장.
@@ -256,6 +278,40 @@ Project/Course 공통 boundary.
 | self_reported_understanding | smallint | yes |
 | created_at | timestamptz | no |
 | updated_at | timestamptz | no |
+
+## certification_profiles
+
+| column | type | null | constraint/default |
+|---|---|---:|---|
+| work_context_id | uuid | no | PK |
+| user_id | uuid | no | |
+| target_outcome | text | yes | |
+| exam_date | date | yes | planning anchor |
+| study_mode | text | yes | CUMULATIVE / MIXED / CRAMMABLE |
+| current_level | text | yes | |
+| created_at | timestamptz | no | now() |
+| updated_at | timestamptz | no | now() |
+
+동일 사용자 composite FK `(work_context_id,user_id) → work_contexts(id,user_id) ON DELETE CASCADE`. certification kind는 domain 계약이며 새 cross-table trigger는 없다. 기존 course_profiles의 kind trigger는 유지한다. exam_date는 Calendar의 authoritative fixed-time event를 복제/대체하지 않는다. PK 외 추가 index는 없다.
+
+## learning_units
+
+Course / Certification의 사용자 근거 학습 상태를 저장한다.
+
+| column | type | null | constraint/default |
+|---|---|---:|---|
+| id | uuid | no | PK, gen_random_uuid() |
+| user_id | uuid | no | |
+| work_context_id | uuid | no | |
+| title | text | no | |
+| position | integer | no | > 0 |
+| exposure_state | text | no | NOT_STARTED(default) / PARTIAL / COMPLETE |
+| understanding_state | text | no | UNKNOWN(default) / WEAK / OK / STRONG |
+| validation_state | text | no | NOT_TESTED(default) / FAILED / PASSED |
+| created_at | timestamptz | no | now() |
+| updated_at | timestamptz | no | now() |
+
+동일 사용자 composite FK `(work_context_id,user_id) → work_contexts(id,user_id) ON DELETE CASCADE`, unique `(work_context_id,position)`. 학습용 kind는 domain 계약이며 새 kind trigger를 추가하지 않는다. lookup index는 `(user_id,work_context_id,position)` 하나다. 두 새 table은 authenticated owner RLS `USING / WITH CHECK (auth.uid()=user_id)`를 `0018`에서 추가한다. 기존 `0012` / `0015`의 같은 migration RLS 패턴을 따른다. 재생 완료는 학습 상태 자동 변경 근거가 아니며 AI 필드는 없다. timestamp는 기존 course_profiles처럼 default now()만 제공하며 자동 갱신 trigger는 추가하지 않는다.
 
 ## course_assessments
 
@@ -358,6 +414,7 @@ PlanItem이 occurrence를 참조하며 반대 방향 FK는 만들지 않는다.
 | status | text | no |
 | next_action | text | yes |
 | completion_criteria | text | yes |
+| scope_exclusions | text | yes |
 | completion_source | text | yes |
 | created_at | timestamptz | no |
 | completed_at | timestamptz | yes |
@@ -366,7 +423,7 @@ PlanItem이 occurrence를 참조하며 반대 방향 FK는 만들지 않는다.
 status: INBOX/PLANNED/IN_PROGRESS/BLOCKED/WAITING_FOR_USER/DONE.  
 execution_mode: standard/learning_required/output_focused/mixed.
 
-Task에 `goal_id/project_id/course_id`를 중복 저장하지 않는다.
+Task에 `goal_id/project_id/course_id`를 중복 저장하지 않는다. `0018`의 scope_exclusions는 현재 Task/session에서 제외하는 범위다. Minimum Sufficient Outcome은 기존 completion_criteria로 표현하며 별도 Scope entity를 만들지 않는다.
 
 Cross-table invariant:
 - Task와 Objective가 둘 다 WorkContext를 가지면 동일해야 한다.
