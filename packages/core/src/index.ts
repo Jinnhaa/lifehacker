@@ -31,6 +31,8 @@ export * from "./focus/focus.js";
 export * from "./focus/focus-service.js";
 export * from "./focus/supabase-focus-repository.js";
 export * from "./goal-planning/goal-progress.js";
+export * from "./goal-planning/period-goal-management.js";
+export * from "./goal-planning/supabase-period-goal-management-repository.js";
 export * from "./context-management/context-management.js";
 export * from "./context-management/supabase-context-management-repository.js";
 export * from "./integrations/integration-settings.js";

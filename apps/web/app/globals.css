@@ -899,6 +899,9 @@ body:has(.is-focus-mode) .game-dock { display:none; }
 }
 
 /* Context management Wave: intentionally plain operational graybox. */
+.period-goal-management details { margin:8px 0; }.period-goal-management summary { cursor:pointer; font-size:12px; font-weight:800; }
+.period-goal-card { padding:12px; border:2px solid rgba(93,73,61,.28); border-radius:10px; background:var(--lh-panel-soft); }.period-goal-card > button { width:100%; }.period-goal-card > small { display:block; margin-top:8px; }.period-goal-card p { font-size:11px; }.period-goal-card ul { padding:0; list-style:none; }.period-goal-card li { margin:8px 0; padding:8px; border-top:1px solid rgba(93,73,61,.25); }.period-goal-card li > strong,.period-goal-card li > b { display:block; font-size:12px; }.period-goal-card li > b { margin-top:5px; color:var(--lh-green); }
+.period-goal-form { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; }.period-goal-form label { display:grid; gap:4px; min-width:130px; flex:1; font-size:11px; }.period-goal-form input,.period-goal-form select { width:100%; min-height:34px; }.period-goal-management .work-feedback { position:static; }
 .context-shell { width:min(1120px,calc(100% - 32px)); padding:36px 0 170px; }
 .context-shell > header { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; margin-bottom:24px; }
 .context-shell > header h1 { margin:5px 0; }.context-shell > header p { margin:0; color:var(--lh-text-soft); }.context-shell > header a { color:var(--lh-wood-dark); font-weight:800; }

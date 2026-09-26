@@ -1,4 +1,4 @@
-import type { GoalProgressEvidenceKind } from "@amber/core";
+import type { GoalProgressEvidenceKind, PeriodObjectiveView } from "@amber/core";
 
 export type WorkActionState = { readonly status: "idle" | "success" | "error"; readonly message: string };
 export type WorkView = "today" | "week" | "month";
@@ -9,6 +9,9 @@ export type WorkWin = {
   readonly id: string; readonly title: string; readonly level: "MONTHLY" | "WEEKLY";
   readonly progress: number; readonly remainingMinutes: number;
   readonly evidenceKind: GoalProgressEvidenceKind;
+  readonly periodStart: string | null; readonly periodEnd: string | null;
+  readonly parentGoalId: string | null; readonly status: string;
+  readonly objectives: readonly PeriodObjectiveView[];
 };
 
 export type WorkTaskItem = {
@@ -51,6 +54,7 @@ export type WorkCandidateItem = {
 export type WorkBoardViewModel = {
   readonly configured: boolean; readonly error: string | null; readonly timeZone: string; readonly today: string;
   readonly monthLabel: string; readonly weeklyWins: readonly WorkWin[]; readonly monthlyWins: readonly WorkWin[];
+  readonly monthlyGoalOptions: readonly { readonly id: string; readonly title: string }[];
   readonly week: readonly WorkDay[]; readonly todayTasks: readonly WorkTaskItem[]; readonly todayQuests: readonly WorkTodayQuest[]; readonly todayEvents: readonly WorkCalendarEvent[];
   readonly todayCapacityMinutes: number | null; readonly todayWorkloadMinutes: number; readonly deadlineWarning: string | null;
   readonly month: readonly WorkMonthDay[]; readonly unplannedTasks: readonly WorkTaskItem[];

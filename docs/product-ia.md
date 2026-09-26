@@ -248,6 +248,8 @@ Task와 Calendar를 한 공간에서 관리한다.
 - Today: Home과 같은 canonical priority를 사용한 ordered Quest, workload, capacity, deadline warning과 고정 일정의 시간 흐름.
 - Month: Monthly Wins를 먼저 보여주고 Exam/Quiz, official deadline, 중요한 internal deadline, milestone, 큰 fixed event만 표시한다.
 
+Week/Month의 기존 Goal 영역에서 기간 Goal 생성·수정·보관과 Objective 관리를 제공한다. Weekly Focus Goal은 선택적으로 Monthly Goal에 연결하며, Long-term Goal 관리 UI는 제공하지 않는다. Objective는 STATUS 완료 여부, TASK_COUNT의 실제 DONE 개수, NUMERIC 현재값/목표값을 표시한다. 진행 근거가 없으면 “진행 기준 없음”으로 표시하며, 진행률 계산은 Core의 기존 근거 기반 projection을 사용한다.
+
 Home은 Work Today의 복사본이 아니다. Home은 지금 실행할 Main Quest를 압축한 cockpit이고, Work Today는 오늘 계획 전체를 확인·수정하는 planning surface다.
 
 일상 수정은 확인 modal 없이 즉시 반영한다. Task 완료는 canonical manual completion을 사용하고, day drag는 Planned Day만 변경한다.

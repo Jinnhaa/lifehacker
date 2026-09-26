@@ -8,6 +8,7 @@ import {
   comparePriorityBands,
   projectPlannedDay,
   projectGoalProgress,
+  objectiveProgressLabel,
   type ObjectiveProgressMode
 } from "@amber/core";
 import { DeterministicTestInterpreter, InputService, SupabaseInputRepository } from "@amber/input";
@@ -98,7 +99,7 @@ export const readWorkBoard = async (sql: Sql, userId: UserId, timeZone: string, 
   const [pending, taskRows, contexts, goals, objectives, events, observation, todayPlan] = await Promise.all([
     inputRepository.listPendingTaskConfirmations(userId), readTasks(sql, userId), inputRepository.getContextCandidates(userId),
     sql<GoalRow[]>`select id,title,level,parent_goal_id,period_start::text,period_end::text,status from public.goals where user_id=${userId} and status='active' order by level,created_at`,
-    sql<ObjectiveRow[]>`select id,goal_id,title,target_date::text,status,success_criteria,progress_mode,target_value::text,current_value::text,unit from public.objectives where user_id=${userId} and goal_id is not null and status<>'cancelled'`,
+    sql<ObjectiveRow[]>`select id,goal_id,title,target_date::text,status,success_criteria,progress_mode,target_value::text,current_value::text,unit from public.objectives where user_id=${userId} and goal_id is not null and status not in ('cancelled','archived') order by created_at`,
     readEvents(sql, userId, rangeStart, rangeEnd, timeZone),
     new SupabaseMorningRepository(sql).loadObservation(userId, today, timeZone),
     sql<{ input_snapshot: unknown }[]>`select input_snapshot from public.daily_plans where user_id=${userId} and plan_date=${today} and status='approved' order by revision_no desc limit 1`
@@ -139,8 +140,21 @@ export const readWorkBoard = async (sql: Sql, userId: UserId, timeZone: string, 
   });
   const wins = goals.flatMap((goal) => {
     const projection = projections.get(goal.id); if (!projection || (goal.level !== "WEEKLY" && goal.level !== "MONTHLY")) return [];
-    if ((goal.period_start && goal.period_start > today) || (goal.period_end && goal.period_end < today)) return [];
-    return [{ id: goal.id, title: goal.title, level: goal.level, progress: projection.progress, remainingMinutes: projection.remainingMinutes, evidenceKind: projection.evidenceKind }];
+    const start = goal.level === "WEEKLY" ? weekStart : `${today.slice(0, 7)}-01`;
+    const end = goal.level === "WEEKLY" ? weekDates[6]! : new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)).toISOString().slice(0, 10);
+    if ((goal.period_start && goal.period_start > end) || (goal.period_end && goal.period_end < start)) return [];
+    return [{ id: goal.id, title: goal.title, level: goal.level, progress: projection.progress, remainingMinutes: projection.remainingMinutes, evidenceKind: projection.evidenceKind,
+      periodStart: goal.period_start, periodEnd: goal.period_end, parentGoalId: goal.parent_goal_id, status: goal.status,
+      objectives: objectives.filter((item) => item.goal_id === goal.id).map((item) => {
+        const evidence = { id: item.id, goalId: item.goal_id, status: item.status, successCriteria: item.success_criteria,
+          progressMode: item.progress_mode, targetValue: item.target_value === null ? null : Number(item.target_value),
+          currentValue: item.current_value === null ? null : Number(item.current_value), unit: item.unit };
+        return { ...evidence, title: item.title, targetDate: item.target_date,
+          progressLabel: objectiveProgressLabel(evidence, taskRows.filter((task) => task.objective_id === item.id).map((task) => ({
+            id: task.id, objectiveId: task.objective_id, status: task.status, estimatedMinutes: task.estimated_minutes,
+            estimatedUserMinutes: task.estimated_user_minutes, actualMinutes: task.actual_minutes
+          }))) };
+      }) }];
   });
   const todayTasks = tasks.filter((task) => task.plannedDate === today);
   const taskById = new Map(tasks.map((task) => [task.id, task]));
@@ -182,6 +196,7 @@ export const readWorkBoard = async (sql: Sql, userId: UserId, timeZone: string, 
     configured: true, error: null, timeZone, today,
     monthLabel: new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long", timeZone }).format(now),
     weeklyWins: wins.filter((goal) => goal.level === "WEEKLY"), monthlyWins: wins.filter((goal) => goal.level === "MONTHLY"),
+    monthlyGoalOptions: goals.filter((goal) => goal.level === "MONTHLY").map((goal) => ({ id: goal.id, title: goal.title })),
     week: weekDates.map((date) => ({
       date, dayLabel: new Intl.DateTimeFormat("ko-KR", { weekday: "short" }).format(new Date(`${date}T12:00:00Z`)),
       dateLabel: `${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}`, isToday: date === today,
@@ -207,7 +222,7 @@ export const loadWorkBoard = async (): Promise<WorkBoardViewModel> => {
   } catch (error) {
     const today = localDate(new Date(), "Asia/Seoul");
     return { configured: false, error: error instanceof Error ? error.message : "Work & Calendar를 불러오지 못했습니다.", timeZone: "Asia/Seoul", today,
-      monthLabel: "", weeklyWins: [], monthlyWins: [], week: [], todayTasks: [], todayQuests: [], todayEvents: [], todayCapacityMinutes: null,
+      monthLabel: "", weeklyWins: [], monthlyWins: [], monthlyGoalOptions: [], week: [], todayTasks: [], todayQuests: [], todayEvents: [], todayCapacityMinutes: null,
       todayWorkloadMinutes: 0, deadlineWarning: null, month: [], unplannedTasks: [], candidates: [], contexts: [] };
   }
 };

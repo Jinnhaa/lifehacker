@@ -65,6 +65,14 @@ const objectiveProgress = (objective: GoalObjectiveEvidence, tasks: readonly Goa
   }
 };
 
+/** Textual evidence uses the same canonical validity rules as Goal progress. */
+export function objectiveProgressLabel(objective: GoalObjectiveEvidence, tasks: readonly GoalTaskEvidence[]): string {
+  if (!objectiveProgress(objective, tasks)) return "진행 기준 없음";
+  if (objective.progressMode === "STATUS") return milestoneCompleted(objective.status) ? "완료" : "미완료";
+  if (objective.progressMode === "TASK_COUNT") return `${tasks.filter((task) => task.status === "DONE").length} / ${tasks.length} Tasks`;
+  return `${objective.currentValue} / ${objective.targetValue}${objective.unit ? ` ${objective.unit}` : ""}`;
+}
+
 export function projectGoalProgress(input: {
   readonly goals: readonly PlanningGoalEvidence[];
   readonly objectives: readonly GoalObjectiveEvidence[];
