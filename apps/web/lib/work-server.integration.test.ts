@@ -40,8 +40,8 @@ beforeAll(async () => {
   await sql`insert into public.work_contexts(id,user_id,kind,title,status,agent_mode) values (${contextId},${userId},'project','Work Board Project','active','auto')`;
   await sql`insert into public.goals(id,user_id,title,importance,status,origin,level,period_start,period_end)
     values(${weeklyGoalId},${userId},'Weekly Win',4,'active','user','WEEKLY','2026-09-07','2026-09-13')`;
-  await sql`insert into public.objectives(id,user_id,goal_id,work_context_id,title,success_criteria,importance,status,origin)
-    values(${objectiveId},${userId},${weeklyGoalId},${contextId},'Weekly milestone','완료',4,'active','user')`;
+  await sql`insert into public.objectives(id,user_id,goal_id,work_context_id,title,success_criteria,importance,status,origin,progress_mode)
+    values(${objectiveId},${userId},${weeklyGoalId},${contextId},'Weekly milestone','완료',4,'active','user','STATUS')`;
 });
 
 afterAll(async () => {
@@ -122,7 +122,7 @@ describe("Work Board V1", () => {
     await taskService.planTask({ userId, taskId: manual.id, source: "work_board" });
     await taskService.completeTask({ userId, taskId: manual.id, source: "work_board" });
     const completed = await readWorkBoard(sql, userId, "Asia/Seoul", new Date("2026-09-13T01:00:00.000Z"));
-    expect(completed.weeklyWins[0]).toMatchObject({ title: "Weekly Win", progress: 100, remainingMinutes: 0 });
+    expect(completed.weeklyWins[0]).toMatchObject({ title: "Weekly Win", progress: 0, remainingMinutes: 0, evidenceKind: "status" });
     const dismissedTasks = await sql<{ count: number }[]>`select count(*)::int count from public.tasks where user_id=${userId} and title='확인할 후보'`;
     expect(dismissedTasks[0]?.count).toBe(0);
   });
