@@ -1,5 +1,7 @@
 # Amber HQ Work & Schedule Policy
 
+Chief P0의 행동·범위는 [Chief P0 Policy v0.1](./chief-p0-policy.md)이 우선한다. 기존 V1/Foundation 설명과 구현 기록은 유지하되 Morning / Recovery / Day Close는 P0 필수 사용자 의식이 아니며, 기존 AI 가능 목록은 P0 runtime 허가가 아니다. Wave 1은 문서 동결만 수행하고 코드·테스트·migration을 변경하지 않는다.
+
 **Status:** CANONICAL
 
 ## 1. Core Principle
@@ -224,7 +226,7 @@ internal_deadline은 임의로 덮어쓰지 않는다.
 Chief가 학습할 수 있는 것:
 
 - 적절한 내부 마감 buffer
-- 실제 작업시간
+- 실제 작업시간(추정/용량 보정용이며 의미적 완료 근거가 아님)
 - 공부량 분산 방식
 - 미루기 패턴
 - 성공적인 재계획 패턴
@@ -243,13 +245,16 @@ Chief가 학습으로 변경하면 안 되는 것:
 Work와 Chief planning에서만 다음 최소 계층을 사용한다.
 
 ```text
-Long-term Goal → Monthly Win → Weekly Win → Objective/Milestone → Task
+Long-term Goal → Monthly Goal → Weekly Focus Goal
+→ Objective / Measurable Subgoal → Task / Learning Mission → Daily Quest
 ```
 
 - Goal은 기간의 결과이며 Calendar day cell의 Task처럼 취급하지 않는다.
 - Task는 기존 `objective_id → goal_id` 연결을 통해 Goal에 기여한다.
 - 명시적 milestone이 있으면 milestone 달성 상태를 우선한다.
-- milestone이 없으면 연결 Task의 예상 작업량을 가중치로 progress를 계산한다. Task 개수만 세지 않는다.
+- 의미적 progress는 명시적으로 정의된 단위/Task 완료(예: 12/18 lessons, 4/6 Tasks), milestone 또는 completion criteria로 계산한다. 근거가 없으면 unknown이며 예상 작업량/시간 가중치 fallback은 금지한다.
+- 예상시간은 workload, capacity, schedule feasibility에만 사용한다. 예상 2시간 중 1시간 작업을 50% 완료로 보지 않는다.
+- Monthly Win / Weekly Win은 Monthly Goal / Weekly Focus Goal의 표시 용어다. capacity 집중 방향이며 hard deadline, critical loss, serious dependency, major risk를 덮어쓰지 않는다. Daily Quest는 별도 수동 Goal이 아닌 derived execution choice다.
 - 완료와 Focus evidence의 기존 Task/Objective/Goal 연결을 보존한다.
 
 ## 14. Goal / Task / Event와 Planned Day
@@ -263,3 +268,12 @@ Long-term Goal → Monthly Win → Weekly Win → Objective/Milestone → Task
 ```text
 Planned Day ≠ Internal Deadline ≠ Official Deadline
 ```
+
+
+## 15. Chief P0 Timeline / Capacity / Task SSOT
+
+- 공식 시작/마감과 내부 준비/운영 계획을 구분한다. 공식 해커톤 시작 9/28과 내부 준비 시작 9/25는 함께 유효하다. Future Capacity가 제한되면 내부 작업을 당길 수 있으나 공식 사실은 변경하지 않는다.
+- 내부 마감을 놓치면 실제 남은 작업, 공식 마감, future capacity를 재평가한다. 공식 지각/완료로 간주하지 않는다. 중요한 전략 변경은 사용자 결정/승인을 따른다.
+- user-created Tasks는 Lifehacker(Supabase)에 저장한다. Snowboard는 공식 학교 Task의 발견/import source다. Notion은 knowledge/context이며 Task SSOT나 P0 Task synchronization 대상이 아니다. Calendar는 fixed-time event의 authoritative source다.
+- 두 중요한 Goal 충돌은 각각의 Minimum Sufficient Outcome → 둘 다 보존 가능 여부 → capacity 배분 → 불가능하면 expected loss / commitment / dependency / future capacity 비교 순으로 처리한다. 임의 진행률로 선택하지 않는다.
+- 새로운 optional commitment가 기존 중요한 commitment를 실질적으로 위협하면 결정 전에 한 번 capacity 영향을 경고한다. 최종 결정은 사용자에게 남긴다. 정량 threshold는 이 Wave에서 새로 정하지 않는다.

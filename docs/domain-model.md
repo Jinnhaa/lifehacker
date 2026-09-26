@@ -1,5 +1,7 @@
 # Amber HQ Domain Model
 
+Chief P0의 행동·범위는 [Chief P0 Policy v0.1](./chief-p0-policy.md)이 우선한다. 기존 V1/Foundation 설명과 구현 기록은 유지하되 Morning / Recovery / Day Close는 P0 필수 사용자 의식이 아니며, 기존 AI 가능 목록은 P0 runtime 허가가 아니다. Wave 1은 문서 동결만 수행하고 코드·테스트·migration을 변경하지 않는다.
+
 **Status:** Foundation v0.3  
 **Purpose:** Amber HQ의 요구사항을 구현할 때 필요한 핵심 Domain과 관계를 정의한다.  
 **Principle:** 기능을 먼저 만들고 DB를 뒤늦게 덧붙이지 않는다. 변경 비용이 큰 Domain 경계와 데이터 소유권을 먼저 고정한다.
@@ -111,7 +113,17 @@ AI가 추론한 패턴과 절대 섞지 않는다.
 
 ## 3. Goal / Objective / Recurring Activity Domain
 
-### Canonical hierarchy
+### Chief P0 conceptual contract
+
+Planning hierarchy: Long-term Goal → Monthly Goal → Weekly Focus Goal → Objective / Measurable Subgoal → Task / Learning Mission → Daily Quest. Daily Quest는 derived execution choice이며 새 Goal entity가 아니다. Monthly / Weekly Goal은 capacity 집중 방향이며 hard deadline, critical loss, serious dependency, major risk를 덮어쓰지 않는다.
+
+Portfolio Context는 Project / Course / Certification을 개념적으로 지원한다. Certification은 Learning Context이며 CUMULATIVE / MIXED / CRAMMABLE 특성을 가진다. 기존 physical WorkContext kind는 아래와 같이 유지하며 이 Wave는 schema 확장을 제안하지 않는다.
+
+사용자 소유: strategic importance, commitment, goals, 수동 공식 날짜, internal strategy, 시스템이 신뢰성 있게 알 수 없는 actual learning state. Chief-derived: urgency, pressure, risk, future capacity conflict, priority, recommended current action. 중요도와 현재 priority는 다르다. 공식 timeline과 internal plan은 분리한다.
+
+Learning state의 개념 차원은 Exposure(NOT_STARTED / PARTIAL / COMPLETE), Understanding(UNKNOWN / WEAK / OK / STRONG), Validation(NOT_TESTED / FAILED / PASSED)이다. 영상 재생만으로 이해/검증을 추론하지 않으며 알 수 없는 실제 학습은 사용자 선언이 authoritative하다. 자세한 행동은 [P0 계약](./chief-p0-policy.md)을 따른다.
+
+### Existing entity relationships
 
 ```text
 Goal
@@ -153,6 +165,8 @@ RecurringActivity
 - `status`: active / archived
 - `origin`
 - `created_at`, `updated_at`, `archived_at?`
+
+`progress`의 의미적 값은 명시적 단위/Task 완료, milestone, completion criteria 근거로만 도출한다. 시간/예상 작업량 가중치 fallback은 금지하며 근거가 없으면 unknown이다. 기존 필드 존재는 fake percentage 허가가 아니다.
 
 ### Objective
 
@@ -246,6 +260,8 @@ Unique: `(recurring_activity_id, period_key, sequence_no)`
 - `planned_date?`: deadline과 독립된 이동 가능한 실행 예정일
 - `estimated_minutes?`, `estimated_user_minutes?`, `actual_minutes`
 - `importance`, `status`, `next_action?`, `completion_criteria?`
+
+P0 Task 완료는 explicit completion criteria에 의존한다. Minimum Sufficient Outcome과 이번 scope/session에서 제외하는 것을 명확히 할 수 있다. estimated/actual minutes는 workload/capacity/feasibility에 사용하며 semantic progress가 아니다.
 
 Task state:
 `INBOX / PLANNED / IN_PROGRESS / BLOCKED / WAITING_FOR_USER / DONE`
@@ -358,6 +374,8 @@ Replan은 기존 row를 덮어쓰지 않고 새 revision을 만든다.
 1. active FocusSession이 있으면 해당 Task/Step
 2. 없으면 최신 approved DailyPlan의 첫 실행가능 미완료 PlanItem
 3. 없으면 Planner가 다음 행동 필요 상태 반환
+
+위는 기존 구현의 조회 계약이다. Chief P0의 행동 계약은 Morning 또는 DailyPlan 승인 의식을 추천의 진입 조건으로 요구하지 않는다. 현재 evidence에서 Main Quest와 완료 경계, 다른 commitment의 보호 근거를 도출해야 한다. 이 Wave는 조회 구현이나 상태 소유권을 변경하지 않는다.
 
 ### Availability
 
@@ -909,12 +927,14 @@ MCP를 사용할 경우 server 단위 connection/config.
 | Decision/Pattern/Principle | Supabase |
 | Workflow/Approval state | Supabase |
 | Fixed-time calendar event | iCloud Calendar (primary) |
-| Knowledge document | Notion |
+| Knowledge document | Notion (knowledge/context only; P0 Task SSOT 아님) |
 | Source code | GitHub |
 | Agent execution state | Supabase |
 | MCP server tool catalog | External server + cached registry |
 
 ---
+
+P0 user-created Tasks는 Lifehacker/Supabase에 저장한다. Snowboard는 공식 학교 Task 발견/import와 외부 공식 사실의 provenance를 제공한다. Calendar는 fixed-time event의 authority이며 내부 계획과 구분한다.
 
 ## 17. Foundation Rule
 

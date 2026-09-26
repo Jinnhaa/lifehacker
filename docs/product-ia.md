@@ -1,5 +1,7 @@
 # Lifehacker Product IA
 
+Chief P0의 행동·범위는 [Chief P0 Policy v0.1](./chief-p0-policy.md)이 우선한다. 기존 V1/Foundation 설명과 구현 기록은 유지하되 Morning / Recovery / Day Close는 P0 필수 사용자 의식이 아니며, 기존 AI 가능 목록은 P0 runtime 허가가 아니다. Wave 1은 문서 동결만 수행하고 코드·테스트·migration을 변경하지 않는다.
+
 **Status:** CANONICAL  
 **Purpose:** Lifehacker의 화면 구조, Navigation, 화면별 책임, 핵심 UX 원칙을 정의한다.
 
@@ -103,7 +105,9 @@ Agent는 다음 역할을 함께 가진다.
 
 Home은 다음 질문에 답한다.
 
-> 지금 무엇을 하면 되는가?
+> 지금 무엇을 하면 되는가? 다른 중요한 일들은 안전하게 처리되고 있는가?
+
+P0 Home은 오늘의 상황, Main Quest, why now, completion boundary, 다른 중요한 업무의 보호/유예 근거와 남은 위험을 압축한다. 전체 Task dashboard로 정의하지 않는다. Morning 완료 여부에 관계없이 현재 상태에서 답한다.
 
 Home은 항상 2.5D Tycoon Office를 중심으로 구성한다.
 
@@ -122,9 +126,11 @@ Home은 항상 2.5D Tycoon Office를 중심으로 구성한다.
 지금 실행할 행동 하나.
 
 - 구체적인 현재 행동
-- Project/Course context
+- Project / Course / Certification context
 - 예상시간
-- 짧은 이유
+- why now
+- 명시적 완료 경계와 현재 scope에서 제외하는 것
+- 다른 중요한 업무에 대한 근거 있는 reassurance
 - Focus 시간 선택
 - 집중 시작
 
@@ -300,6 +306,8 @@ University 관련 일정/Task만 필터링한 View다.
 
 ### Course Mission
 
+큰 학습 unit을 실행 가능한 Learning Missions로 분해하는 것이 현재 승인된 P0 runtime LLM 용도다. Certification도 Learning Context이며 CUMULATIVE / MIXED / CRAMMABLE 특성을 보호 시점에 반영한다.
+
 큰 학습 Task는 바로 실행 가능한 단계로 쪼갠다.
 
 예:
@@ -312,6 +320,10 @@ University 관련 일정/Task만 필터링한 View다.
 → 약점 복습
 → 재Quiz
 → Mastery 달성
+
+위 예시는 모든 사용자에게 강제하는 고정 학습 순서가 아니다. P0 학습 상태는 Exposure(NOT_STARTED / PARTIAL / COMPLETE), Understanding(UNKNOWN / WEAK / OK / STRONG), Validation(NOT_TESTED / FAILED / PASSED)을 구분한다. 재생 완료만으로 실제 학습을 인정하지 않으며 신뢰성 있게 알 수 없으면 사용자 선언이 authoritative하다.
+
+NOT_STARTED는 자료 학습, COMPLETE + WEAK는 약한 개념 재학습, 이해됨 + NOT_TESTED는 퀴즈/문제로 확인한다. 검증된 내용의 불필요한 반복은 강제하지 않는다.
 
 ### Mastery
 
@@ -366,8 +378,8 @@ Task는 바로 시작할 수 있을 만큼 구체적이어야 한다.
 
 미완료 Quest를 다음 날 단순 복사하지 않는다.
 
-- Day Close 기록
-- 다음 날 전체 상황 재평가
+- 현재 실행 근거 확인(Day Close 기록은 있을 때만 사용)
+- 다음 관찰 시 전체 상황 재평가
 - Chief 조정안 생성
 - 사용자 확인
 - 승인 후 반영
