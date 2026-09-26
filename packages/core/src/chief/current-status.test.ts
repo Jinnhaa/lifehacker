@@ -49,9 +49,9 @@ describe("Chief Current Status V1", () => {
     expect(status.priorities.find((item) => item.title === "오래된 내부 목표")?.band).toBe("P2");
   });
 
-  it("promotes a D-2 quiz with no study or Focus evidence to P1 NOT_STARTED after due tasks are done", () => {
+  it("keeps missing user-grounded learning state unknown even for a D-2 quiz", () => {
     const status = deriveCurrentStatus({ observation: observation([]), now, planDate: "2026-09-21", remainingCapacityMinutes: 190 });
-    expect(status.assessments[0]).toMatchObject({ title: "DB Quiz", daysUntil: 2, readiness: "NOT_STARTED" });
+    expect(status.assessments[0]).toMatchObject({ title: "DB Quiz", daysUntil: 2, readiness: "UNKNOWN" });
     expect(status.priorities[0]).toMatchObject({ title: "DB Quiz 준비", band: "P1" });
   });
 
@@ -70,8 +70,7 @@ describe("Chief Current Status V1", () => {
           focusEvidence: [{ workContextId: courseActivity.courseStudy.workContextId, completedSessions: 1, actualMinutes: 45 }] }
       }), now, planDate: "2026-09-21", remainingCapacityMinutes: 145
     });
-    expect(status.assessments[0]).toMatchObject({ readiness: "READY", videoExcluded: true });
-    expect(status.priorities[0]?.title).toContain("교안 직접 학습");
+    expect(status.assessments[0]).toMatchObject({ readiness: "UNKNOWN", videoExcluded: true });
     expect(status.priorities.some((item) => item.title.includes("영상"))).toBe(false);
   });
 

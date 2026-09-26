@@ -1,9 +1,8 @@
-import { getDaysUntilDeadline, isDueWithin, isOverdue } from "../rules/deadline.js";
+import { isDueWithin, isOverdue } from "../rules/deadline.js";
 import { calculateRecurringActivityRisk, type RecurringActivityRisk } from "../rules/recurring-activity.js";
 import { applyApprovedPrinciples, type PlanningPriorityCandidate } from "../principle-application/principle-application.js";
 import { parseProjectPmRequest } from "../project-pm/project-pm-service.js";
 import type { ProjectPmReport } from "../project-pm/project-pm.js";
-import type { Task } from "../task/task.js";
 import { DefaultWorkstyleResolver, type ResolvedWorkstyle } from "../workstyle/workstyle.js";
 import type {
   ChiefContext,
@@ -14,6 +13,7 @@ import type {
   ChiefServiceDependencies
 } from "./chief.js";
 import { deriveCurrentStatus } from "./current-status.js";
+import { judgeOutcomes, outcomeInputFromObservation } from "./outcome-priority.js";
 
 const STATUS_REQUESTS = new Set(["오늘 상황 봐줘", "현황 알려줘"]);
 const NEXT_ACTION_REQUESTS = new Set(["오늘 뭐 해야 돼?", "오늘 뭐 해야 돼", "지금 뭐 해야 해?", "지금 뭐 해야 해", "뭐부터 할까?", "뭐부터 할까"]);
@@ -79,27 +79,8 @@ interface ChiefCandidate extends PlanningPriorityCandidate {
   readonly estimatedMinutes: number | null;
 }
 
-const taskRank = (task: Task, context: ChiefContext): number => {
-  if (isOverdue(task.officialDeadline, context.observedAt)) return 0;
-  const officialDays = getDaysUntilDeadline(task.officialDeadline, context.observedAt, context.timeZone);
-  if (officialDays === 0) return 0;
-  const internalDays = getDaysUntilDeadline(task.internalDeadline, context.observedAt, context.timeZone);
-  if (internalDays !== null && internalDays <= 3) return 2;
-  if (task.importance >= 4) return 3;
-  return 6;
-};
-
 const candidates = (context: ChiefContext, risks: readonly RoutineRisk[]) => {
   const items: ChiefCandidate[] = [
-    ...context.observation.tasks.filter((task) => task.status !== "BLOCKED").map((task) => ({
-      type: "task" as const,
-      id: task.id,
-      rank: taskRank(task, context),
-      importance: task.importance,
-      deadline: task.officialDeadline ?? task.internalDeadline,
-      title: task.nextAction ?? task.title,
-      estimatedMinutes: task.estimatedUserMinutes ?? task.estimatedMinutes
-    })),
     ...risks.filter((activity) => activity.risk !== "LOW").map((activity) => ({
       type: "routine" as const,
       id: activity.id,
@@ -177,12 +158,18 @@ const buildReply = (context: ChiefContext, kind: ChiefRequestKind, workstyle: Re
   const blocked = context.observation.tasks.filter((task) => task.status === "BLOCKED");
   const risks = routineRisks(context);
   const ranked = candidates(context, risks);
-  const status = deriveCurrentStatus({ observation: context.observation, now: context.observedAt, planDate: context.planDate, remainingCapacityMinutes: null });
-  const statusPriority = status.priorities[0] ?? null;
-  const focusedSelection = context.currentAction?.source === "focus_session" ? currentActionSelection(context) : null;
-  const selected = focusedSelection ?? (statusPriority ? { title: statusPriority.title, estimatedMinutes: statusPriority.minutes } : null)
-    ?? currentActionSelection(context) ?? ranked.candidates[0] ?? null;
-  const usedPrincipleIds = focusedSelection || statusPriority || context.currentAction ? [] : ranked.usedPrincipleIds;
+  const observation = context.observation.outcomeEvidence ? context.observation : { ...context.observation, outcomeEvidence: {
+    dependencies:[],steps:[],objectives:[],goals:[],artifacts:[],approvedPlan:context.approvedPlan,approvedAction:null,
+    activeFocusTaskId:context.activeFocus?.taskId ?? (context.currentAction?.source === "focus_session" && context.currentAction.kind === "task" ? context.currentAction.taskId : null)
+  } };
+  const judgment = judgeOutcomes(outcomeInputFromObservation(observation, context.observedAt));
+  const status = deriveCurrentStatus({ observation, now: context.observedAt, planDate: context.planDate, remainingCapacityMinutes: null, priorityJudgment:judgment });
+  const mission = judgment.currentMission;
+  const canonical = mission ? { title:mission.title,estimatedMinutes:judgment.todayPriority.find(choice=>choice.taskId===mission.taskId)?.minutes ?? null } : null;
+  // Recurring activities/rest without Task outcomes remain a compatibility path, never a competing Task ranking.
+  const hasTaskCandidates = observation.tasks.some(task=>task.status!=="DONE");
+  const selected = canonical ?? (hasTaskCandidates ? null : currentActionSelection(context) ?? ranked.candidates[0] ?? null);
+  const usedPrincipleIds = canonical || hasTaskCandidates || context.currentAction ? [] : ranked.usedPrincipleIds;
   const warning = urgentWarning(context);
   const principleExplanation = usedPrincipleIds.length > 0 ? ranked.explanation?.replace("Task", "일") ?? null : null;
 

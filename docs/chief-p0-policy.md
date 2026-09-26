@@ -4,6 +4,14 @@
 **확정일:** 2026-09-26
 **Purpose:** 중요한 일을 하면서 더 적은 것을 생각하게 만든다.
 
+### 구현 책임: Chief Priority v2
+
+P0 Task 최종 순서는 기존 `judgeOutcomes`가 소유한다. hard loss → required downstream dependency / known deadline-window deficit → 내부 마감·commitment → Weekly/Monthly Focus·전략 중요도 → executability·continuity 순으로 명시적 근거를 비교하며 weighted score를 합산하지 않는다. Future Capacity는 직전 Wave의 derived projection을 소비하며 projection 자체를 DB에 저장하지 않는다. deficit와 unknown은 별도 reason/evidence로 보존한다. OPTIONAL은 더 강한 업무가 보호된 후 실제 남는 용량에만 들어간다. 누적 학습 보호는 study_mode와 확인된 deadline-window deficit이 함께 있을 때 적용하며 고정 보호시간을 만들지 않는다.
+
+Morning 승인/계획 생성은 추천의 전제조건이 아니다. 순수 구간 병합·buffer·workload로 오늘 fit을 계산하며 현재 용량이 미정이면 `CAPACITY_UNKNOWN`을 표시하는 추천 하나만 반환하고 완료 fit을 약속하지 않는다. 미래 작업 구간이 설정에서 확인되지 않으면 unknown으로 유지한다. certification exam_date는 Task 자체 마감이 없을 때만 derived capacity anchor로 사용하며 공식 Task 날짜를 수정하지 않는다.
+
+CurrentStatus의 Task priorities는 canonical judgment를 표시하는 compatibility 필드다. 기존 recurring Course/assessment 표시는 Task outcome이 없을 때만 남으며 별도 Task 순서를 결정하지 않는다. Chief 응답의 기존 recurring/rest fallback과 명시적 Project PM delegation은 유지한다. 학습 readiness는 사용자 Learning Unit의 독립 상태만 사용하며 Focus 시간·영상 완료로 승격하지 않는다. 활성 Focus는 관찰 사실이고 추천의 절대 우선권이 아니며 더 강한 근거가 있으면 다른 Task를 추천한다. 이 Wave는 Focus 상태·Task 일정·Goal 진행을 바꾸지 않는다.
+
 ## 1. 적용 범위와 운영 루프
 
 Chief P0 = Priority Engine + Cognitive Load Manager + Scope Controller.

@@ -303,6 +303,8 @@ P0 Task 완료는 explicit completion criteria에 의존한다. Minimum Sufficie
 
 FutureCapacityProjection은 별도 entity/table이 아닌 derived Core contract다. 호출자 지정 horizon의 날짜별 gross/blocked/buffer/available/committed/remaining minutes와 Task의 planned/deadline workload evidence, deadline-window slack을 반환한다. unknown availability/effort와 날짜 미배치 수요는 명시적으로 보존하며 positive slack으로 대체하지 않는다. 예상시간 계산은 Task의 잔여 workload일 뿐 Goal/Learning semantic progress가 아니다. projection은 Task 날짜·상태를 수정하거나 저장하지 않는다. 계산 규칙은 `work-schedule-policy.md`의 Future Capacity Projection을 따른다.
 
+Chief P0 Priority v2는 `judgeOutcomes`의 단일 Task 결정 경로다. WorkContext commitment/strategic importance, 활성 Goal period와 Objective 연결, certification study_mode/exam anchor, LearningUnit 수동 상태, dependency, derived capacity-window를 evidence로 읽는다. CurrentStatus는 상태 사실과 이 judgment의 표시만 담당한다. Morning 승인 없이 추천할 수 있고 unknown 용량/effort는 안전한 유예로 해석하지 않는다. completion_criteria는 priority 결과에 보존한다. 원본 Future Capacity projection은 저장하지 않고 중요한 결정의 reason 및 충돌 근거만 기존 Decision history에 남긴다.
+
 Task state:
 `INBOX / PLANNED / IN_PROGRESS / BLOCKED / WAITING_FOR_USER / DONE`
 
