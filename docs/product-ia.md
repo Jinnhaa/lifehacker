@@ -111,6 +111,8 @@ P0 Home은 오늘의 상황, Main Quest, why now, completion boundary, 다른 �
 
 Home의 Main Quest 및 최대 2개 Next Quest는 canonical `judgeOutcomes` 결과를 그대로 사용하며 server/React에서 다시 순위를 매기지 않는다. Morning 계획은 선택적 검토이며 추천·직접 Focus 시작의 전제조건이 아니다. 완료 기준과 제외 범위는 저장된 Task 사실만 표시한다. 기존 남은 여력 영역은 최대 3개 중요 업무의 보호·제약·불확실 근거를 압축한다. 양의 확인된 deadline-window slack만 유예 근거로 사용하며 unknown effort/capacity 또는 deficit을 안전하다고 표시하지 않는다. 새 추천이 활성 Focus와 달라도 실제 Focus는 종료/전환하지 않고 사용자의 선택을 기다린다. Office World·Quest Console·timer·navigation 배치는 유지한다.
 
+Work & Calendar의 Today Quest는 Home과 같은 canonical `judgeOutcomes` 결과의 선택된 Task만 동일한 순서와 ID로 표시한다. 기존 priority band와 계획일 projection은 Task 라벨 및 Week/Month inventory 호환에 남지만 Today의 최종 순서를 정하거나 빈 canonical 위치를 채우지 않는다. Morning 계획 상태는 Today Quest 표시의 전제조건이 아니다.
+
 Home은 항상 2.5D Tycoon Office를 중심으로 구성한다.
 
 - Office World 약 70~75%

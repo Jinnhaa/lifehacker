@@ -5,6 +5,7 @@ import {
   SupabaseTaskRepository,
   TaskService,
   deriveCurrentStatus,
+  getHomeOutcome,
   comparePriorityBands,
   projectPlannedDay,
   projectGoalProgress,
@@ -15,7 +16,8 @@ import { DeterministicTestInterpreter, InputService, SupabaseInputRepository } f
 import { SystemClock, zonedDateTimeToUtc, type UserId } from "@amber/shared";
 import type { Sql } from "postgres";
 import { getWebSql, getWebUserId } from "./web-runtime";
-import type { WorkBoardViewModel, WorkCalendarEvent, WorkMonthDay, WorkTaskItem, WorkTodayQuest } from "./work-types";
+import { mapCanonicalWorkTodayQuests } from "./work-chief-presentation";
+import type { WorkBoardViewModel, WorkCalendarEvent, WorkMonthDay, WorkTaskItem } from "./work-types";
 
 type TaskRow = {
   id: string; title: string; status: string; planned_date: string | null; official_deadline: Date | null;
@@ -108,7 +110,9 @@ export const readWorkBoard = async (sql: Sql, userId: UserId, timeZone: string, 
   const occupied = observation.constraints.filter((item) => item.blocksCapacity && item.end > now && (!workUntil || item.start < workUntil))
     .reduce((sum, item) => sum + Math.max(0, Math.min(item.end.getTime(), workUntil?.getTime() ?? item.end.getTime()) - Math.max(item.start.getTime(), now.getTime())) / 60_000, 0);
   const capacity = workUntil && workUntil > now ? Math.max(0, Math.floor((workUntil.getTime() - now.getTime()) / 60_000 - occupied - observation.planningBufferMinutes)) : null;
-  const currentStatus = deriveCurrentStatus({ observation, now, planDate: today, remainingCapacityMinutes: capacity });
+  const outcomePriority = await getHomeOutcome(sql, userId, today, observation, now);
+  const currentStatus = deriveCurrentStatus({ observation, now, planDate: today, remainingCapacityMinutes: capacity, priorityJudgment: outcomePriority.judgment });
+  // Legacy bands remain for Task labels and Week/Month placement; Today ordering comes only from canonical Chief choices.
   const priority = new Map(currentStatus.priorities.flatMap((item) => item.taskId ? [[item.taskId, item.band] as const] : []));
   const projections = new Map(projectGoalProgress({
     goals: goals.map((goal) => ({ id: goal.id, title: goal.title, level: goal.level, parentGoalId: goal.parent_goal_id, periodStart: goal.period_start, periodEnd: goal.period_end, status: goal.status })),
@@ -157,20 +161,7 @@ export const readWorkBoard = async (sql: Sql, userId: UserId, timeZone: string, 
       }) }];
   });
   const todayTasks = tasks.filter((task) => task.plannedDate === today);
-  const taskById = new Map(tasks.map((task) => [task.id, task]));
-  const prioritizedQuests: WorkTodayQuest[] = [];
-  for (const item of currentStatus.priorities) {
-    if (item.taskId) {
-      const task = taskById.get(item.taskId);
-      if (task?.plannedDate === today) prioritizedQuests.push({ id: task.id, kind: "task", task, title: task.title, estimatedMinutes: task.estimatedMinutes, contextTitle: task.contextTitle, priorityBand: task.priorityBand });
-      continue;
-    }
-    if (item.kind === "course_study") prioritizedQuests.push({ id: item.id, kind: "course_study", task: null, title: item.title, estimatedMinutes: item.minutes, contextTitle: observation.recurringActivities.find((activity) => activity.id === item.recurringActivityId)?.title ?? null, priorityBand: item.band });
-  }
-  const priorityIds = new Set(prioritizedQuests.filter((quest) => quest.kind === "task").map((quest) => quest.id));
-  const todayQuests: WorkTodayQuest[] = [...prioritizedQuests, ...todayTasks.filter((task) => !priorityIds.has(task.id)).map((task) => ({
-    id: task.id, kind: "task" as const, task, title: task.title, estimatedMinutes: task.estimatedMinutes, contextTitle: task.contextTitle, priorityBand: task.priorityBand
-  }))];
+  const todayQuests = mapCanonicalWorkTodayQuests(outcomePriority.judgment, tasks);
   const assessments = currentStatus.assessments.map((assessment) => ({ id: `assessment:${assessment.workContextId}:${assessment.type}`, title: assessment.title, date: localDate(new Date(assessment.dueAt), timeZone), kind: "assessment" as const }));
   const month: WorkMonthDay[] = monthDates.map((date) => {
     const highlights: Array<WorkMonthDay["highlights"][number]> = [];

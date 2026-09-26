@@ -85,9 +85,9 @@ function TodayView({ data, selectedGoalId, updateAction, estimateAction, complet
   </section><section className="today-quest-stack"><header><small>ORDERED QUESTS</small><h2>오늘 Quest</h2></header>
     <div className="today-capacity"><span>Capacity <b>{data.todayCapacityMinutes === null ? "확인 전" : duration(data.todayCapacityMinutes).replace("예상 ", "")}</b></span><span>Workload <b>{duration(data.todayWorkloadMinutes).replace("예상 ", "")}</b></span></div>
     {data.deadlineWarning && <p className="today-deadline-warning">🔥 {data.deadlineWarning}</p>}
-    <div>{data.todayQuests.map((quest, index) => <div className="today-quest" key={`${quest.kind}:${quest.id}`}><em>{index + 1}</em>{quest.kind === "task"
+    <div>{data.todayQuests.length ? data.todayQuests.map((quest, index) => <div className="today-quest" key={`${quest.kind}:${quest.id}`}><em>{index + 1}</em>{quest.kind === "task"
       ? <TaskCard task={quest.task} contexts={data.contexts} selectedGoalId={selectedGoalId} updateAction={updateAction} estimateAction={estimateAction} completeAction={completeAction} pending={pending} />
-      : <article className="planning-task-card course-study-card"><div className="planning-task-title"><span>◈</span><strong>{quest.title}</strong>{quest.priorityBand && <b>{quest.priorityBand}</b>}</div><p>{quest.contextTitle ?? "Course Study"} · {duration(quest.estimatedMinutes)}</p><small>학습 준비 상태와 이번 주 목표를 기준으로 배치</small></article>}</div>)}</div>
+      : <article className="planning-task-card course-study-card"><div className="planning-task-title"><span>◈</span><strong>{quest.title}</strong>{quest.priorityBand && <b>{quest.priorityBand}</b>}</div><p>{quest.contextTitle ?? "Course Study"} · {duration(quest.estimatedMinutes)}</p><small>학습 준비 상태와 이번 주 목표를 기준으로 배치</small></article>}</div>) : <p>현재 실행 가능한 Today Quest가 없습니다.</p>}</div>
   </section></div>;
 }
 
