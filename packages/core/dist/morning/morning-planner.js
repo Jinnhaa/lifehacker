@@ -29,7 +29,7 @@ export const calculateTaskWorkload = (task, now, timeZone, localWeekday) => {
     return { remainingMinutes, targetDeadline, targetSource, todayRequiredMinutes, weekRequiredMinutes };
 };
 const minutesBetween = (interval) => Math.max(0, Math.floor((interval.end.getTime() - interval.start.getTime()) / MINUTE));
-const mergeIntervals = (intervals, horizon) => {
+export const mergeIntervals = (intervals, horizon) => {
     const clipped = intervals
         .map((value) => ({
         start: new Date(Math.max(value.start.getTime(), horizon.start.getTime())),

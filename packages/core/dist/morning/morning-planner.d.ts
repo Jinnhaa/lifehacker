@@ -8,6 +8,7 @@ export interface TaskWorkload {
     readonly weekRequiredMinutes: number;
 }
 export declare const calculateTaskWorkload: (task: Task, now: Date, timeZone: string, localWeekday: number) => TaskWorkload;
+export declare const mergeIntervals: (intervals: readonly TimeInterval[], horizon: TimeInterval) => TimeInterval[];
 export interface CreateMorningPlanInput {
     readonly observation: MorningObservation;
     readonly now: Date;

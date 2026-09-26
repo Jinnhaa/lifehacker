@@ -86,4 +86,5 @@ export * from "./wake/supabase-wake-repository.js";
 export * from "./workstyle/workstyle.js";
 export * from "./workstyle/supabase-workstyle-profile-reader.js";
 export * from "./work-planning/planned-day.js";
+export * from "./future-capacity/future-capacity.js";
 //# sourceMappingURL=index.js.map

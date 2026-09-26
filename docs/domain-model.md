@@ -301,6 +301,8 @@ Learning Unit 관리는 활성 Course/Certification에 한정한다. 세 상태 
 
 P0 Task 완료는 explicit completion criteria에 의존한다. Minimum Sufficient Outcome과 이번 scope/session에서 제외하는 것을 명확히 할 수 있다. estimated/actual minutes는 workload/capacity/feasibility에 사용하며 semantic progress가 아니다.
 
+FutureCapacityProjection은 별도 entity/table이 아닌 derived Core contract다. 호출자 지정 horizon의 날짜별 gross/blocked/buffer/available/committed/remaining minutes와 Task의 planned/deadline workload evidence, deadline-window slack을 반환한다. unknown availability/effort와 날짜 미배치 수요는 명시적으로 보존하며 positive slack으로 대체하지 않는다. 예상시간 계산은 Task의 잔여 workload일 뿐 Goal/Learning semantic progress가 아니다. projection은 Task 날짜·상태를 수정하거나 저장하지 않는다. 계산 규칙은 `work-schedule-policy.md`의 Future Capacity Projection을 따른다.
+
 Task state:
 `INBOX / PLANNED / IN_PROGRESS / BLOCKED / WAITING_FOR_USER / DONE`
 

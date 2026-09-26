@@ -277,3 +277,11 @@ Planned Day ≠ Internal Deadline ≠ Official Deadline
 - user-created Tasks는 Lifehacker(Supabase)에 저장한다. Snowboard는 공식 학교 Task의 발견/import source다. Notion은 knowledge/context이며 Task SSOT나 P0 Task synchronization 대상이 아니다. Calendar는 fixed-time event의 authoritative source다.
 - 두 중요한 Goal 충돌은 각각의 Minimum Sufficient Outcome → 둘 다 보존 가능 여부 → capacity 배분 → 불가능하면 expected loss / commitment / dependency / future capacity 비교 순으로 처리한다. 임의 진행률로 선택하지 않는다.
 - 새로운 optional commitment가 기존 중요한 commitment를 실질적으로 위협하면 결정 전에 한 번 capacity 영향을 경고한다. 최종 결정은 사용자에게 남긴다. 정량 threshold는 이 Wave에서 새로 정하지 않는다.
+
+## 16. Future Capacity Projection
+
+Future Capacity는 저장 상태가 아닌 Core의 deterministic derived evidence다. 호출자가 명시한 날짜 범위·timezone·현재 시각·날짜별 작업 가능 구간·capacity-blocking constraints·planning buffer·Task를 사용한다. 작업 구간은 기존 사용자 availability/work-until 정책에서 제공하며, 미정(null/누락)은 unknown, 명시적 빈 구간은 0이다. 8시간/일이나 고정 horizon을 가정하지 않는다.
+
+날짜별로 작업 구간을 병합하고 local day 및 now 이후로 자른다. 겹치는 고정 구간은 한 번만 차감하며 non-blocking 일정은 제외한다. Morning과 같은 구간 병합 및 가용시간 이내 buffer를 사용한다. 예상시간은 `estimated_user_minutes ?? estimated_minutes`와 기존 `getRemainingMinutes`의 실제시간 차감으로 계산하며 의미적 완료율과 무관하다. DONE은 제외하고 나머지 상태는 수요로 유지한다. 추정이 없으면 unknown effort다.
+
+명시적 planned_date의 잔여 workload만 해당 날짜의 committedWorkMinutes에 더한다. 미배치 작업은 더 이른 internal/official deadline까지의 수요로 별도 보존하며 자동 일정이나 내부 마감 buffer를 생성하지 않는다. 날짜 window는 endDate까지 예정/마감인 미완료 작업을 한 번씩 포함한다. 시작일보다 과거인 미완료 예정/마감도 carryover 수요로 유지한다. availableMinutes는 buffer 차감 후 용량, knownRequiredWorkMinutes는 알려진 수요, slackMinutes는 그 차이다. 용량/관련 effort가 unknown이거나 날짜 근거 없는 unplaced demand가 있으면 slack은 null이며 해당 날짜/Task ID를 노출한다. 날짜 단위 projection은 마감 당일 시각 전 배치를 보장하는 scheduler가 아니다. raw deficit/surplus만 제공하며 risk score나 priority를 생성하지 않는다. Chief/UI 연결과 DB 저장은 별도 Wave다.
