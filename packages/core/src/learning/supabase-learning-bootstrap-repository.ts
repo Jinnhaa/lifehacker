@@ -71,16 +71,18 @@ export class SupabaseLearningBootstrapRepository {
           const existing = await exactlyOneOrNone(await tx<IdRow[]>`
             select id from public.learning_materials where user_id=${userId} and work_context_id=${contextId} and title=${material.title}
             for update`, `material:${context.key}:${material.title}`);
+          // Preserve the structured-data key so runtime condition DSL references never fall back to title matching.
+          const materialConfig = { ...material.config, conditionKey: material.key };
           const materialId = existing?.id ?? (await tx<IdRow[]>`
             insert into public.learning_materials(user_id,work_context_id,stage_id,title,material_type,role,tracking_mode,
               unit_type,total_units,start_unit,status,source_reference,config)
             values(${userId},${contextId},${stageId ?? null},${material.title},${material.materialType},${material.role},${material.trackingMode},
-              ${material.unitType},${material.totalUnits},${material.startUnit},${material.status},${material.sourceReference ? json(tx, material.sourceReference) : null},${json(tx, material.config)})
+              ${material.unitType},${material.totalUnits},${material.startUnit},${material.status},${material.sourceReference ? json(tx, material.sourceReference) : null},${json(tx, materialConfig)})
             returning id`)[0]!.id;
           if (existing) await tx`update public.learning_materials set stage_id=${stageId ?? null},material_type=${material.materialType},
             role=${material.role},tracking_mode=${material.trackingMode},unit_type=${material.unitType},total_units=${material.totalUnits},
             start_unit=${material.startUnit},status=${material.status},source_reference=${material.sourceReference ? json(tx, material.sourceReference) : null},
-            config=${json(tx, material.config)},updated_at=now() where id=${materialId} and user_id=${userId}`;
+            config=${json(tx, materialConfig)},updated_at=now() where id=${materialId} and user_id=${userId}`;
           materialIds.set(`${context.key}:${material.key}`, materialId);
           if (material.generateUnits) units += await this.upsertUnits(tx, userId, contextId, stageId ?? null, materialId, material.generateUnits);
         }
