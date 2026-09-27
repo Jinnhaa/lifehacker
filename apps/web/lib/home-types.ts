@@ -83,6 +83,7 @@ export type HomeViewModel = {
     readonly riskCount: number;
     readonly attentionNeededCount: number;
     readonly needsReviewCount: number;
+    readonly activeTaskIds?: readonly string[];
     readonly currentRecommendation: {
       readonly title: string;
       readonly contextTitle: string;
@@ -125,6 +126,11 @@ export type HomeViewModel = {
     readonly activeProviders: readonly string[];
     readonly lastSyncedAt: string | null;
     readonly fixedCommitmentCount: number;
+  };
+  readonly nextFixedSchedule?: null | {
+    readonly title: string;
+    readonly startsAt: string;
+    readonly endsAt: string;
   };
   readonly focus: null | {
     readonly step: "active" | "awaiting_block_reason" | "awaiting_missing_detail" | "awaiting_other_detail" | "recovery_ready" | "awaiting_switch_confirmation";

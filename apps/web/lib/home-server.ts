@@ -395,6 +395,8 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
       };
     });
     const calendarItems = week.flatMap((day) => day.items.filter((item) => item.kind === "calendar"));
+    const nextFixedSchedule = calendarItems.find((item) => localDate(new Date(item.startsAt), timeZone) === date
+      && new Date(item.endsAt) > now) ?? null;
     const latestSync = integrations.flatMap((item) => item.last_sync_at ? [item.last_sync_at] : [])
       .sort((left, right) => right.getTime() - left.getTime())[0] ?? null;
     return {
@@ -435,6 +437,9 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
         lastSyncedAt: latestSync?.toISOString() ?? null,
         fixedCommitmentCount: new Set(calendarItems.map((item) => `${item.id}:${item.startsAt}:${item.endsAt}`)).size
       },
+      nextFixedSchedule: nextFixedSchedule ? {
+        title: nextFixedSchedule.title, startsAt: nextFixedSchedule.startsAt, endsAt: nextFixedSchedule.endsAt
+      } : null,
       focus: focus && focus.currentStep !== "completed" ? {
         step: focus.currentStep, taskId: focus.checkpoint.taskId,
         occurrenceId: focus.checkpoint.activityOccurrenceId ?? null,
@@ -463,7 +468,7 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
       configured: false, error: error instanceof Error ? error.message : "Home 데이터를 불러오지 못했습니다.",
       date: localDate(now, "Asia/Seoul"), timeZone: "Asia/Seoul", outcomePriority: null, currentStatus: null, learningSpecialist: null, missionProgress: {}, currentAction: null, nextQuests:[],reassurance:[],approvedPlan: null, availableMinutes: null, planReview: null,
       planState: { status: "no_plan", revisionNo: null, message: null },
-      calendar: { activeProviders: [], lastSyncedAt: null, fixedCommitmentCount: 0 }, focus: null, reviewArtifacts: [],
+      calendar: { activeProviders: [], lastSyncedAt: null, fixedCommitmentCount: 0 }, nextFixedSchedule: null, focus: null, reviewArtifacts: [],
       timeline: [], week: weekDates(localDate(now, "Asia/Seoul")).map((date) => ({ date, items: [] })), goals: [], agents: [], decisionCount: 0, proposal: null,
       projectRuntime: []
     };

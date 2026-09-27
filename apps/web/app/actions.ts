@@ -13,7 +13,7 @@ import {
 } from "../lib/home-server";
 import type { ChiefActionState, RuntimeActionState } from "../lib/home-types";
 import { zonedDateTimeToUtc } from "@amber/shared";
-import { completeManualQuest, completeManualRoutine } from "@amber/core";
+import { completeManualQuest, completeManualRoutine, SupabaseLearningTaskExecutionRepository } from "@amber/core";
 import type { TaskId } from "@amber/shared";
 
 const profileTimeZone = async (): Promise<string> => {
@@ -153,8 +153,29 @@ export const runFocusAction = async (_previous: RuntimeActionState, formData: Fo
   try {
     const command = String(formData.get("command") ?? "").trim();
     if (!command || command.length > 500) return { status: "error", message: "Focus 요청을 확인해 주세요." };
-    const result = await createWebFocusService(getWebSql()).handleFocusMessage({
-      userId: getWebUserId(), timeZone: await profileTimeZone(), text: command,
+    const sql = getWebSql();
+    const userId = getWebUserId();
+    const timeZone = await profileTimeZone();
+    const learningTarget = command === "완료" ? await sql<{ task_id: string; target_id: string }[]>`
+      select f.task_id,x.id target_id from public.focus_sessions f
+      join public.task_learning_targets x on x.task_id=f.task_id and x.user_id=f.user_id
+      where f.user_id=${userId} and f.status='active' and x.execution_status='PENDING'
+      order by f.started_at desc limit 1` : [];
+    if (learningTarget[0]) {
+      const paused = await createWebFocusService(sql).handleFocusMessage({
+        userId, timeZone, text: "나중에 이어하기",
+        messageId: `web-focus-learning-pause:${randomUUID()}`, receivedAt: new Date()
+      });
+      if (!paused.handled) return { status: "error", message: "Learning Focus를 종료하지 못했습니다." };
+      await new SupabaseLearningTaskExecutionRepository(sql).applyExecution({
+        userId, taskId: learningTarget[0].task_id as TaskId, targetId: learningTarget[0].target_id,
+        command: { outcome: "COMPLETED" }
+      });
+      revalidatePath("/"); revalidatePath("/learning"); revalidatePath("/work");
+      return { status: "success", message: "Learning 범위를 완료하고 현재 추천을 갱신했습니다." };
+    }
+    const result = await createWebFocusService(sql).handleFocusMessage({
+      userId, timeZone, text: command,
       messageId: `web-focus:${randomUUID()}`, receivedAt: new Date()
     });
     if (!result.handled) return { status: "error", message: "현재 Focus 단계에서 처리할 수 없는 요청입니다." };
@@ -175,13 +196,23 @@ export const completeHomeQuestAction = async (_previous: RuntimeActionState, for
       return { status: "error", message: "완료할 Quest를 확인할 수 없습니다." };
     }
     const sql = getWebSql();
-    const result = occurrenceId ? { kind: "routine" as const, ...(await completeManualRoutine(sql, getWebUserId(), occurrenceId)) }
-      : await completeManualQuest(sql, getWebUserId(), taskId as TaskId, stepId || undefined);
+    const userId = getWebUserId();
+    const learningTarget = taskId ? await sql<{ target_id: string }[]>`
+      select id target_id from public.task_learning_targets
+      where user_id=${userId} and task_id=${taskId} and execution_status='PENDING' limit 1` : [];
+    const result = occurrenceId ? { kind: "routine" as const, ...(await completeManualRoutine(sql, userId, occurrenceId)) }
+      : learningTarget[0]
+        ? { kind: "task" as const, duplicate: false, officialSubmission: { state: "not_linked" as const, sources: [], statuses: [] },
+            learning: await new SupabaseLearningTaskExecutionRepository(sql).applyExecution({
+              userId, taskId: taskId as TaskId, targetId: learningTarget[0].target_id, command: { outcome: "COMPLETED" }
+            }) }
+        : await completeManualQuest(sql, userId, taskId as TaskId, stepId || undefined);
     if (result.kind !== "step" && !result.duplicate) {
-      await createWebReplanService(sql).processLatestTrigger(getWebUserId(), await profileTimeZone(), new Date());
+      await createWebReplanService(sql).processLatestTrigger(userId, await profileTimeZone(), new Date());
     }
     revalidatePath("/");
     revalidatePath("/work");
+    if ("learning" in result) revalidatePath("/learning");
     const officialPending = "officialSubmission" in result && result.officialSubmission.state === "pending_confirmation";
     return {
       status: "success",

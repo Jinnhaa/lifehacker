@@ -1,8 +1,8 @@
 "use client";
 
-import { useActionState, useCallback, useEffect, useRef, useState } from "react";
+import { useActionState, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { completeHomeQuestAction, decideChiefReplan, decideProjectBacklogAction, editTodayPlan, requestChiefReplan, reviewArtifactAction, runFocusAction, runMorningAction, runProjectRuntimeAction, saveChiefStatusOverride } from "../app/actions";
+import { completeHomeQuestAction, decideChiefReplan, editTodayPlan, requestChiefReplan, reviewArtifactAction, runFocusAction, runMorningAction, saveChiefStatusOverride } from "../app/actions";
 import type { ChiefActionState, HomeViewModel } from "../lib/home-types";
 import { defaultFocusMinutes, focusRemainingSeconds, splitTodayPlan } from "../lib/home-presentation";
 import { canStartHomeQuest, homeFocusMatchesRecommendation } from "../lib/home-chief-presentation";
@@ -92,11 +92,10 @@ function FocusTimer({ startedAt, durationMinutes, action, pending }: { startedAt
   </div>;
 }
 
-function CurrentMission({ data, onOpenWork, focusAction, focusPending, focusFeedback, completeAction, completePending, morningAction, morningPending, morningFeedback }: {
+function CurrentMission({ data, onOpenWork, focusAction, focusPending, focusFeedback, completeAction, completePending }: {
   data: HomeViewModel; onOpenWork: () => void;
   focusAction: (payload: FormData) => void; focusPending: boolean; focusFeedback: ChiefActionState;
   completeAction: (payload: FormData) => void; completePending: boolean;
-  morningAction: (payload: FormData) => void; morningPending: boolean; morningFeedback: ChiefActionState;
 }) {
   const action = data.currentAction;
   const activeFocus = data.focus?.step === "active";
@@ -111,22 +110,23 @@ function CurrentMission({ data, onOpenWork, focusAction, focusPending, focusFeed
   const chosenDuration = duration === "custom" ? customDuration : Number(duration);
   const title = action?.title ?? "지금 실행할 항목이 없습니다";
   const reason = action?.whyNow ?? "현재 근거에서 실행 가능한 Quest가 없습니다.";
-  const feedback = focusFeedback.message ? focusFeedback : morningFeedback;
-  const feedbackMessage = morningFeedback.status === "success"
-    ? "오늘 Quest를 준비했습니다. 계획 보기에서 검토할 수 있습니다."
-    : focusFeedback.status === "success" ? "Focus를 반영했습니다. 남은 Quest와 계획을 갱신합니다." : feedback.message;
+  const deadlineDays = action?.relevantDeadline
+    ? Math.round((Date.parse(`${action.relevantDeadline}T00:00:00Z`) - Date.parse(`${data.date}T00:00:00Z`)) / 86_400_000)
+    : null;
+  const deadlineLabel = deadlineDays === null || !Number.isFinite(deadlineDays) ? null : deadlineDays === 0 ? "오늘 평가" : deadlineDays > 0 ? `평가 D-${deadlineDays}` : "평가일 지남";
+  const feedbackMessage = focusFeedback.status === "success" ? "Focus를 반영했습니다. 현재 추천을 갱신합니다." : focusFeedback.message;
   return <section className={`mission-hud ${activeFocus ? "is-focusing" : ""}`} data-testid="current-action">
     <div className="mission-copy"><small>{activeFocus ? "FOCUS MODE" : "MAIN QUEST"}</small>
       {!data.configured ? <><h1>연결 설정이 필요합니다</h1><p>{data.error}</p></>
-        : <><button type="button" className="main-quest-link" onClick={onOpenWork}><h1>{title}</h1></button><p className="mission-reason">{action && <strong>왜 지금? </strong>}{reason}</p>
-          {action?.context && <p>{action.context}</p>}{action?.completionCriteria && <p><strong>완료 기준</strong> {action.completionCriteria}</p>}{action?.scopeExclusions && <p><strong>이번에는 하지 않음</strong> {action.scopeExclusions}</p>}
+        : <><button type="button" className="main-quest-link" onClick={onOpenWork}><h1>{title}</h1></button>{action?.context && <p className="mission-context">{action.context}</p>}
+          <div className="mission-evidence"><div><small>완료 기준</small><strong>{action?.completionCriteria ?? "완료 기준이 아직 없습니다"}</strong></div><div><small>왜 지금?</small><strong>{deadlineLabel ? `${deadlineLabel} · ${reason}` : reason}</strong></div></div>
+          {action?.scopeExclusions && <p><strong>이번에는 하지 않음</strong> {action.scopeExclusions}</p>}
           {activeFocus && <><p>진행 중인 집중: {data.focus?.title ?? data.focus?.stepTitle ?? "현재 Focus"}{!focusMatches && action ? " · 새 추천으로 전환하려면 현재 집중을 먼저 마무리하세요." : ""}</p><FocusTimer startedAt={data.focus?.startedAt ?? null} durationMinutes={data.focus?.durationMinutes ?? 25} action={focusAction} pending={focusPending} /></>}
         </>}</div>
     {!activeFocus && <div className="mission-meta"><button type="button" className="mission-estimate" onClick={() => setDurationOpen((open) => !open)} disabled={!action || action.kind === "rest"} aria-expanded={durationOpen}><small>예상시간 · 집중 시간 변경</small><strong>{estimate ? `${estimate}분` : "—"}</strong><span>⌄</span></button></div>}
     {!activeFocus && durationOpen && action && action.kind !== "rest" && <FocusDurationSelector duration={duration} setDuration={setDuration} customDuration={customDuration} setCustomDuration={setCustomDuration} />}
     <div className="mission-actions">
       {canStart && action && <><form action={focusAction}><input type="hidden" name="command" value={`시작:${chosenDuration}:${action.kind}:${action.taskId ?? ""}`} /><button className="focus-button is-ready" type="submit" disabled={focusPending || !Number.isInteger(chosenDuration) || chosenDuration < 1 || chosenDuration > 240}>▶ 집중 시작</button></form><form action={completeAction}><input type="hidden" name="taskId" value={action.taskId ?? ""} /><input type="hidden" name="stepId" value={action.stepId ?? ""} /><input type="hidden" name="occurrenceId" value="" /><button className="focus-button" type="submit" disabled={completePending}>이미 완료했어요</button></form></>}
-      {data.planState.status === "no_plan" && <form action={morningAction}><input type="hidden" name="command" value="일어남" /><button className="focus-button" type="submit" disabled={morningPending}>{morningPending ? "계획 준비 중…" : "오늘 계획 만들기 (선택)"}</button></form>}
       {data.focus?.step === "awaiting_switch_confirmation" && <form action={focusAction}><button name="command" value="다른 거 할래" className="focus-button" type="submit" disabled={focusPending}>집중 종료 확인</button></form>}
       {data.focus?.step === "recovery_ready" && <form action={focusAction}><button name="command" value="다시 할게" className="focus-button is-ready" type="submit" disabled={focusPending}>다시 할게</button></form>}
     </div>
@@ -135,9 +135,7 @@ function CurrentMission({ data, onOpenWork, focusAction, focusPending, focusFeed
         {[["불명확", "뭘 해야 할지 불명확"], ["어려움", "어려움"], ["하기 싫음", "하기 싫음"], ["완벽주의", "완벽주의"], ["자료 없음", "필요한 자료 없음"], ["기타", "기타"]].map(([label, value]) => <button key={value} name="command" value={value} disabled={focusPending}>{label}</button>)}
       </form> : <form action={focusAction} className="runtime-input"><input name="command" required maxLength={500} placeholder={data.focus.step === "awaiting_missing_detail" ? "필요한 자료나 도움을 적어 주세요" : "막힌 이유를 적어 주세요"} /><button disabled={focusPending}>기록</button></form>}
     </div>}
-    {data.planState.status === "no_plan" && morningFeedback.status === "success" && <form action={morningAction} className="mission-inline-panel runtime-input"><input name="command" required maxLength={500} placeholder="예: 오늘 22시까지, 14시부터 15시는 제외" /><button disabled={morningPending}>계획 생성</button></form>}
-    {data.planState.status === "pending_approval" && !data.proposal && <form action={morningAction} className="mission-inline-panel runtime-input"><input name="command" required maxLength={500} placeholder="예: 수정: 낮은 우선순위 작업 제외" /><button disabled={morningPending}>다시 짜기</button></form>}
-    {feedbackMessage && <p className={`mission-feedback ${feedback.status}`} role="status">{feedbackMessage}</p>}
+    {feedbackMessage && <p className={`mission-feedback ${focusFeedback.status}`} role="status">{feedbackMessage}</p>}
   </section>;
 }
 
@@ -163,54 +161,17 @@ function ReviewOverlay({ data, action, pending, feedback, onClose }: {
   </div>;
 }
 
-function ProjectRuntimeOverlay({ data, action, decisionAction, pending, decisionPending, feedback, onClose, onOpenReview }: {
-  data: HomeViewModel;
-  action: (payload: FormData) => void;
-  decisionAction: (payload: FormData) => void;
-  pending: boolean;
-  decisionPending: boolean;
-  feedback: ChiefActionState;
-  onClose: () => void;
-  onOpenReview: () => void;
-}) {
-  const [selectedId, setSelectedId] = useState(data.projectRuntime[0]?.project.id ?? "");
-  const selected = data.projectRuntime.find((item) => item.project.id === selectedId) ?? data.projectRuntime[0] ?? null;
-  return <div className="runtime-overlay" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
-    <section className="project-runtime-panel" role="dialog" aria-modal="true" aria-labelledby="project-runtime-title">
-      <header><div><small>PROJECT PM · RUNTIME</small><h2 id="project-runtime-title">프로젝트 다음 단계</h2></div><button type="button" onClick={onClose} aria-label="Project PM 닫기">×</button></header>
-      {!selected ? <div className="project-runtime-empty"><strong>프로젝트가 아직 연결되지 않음</strong><p>등록된 Project WorkContext가 생기면 여기에서 분석을 시작할 수 있습니다.</p></div> : <div className="project-runtime-content">
-        <label className="project-picker">PROJECT<select value={selected.project.id} onChange={(event) => setSelectedId(event.target.value)}>{data.projectRuntime.map((item) => <option value={item.project.id} key={item.project.id}>{item.project.title}</option>)}</select></label>
-        <div className="project-runtime-heading"><div><span className={`project-state state-${selected.iterationState}`}>{selected.stateLabel}</span><h3>{selected.project.title}</h3></div><p>{selected.currentGap?.description ?? (selected.snapshot ? "최신 프로젝트 상태를 기준으로 다음 행동을 확인했습니다." : "아직 Project AI iteration이 없습니다.")}</p></div>
-        <div className="project-runtime-facts">
-          <div><small>LATEST SNAPSHOT</small><strong>{selected.snapshot ? new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short", timeZone: data.timeZone }).format(new Date(selected.snapshot.generatedAt)) : "없음"}</strong></div>
-          <div><small>CURRENT GAP</small><strong>{selected.currentGap?.title ?? "확인된 Gap 없음"}</strong></div>
-          <div><small>STATUS</small><strong>{selected.pendingReviewCount ? `검토 ${selected.pendingReviewCount}건` : selected.runningWorkCount ? `AI 실행 ${selected.runningWorkCount}건` : selected.waitingForUserCount ? `사용자 확인 ${selected.waitingForUserCount}건` : selected.nextActionLabel}</strong></div>
-        </div>
-        {selected.nextAction === "review_proposal" && selected.proposal ? <form action={decisionAction} className="project-proposal-form">
-          <input type="hidden" name="workContextId" value={selected.project.id} />
-          <div className="project-proposal-list">{selected.proposal.items.map((item) => <label key={item.key}><input type="checkbox" name="acceptedItemKey" value={item.key} defaultChecked /><span><strong>{item.title}</strong><small>{item.owner.toUpperCase()} · {item.priority.toUpperCase()}{item.dependencies.length ? ` · 선행 ${item.dependencies.length}` : ""}</small><p>{item.description}</p></span></label>)}</div>
-          <div className="project-runtime-actions"><button name="decision" value="reject" type="submit" disabled={decisionPending}>거절</button><button className="approve" name="decision" value="approve" type="submit" disabled={decisionPending}>{decisionPending ? "반영 중…" : "선택 승인"}</button></div>
-        </form> : <div className="project-next-action"><small>NEXT ACTION</small><strong>{selected.nextActionLabel}</strong>
-          {(["start_iteration", "request_approval", "run_ai"] as const).includes(selected.nextAction as "start_iteration" | "request_approval" | "run_ai") && <form action={action}><input type="hidden" name="workContextId" value={selected.project.id} /><button className="approve" type="submit" disabled={pending}>{pending ? "처리 중…" : selected.nextActionLabel}</button></form>}
-          {selected.nextAction === "review_artifact" && <button className="approve" type="button" onClick={onOpenReview}>Review Inbox 열기</button>}
-        </div>}
-        {feedback.message && <p className={`command-feedback ${feedback.status}`} role="status">{feedback.message}</p>}
-      </div>}
-    </section>
-  </div>;
-}
-
 const stationAsset = {
-  chief: "/assets/tycoon/characters/chief/idle.webp",
-  project: "/assets/tycoon/characters/project-pm/idle.webp",
+  owner: { idle: "/assets/tycoon/characters/owner/idle.webp", working: "/assets/tycoon/characters/owner/working.webp" },
+  chief: { idle: "/assets/tycoon/characters/chief/idle.webp", working: "/assets/tycoon/characters/chief/working.webp" },
   learning: "/assets/tycoon/characters/university/idle.webp"
 } as const;
 
-function OfficeStation({ kind, title, detail, onClick }: {
-  kind: keyof typeof stationAsset; title: string; detail: string; onClick: () => void;
+function OfficeStation({ kind, title, detail, asset, state, onClick }: {
+  kind: "owner" | "chief" | "learning"; title: string; detail: string; asset: string; state: string; onClick: () => void;
 }) {
-  return <button className={`office-station ${kind}`} type="button" onClick={onClick} aria-label={`${title}: ${detail}`}>
-    <span className="station-back" /><img className="station-character-asset" src={stationAsset[kind]} alt="" />
+  return <button className={`office-station ${kind} state-${state.toLowerCase().replaceAll("_", "-")}`} type="button" onClick={onClick} aria-label={`${title}: ${detail}`}>
+    <span className="station-back" /><img className="station-character-asset" src={asset} alt="" />
     <span className="station-desk"><i /><b /></span><span className="station-badge"><i />{detail}</span><strong>{title}</strong>
   </button>;
 }
@@ -219,42 +180,51 @@ function FocusDurationSelector({ duration, setDuration, customDuration, setCusto
   return <div className="focus-duration" aria-label="집중 시간 선택"><span>집중 시간</span>{["25", "45", "60"].map((value) => <button type="button" key={value} className={duration === value ? "selected" : ""} onClick={() => setDuration(value)}>{value}</button>)}<label className={duration === "custom" ? "selected" : ""}>직접<input aria-label="직접 집중 시간" type="number" min="1" max="240" value={customDuration} onChange={(event) => setCustomDuration(Number(event.target.value))} onFocus={() => setDuration("custom")} /></label></div>;
 }
 
-function NextQuests({ data, onOpenWork, onOpenPlan, completeAction, completePending }: { data: HomeViewModel; onOpenWork: () => void; onOpenPlan: () => void; completeAction: (payload: FormData) => void; completePending: boolean }) {
-  const items = data.nextQuests;
-  return <section className="next-quests" aria-labelledby="next-quests-title"><header><small>QUEUE</small><h2 id="next-quests-title">Up Next</h2></header>
-    {items.length ? <ol>{items.map((item) => <li key={item.taskId}><div className="next-quest-row"><form action={completeAction}><input type="hidden" name="taskId" value={item.taskId} /><input type="hidden" name="stepId" value="" /><input type="hidden" name="occurrenceId" value="" /><button className="quest-check" disabled={completePending} aria-label={`${item.title} 완료`} type="submit">✓</button></form><button type="button" onClick={onOpenWork}><span><strong>{item.title}</strong><small>{item.context ?? "오늘 Quest"} · {item.whyNow}</small></span><em>~{item.minutes}분</em><i>›</i></button></div></li>)}</ol> : <p className="quest-empty">현재 근거에서 다음 Quest가 없습니다.</p>}
-    <button type="button" className="all-quests-link" onClick={onOpenPlan}>오늘 Quest 전체 보기 →</button>
-  </section>;
-}
-
-function Capacity({ data }: { data: HomeViewModel }) {
+function TodaySummary({ data }: { data: HomeViewModel }) {
   const judgment = data.outcomePriority?.judgment;
-  const required = [...(judgment?.todayPriority ?? []),...(judgment?.futureRelief ? [judgment.futureRelief] : [])].reduce((sum,item)=>sum+item.minutes,0);
   const available = data.availableMinutes;
-  const difference = available === null ? null : available - required;
-  return <section className="capacity-panel" aria-labelledby="capacity-title"><header><small>TODAY CAPACITY</small><h2 id="capacity-title">남은 여력</h2></header><div className="capacity-values"><span><small>가용</small><b>{available === null ? "확인 전" : `${available}분`}</b></span><span><small>추천 분량</small><b>{required ? `${required}분` : "0분"}</b></span><span className={difference !== null && difference < 0 ? "risk" : ""}><small>차이</small><b>{difference === null ? "—" : `${difference > 0 ? "+" : ""}${difference}분`}</b></span></div>
-    <p>오늘 고정 일정 {data.timeline.filter(item=>item.kind==="calendar").length}개 · 공식 마감 {data.currentStatus?.officialDueToday.length ?? 0}개</p>
-    {available === null && <p>현재 가용시간은 확인 전입니다.</p>}{Boolean(judgment?.capacityConflicts.length) && <p>확인된 마감 용량 충돌 {judgment!.capacityConflicts.length}개</p>}
-    {data.reassurance.map(item=><p key={item.taskId}><strong>{item.title}</strong> · {item.whyNotNow} · {item.explanation}</p>)}
+  const fixed = data.nextFixedSchedule;
+  return <section className="capacity-panel today-summary" aria-labelledby="today-summary-title"><header><small>TODAY</small><h2 id="today-summary-title">오늘</h2></header><div className="capacity-values">
+    <span><small>다음 일정</small><b>{fixed ? `${localTime(fixed.startsAt, data.timeZone)} ${fixed.title}` : "예정 없음"}</b></span>
+    <span><small>가용 시간</small><b>{capacityLabel(available)}</b></span>
+    <span className={data.currentStatus?.officialDueToday.length ? "risk" : ""}><small>오늘 마감</small><b>{data.currentStatus?.officialDueToday.length ?? 0}개</b></span>
+  </div>{Boolean(judgment?.capacityConflicts.length) && <p className="today-risk">확인된 마감 용량 충돌 {judgment!.capacityConflicts.length}개</p>}
   </section>;
 }
 
-function MissionsBoard({ data }: { data: HomeViewModel }) {
-  const judgment = data.outcomePriority?.judgment;
-  const clear = judgment?.todayPriority[0] ?? null;
-  const levelUp = judgment?.todayPriority[1] ?? null;
-  const bonus = judgment?.futureRelief ?? null;
-  const rows = [["🔥", "CLEAR", "Clear Quest", clear], ["🌱", "LEVEL UP", "Level-up Quest", levelUp], ["✨", "BONUS", "Bonus Quest", bonus]] as const;
-  return <aside className="missions-board" aria-labelledby="missions-title"><header><small>DAILY MISSION BOARD</small><h2 id="missions-title">Today's Missions</h2></header><div>{rows.map(([icon, status, label, item]) => {
-    const progress = item ? data.missionProgress[item.taskId] : null;
-    const count = item ? progress?.total ? `${progress.completed}/${progress.total}` : "0/1" : "—";
-    return <article key={label} className={`${status.toLowerCase().replace(" ", "-")} ${!item ? "empty" : ""}`}><span className="mission-icon">{icon}</span><div><small>{status}</small><strong>{item?.outcome ?? "아직 배정된 Quest가 없습니다"}</strong></div><em>{count}</em><i className="mission-completion" aria-label={item ? `${label} 진행 ${count}` : `${label} 비어 있음`}>{item ? "○" : "·"}</i></article>;
-  })}</div></aside>;
+function ReassuranceBoard({ data }: { data: HomeViewModel }) {
+  const label = { safe: "SAFE", protected: "PROTECTED", constrained: "CONSTRAINED", uncertain: "NEEDS REVIEW" } as const;
+  return <aside className="missions-board reassurance-board" aria-labelledby="reassurance-title"><header><small>CHIEF REASSURANCE</small><h2 id="reassurance-title">나머지는 괜찮아?</h2></header><div>{data.reassurance.length
+    ? data.reassurance.slice(0, 3).map((item) => <article key={item.taskId} className={`reassurance-${item.status}`}><span className="mission-icon" aria-hidden="true">{item.status === "uncertain" ? "?" : item.status === "constrained" ? "!" : "✓"}</span><div><small>{label[item.status]}</small><strong>{item.title}</strong><p>{item.explanation}</p><em>{item.whyNotNow}{item.riskTrigger ? ` · 기준 ${item.riskTrigger.replaceAll("-", ".")}` : ""}</em></div></article>)
+    : <p className="reassurance-empty">현재 별도로 확인할 중요 항목이 없습니다.</p>}</div></aside>;
 }
 
-const readinessLabel = { NOT_STARTED: "미시작", IN_PROGRESS: "진행 중", READY: "준비됨", UNKNOWN: "확인 필요" } as const;
 const capacityLabel = (minutes: number | null): string => minutes === null ? "확인 전"
   : minutes < 60 ? `${minutes}분` : `${Math.floor(minutes / 60)}h${minutes % 60 ? `${minutes % 60}m` : ""}`;
+
+function CharacterBrief({ title, eyebrow, onClose, children }: {
+  title: string; eyebrow: string; onClose: () => void; children: ReactNode;
+}) {
+  return <div className="status-popover-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
+    <section className="chief-status-popup character-brief" role="dialog" aria-modal="true" aria-label={title}>
+      <header><div><small>{eyebrow}</small><h2>{title}</h2></div><button type="button" onClick={onClose} aria-label={`${title} 닫기`}>×</button></header>{children}
+    </section>
+  </div>;
+}
+
+function OwnerBrief({ data, onClose }: { data: HomeViewModel; onClose: () => void }) {
+  const working = data.focus?.step === "active";
+  return <CharacterBrief title="Owner" eyebrow="HUMAN IN THE LOOP" onClose={onClose}><div className="brief-primary"><small>현재</small><strong>{working ? data.focus?.title ?? data.currentAction?.title ?? "Focus 실행 중" : "현재 실행 중인 작업 없음"}</strong>{working && <p>집중 중 · {data.focus?.durationMinutes ?? 25}분 세션</p>}</div></CharacterBrief>;
+}
+
+function LearningBrief({ data, onClose, onOpenLearning }: { data: HomeViewModel; onClose: () => void; onOpenLearning: () => void }) {
+  const specialist = data.learningSpecialist;
+  return <CharacterBrief title="Learning Brief" eyebrow="LEARNING SPECIALIST" onClose={onClose}>{!specialist ? <p className="runtime-empty">Learning 상태를 불러오지 못했습니다.</p> : <>
+    <dl className="brief-facts"><div><dt>가장 가까운 일정</dt><dd>{specialist.nearestEvent ? `${specialist.nearestEvent.contextTitle} · ${specialist.nearestEvent.days === 0 ? "오늘" : `D-${specialist.nearestEvent.days}`}` : "예정 없음"}</dd></div><div><dt>주의 필요</dt><dd>{specialist.attentionNeededCount}개</dd></div><div><dt>확인 필요</dt><dd>{specialist.needsReviewCount}개</dd></div></dl>
+    <div className="brief-primary"><small>현재 추천</small><strong>{specialist.currentRecommendation?.title ?? "현재 실행 가능한 Learning 추천 없음"}</strong>{specialist.currentRecommendation && <p>{specialist.currentRecommendation.contextTitle}</p>}</div>
+    <div className="status-popup-actions"><button className="approve" type="button" onClick={onOpenLearning}>Learning 열기</button></div>
+  </>}</CharacterBrief>;
+}
 
 function ChiefStatusPopup({ data, action, pending, feedback, onClose, onOpenWork }: {
   data: HomeViewModel;
@@ -264,23 +234,17 @@ function ChiefStatusPopup({ data, action, pending, feedback, onClose, onOpenWork
   onClose: () => void;
   onOpenWork: () => void;
 }) {
-  const status = data.currentStatus;
   const [editing, setEditing] = useState(false);
-  const nearest = status?.assessments[0] ?? null;
   return <div className="status-popover-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
     <section className="chief-status-popup" role="dialog" aria-modal="true" aria-labelledby="chief-status-title">
-      <header><div><small>CURRENT STATUS</small><h2 id="chief-status-title">Chief가 이해한 현재 상황</h2></div><button type="button" onClick={onClose} aria-label="현재 상태 닫기">×</button></header>
-      {!status ? <p className="runtime-empty">현재 상태를 불러오지 못했습니다.</p> : <>
-        <dl className="status-facts">
-          <div><dt>🔥 오늘 마감 미완료</dt><dd>{status.officialDueToday.length}</dd></div>
-          {nearest && <><div><dt>⚠ {nearest.title}</dt><dd>D-{nearest.daysUntil}</dd></div><div><dt>준비</dt><dd>{readinessLabel[nearest.readiness]}</dd></div></>}
-          <div><dt>✓ 오늘 완료</dt><dd>{status.completedTodayCount}</dd></div>
-          <div><dt>⏱ 남은 가용시간</dt><dd>{capacityLabel(status.remainingCapacityMinutes)}</dd></div>
-        </dl>
-        <div className="status-priorities"><h3>현재 우선순위</h3>{status.priorities.length ? <ol>{status.priorities.slice(0, 3).map((item) => <li key={item.id}><b>{item.band}</b><span><strong>{item.title}</strong><small>{item.whyNow}</small></span></li>)}</ol> : <p>즉시 처리할 위험이 없습니다.</p>}</div>
-        {status.overrides.length > 0 && <div className="status-overrides"><small>반영 중인 수정</small>{status.overrides.map((item) => <span key={item.id}>{item.scope === "TODAY" ? "오늘" : "계속"} · {item.text}</span>)}</div>}
+      <header><div><small>CHIEF BRIEF</small><h2 id="chief-status-title">현재 추천</h2></div><button type="button" onClick={onClose} aria-label="Chief Brief 닫기">×</button></header>
+      {!data.currentStatus ? <p className="runtime-empty">현재 상태를 불러오지 못했습니다.</p> : <>
+        <div className="brief-primary"><small>지금 먼저</small><strong>{data.currentAction?.title ?? "현재 실행 가능한 추천 없음"}</strong>{data.currentAction?.context && <p>{data.currentAction.context}</p>}</div>
+        <div className="brief-reason"><small>왜 지금?</small><strong>{data.currentAction?.whyNow ?? "판단 가능한 실행 항목이 없습니다."}</strong></div>
+        <div className="brief-reassurance"><small>나머지</small>{data.reassurance.slice(0, 3).map((item) => <p key={item.taskId}><strong>{item.title}</strong><span>{item.explanation}</span></p>)}{!data.reassurance.length && <p>별도로 확인할 중요 항목이 없습니다.</p>}</div>
+        {data.currentStatus.overrides.length > 0 && <div className="status-overrides"><small>반영 중인 수정</small>{data.currentStatus.overrides.map((item) => <span key={item.id}>{item.scope === "TODAY" ? "오늘" : "계속"} · {item.text}</span>)}</div>}
         {editing ? <form action={action} className="status-correction-form">
-          <textarea name="statusCorrection" required maxLength={500} placeholder="예: 데이터베이스는 영상강의 대신 교안으로 직접 공부할 거야." />
+          <textarea name="statusCorrection" required maxLength={500} placeholder="예: 오늘은 영상강의 대신 교안으로 직접 공부할 거야." />
           <fieldset><legend>반영 범위</legend><label><input type="radio" name="scope" value="TODAY" defaultChecked /> 오늘만</label><label><input type="radio" name="scope" value="PERSISTENT" /> 계속 반영</label></fieldset>
           <div><button type="button" onClick={() => setEditing(false)}>취소</button><button className="approve" disabled={pending}>{pending ? "반영 중…" : "상태 반영"}</button></div>
           {feedback.message && <p className={`command-feedback ${feedback.status}`} role="status">{feedback.message}</p>}
@@ -298,14 +262,13 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
   const [focusState, submitFocus, focusPending] = useActionState(runFocusAction, initialActionState);
   const [completeState, submitComplete, completePending] = useActionState(completeHomeQuestAction, initialActionState);
   const [reviewState, submitReview, reviewPending] = useActionState(reviewArtifactAction, initialActionState);
-  const [projectState, submitProject, projectPending] = useActionState(runProjectRuntimeAction, initialActionState);
-  const [projectDecisionState, submitProjectDecision, projectDecisionPending] = useActionState(decideProjectBacklogAction, initialActionState);
   const [statusOverrideState, submitStatusOverride, statusOverridePending] = useActionState(saveChiefStatusOverride, initialActionState);
   const [chiefOpen, setChiefOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
+  const [ownerOpen, setOwnerOpen] = useState(false);
+  const [learningOpen, setLearningOpen] = useState(false);
   const [weekOpen, setWeekOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
-  const [projectOpen, setProjectOpen] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
   const [proposalOpen, setProposalOpen] = useState(false);
   const commandRef = useRef<HTMLInputElement>(null);
@@ -338,17 +301,30 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
   const calendarCount = initialData.calendar.fixedCommitmentCount;
   const feedback = decisionState.message || actionState.message;
   const feedbackStatus = decisionState.message ? decisionState.status : actionState.status;
+  const judgment = initialData.outcomePriority?.judgment;
+  const ownerWorking = initialData.focus?.step === "active";
+  const chiefRisk = Boolean(judgment?.capacityConflicts.length || judgment?.risks.some((item) => item.reasonCodes.some((code) => ["OVERDUE","DUE_TODAY","DEADLINE_RISK","FUTURE_CAPACITY_DEFICIT","LEARNING_SCHEDULE_RISK"].includes(code))));
+  const chiefNeedsReview = !chiefRisk && (initialData.reassurance.some((item) => item.status === "uncertain")
+    || Boolean(initialData.currentAction?.reasonCodes?.some((code) => ["UNKNOWN_EFFORT","FUTURE_CAPACITY_UNKNOWN","CAPACITY_UNKNOWN"].includes(code)))
+    || (!initialData.currentAction && ((initialData.learningSpecialist?.needsReviewCount ?? 0) > 0 || judgment?.capacityKnown === false)));
+  const chiefState = pending ? "RECALCULATING" : chiefRisk ? "RISK" : chiefNeedsReview ? "NEEDS_REVIEW" : initialData.currentAction ? "STABLE" : "IDLE";
+  const learningCurrent = initialData.learningSpecialist?.currentRecommendation;
+  const learningActive = Boolean(initialData.currentAction && (initialData.currentAction.candidateSource === "learning_proposal"
+    || initialData.learningSpecialist?.activeTaskIds?.includes(initialData.currentAction.taskId ?? "")
+    || (learningCurrent?.taskId && learningCurrent.taskId === initialData.currentAction.taskId)));
+  const learningState = learningActive ? "ACTIVE" : (initialData.learningSpecialist?.needsReviewCount ?? 0) > 0 ? "NEEDS_REVIEW"
+    : (initialData.learningSpecialist?.attentionNeededCount ?? 0) > 0 ? "ATTENTION" : "STABLE";
 
   return <main className={`tycoon-shell tycoon-home ${initialData.focus?.step === "active" ? "is-focus-mode" : ""}`}>
     <section className="tycoon-office" aria-label="Lifehacker Office World">
       <img className="office-wordmark" src="/assets/lifehacker/lifehacker-logo.png" alt="Lifehacker" />
       <button className="world-calendar-button" type="button" onClick={() => setWeekOpen(true)} aria-label="주간 일정 열기">▦ <span>{calendarCount}</span></button>
-      <div className="office-floor" /><div className="office-zone zone-chief" /><div className="office-zone zone-project" /><div className="office-zone zone-learning" />
-      <OfficeStation kind="chief" title="Chief" detail="Current Status" onClick={() => setStatusOpen(true)} />
-      <OfficeStation kind="project" title="Project PM" detail="Projects" onClick={() => router.push("/projects")} />
-      <OfficeStation kind="learning" title="Learning" detail="Learning" onClick={() => router.push("/learning")} />
-      <section className="quest-console"><header><small>CHIEF'S QUEST CONSOLE</small><button type="button" onClick={() => setPlanOpen(true)}>오늘 계획 보기</button></header><CurrentMission data={initialData} onOpenWork={() => router.push("/work")} focusAction={submitFocus} focusPending={focusPending} focusFeedback={focusState} completeAction={submitComplete} completePending={completePending} morningAction={submitMorning} morningPending={morningPending} morningFeedback={morningState} /><NextQuests data={initialData} onOpenWork={() => router.push("/work")} onOpenPlan={() => setPlanOpen(true)} completeAction={submitComplete} completePending={completePending} /><Capacity data={initialData} />{completeState.message && <p className={`command-feedback ${completeState.status}`} role="status">{completeState.message}</p>}</section>
-      <MissionsBoard data={initialData} />
+      <div className="office-floor" /><div className="office-zone zone-chief" /><div className="office-zone zone-owner" /><div className="office-zone zone-learning" />
+      <OfficeStation kind="chief" title="Chief" detail={chiefState.replace("_", " ")} state={chiefState} asset={pending ? stationAsset.chief.working : stationAsset.chief.idle} onClick={() => setStatusOpen(true)} />
+      <OfficeStation kind="owner" title="Owner" detail={ownerWorking ? "WORKING" : "IDLE"} state={ownerWorking ? "WORKING" : "IDLE"} asset={ownerWorking ? stationAsset.owner.working : stationAsset.owner.idle} onClick={() => setOwnerOpen(true)} />
+      <OfficeStation kind="learning" title="University" detail={learningState.replace("_", " ")} state={learningState} asset={stationAsset.learning} onClick={() => setLearningOpen(true)} />
+      <section className="quest-console"><header><small>CHIEF'S QUEST CONSOLE</small><button type="button" onClick={() => setPlanOpen(true)}>오늘 계획 보기</button></header><CurrentMission data={initialData} onOpenWork={() => router.push("/work")} focusAction={submitFocus} focusPending={focusPending} focusFeedback={focusState} completeAction={submitComplete} completePending={completePending} /><TodaySummary data={initialData} />{completeState.message && <p className={`command-feedback ${completeState.status}`} role="status">{completeState.message}</p>}</section>
+      <ReassuranceBoard data={initialData} />
       <section className="chief-command-panel tycoon-chief-command" ref={chiefRef}><header><div><small>CHIEF RADIO</small><strong>오늘 흐름 조정</strong></div><button type="button" onClick={() => chiefOpen ? setChiefOpen(false) : openChief()} disabled={!initialData.configured} aria-expanded={chiefOpen}>조정</button></header>{chiefOpen && <form action={submitAction}><input id="chief-command" ref={commandRef} name="command" placeholder="예: 지금 작업 미루기, 2시간 휴식" aria-label="Chief에게 일정 조정 요청" disabled={!initialData.configured || pending} /><button type="submit" disabled={!initialData.configured || pending}>{pending ? "계산 중…" : "변경안 만들기"}</button></form>}{feedback && <p className={`command-feedback ${feedbackStatus}`} role="status">{feedbackStatus === "success" ? "계획을 갱신했습니다. 중요한 변경은 검토 알림에서 확인하세요." : feedback}</p>}</section>
       {initialData.focus?.step === "active" && <div className="focus-spotlight" aria-hidden="true" />}
     </section>
@@ -357,7 +333,8 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
     {planOpen && <div className="runtime-overlay" role="dialog" aria-modal="true" aria-label="오늘 계획"><section className="plan-dialog"><button className="dialog-close" type="button" onClick={() => setPlanOpen(false)} aria-label="오늘 계획 닫기">×</button><PlanReviewPanel data={initialData} morningAction={submitMorning} morningPending={morningPending} completeAction={submitComplete} completePending={completePending} /></section></div>}
     {weekOpen && <WeekCalendarOverlay days={initialData.week} today={initialData.date} timeZone={initialData.timeZone} onClose={() => setWeekOpen(false)} />}
     {reviewOpen && <ReviewOverlay data={initialData} action={submitReview} pending={reviewPending} feedback={reviewState} onClose={() => setReviewOpen(false)} />}
-    {projectOpen && <ProjectRuntimeOverlay data={initialData} action={submitProject} decisionAction={submitProjectDecision} pending={projectPending} decisionPending={projectDecisionPending} feedback={projectDecisionState.message ? projectDecisionState : projectState} onClose={() => setProjectOpen(false)} onOpenReview={() => { setProjectOpen(false); setReviewOpen(true); }} />}
+    {ownerOpen && <OwnerBrief data={initialData} onClose={() => setOwnerOpen(false)} />}
+    {learningOpen && <LearningBrief data={initialData} onClose={() => setLearningOpen(false)} onOpenLearning={() => router.push("/learning")} />}
     {statusOpen && <ChiefStatusPopup data={initialData} action={submitStatusOverride} pending={statusOverridePending} feedback={statusOverrideState} onClose={() => setStatusOpen(false)} onOpenWork={() => router.push("/work")} />}
   </main>;
 }

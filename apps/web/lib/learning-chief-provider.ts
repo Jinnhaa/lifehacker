@@ -8,6 +8,7 @@ export interface LearningSpecialistSummary {
   readonly riskCount: number;
   readonly attentionNeededCount: number;
   readonly needsReviewCount: number;
+  readonly activeTaskIds: readonly string[];
   readonly currentRecommendation: {
     readonly title: string;
     readonly contextTitle: string;
@@ -46,6 +47,7 @@ export async function loadChiefLearningCandidates(): Promise<{
       riskCount: workspace.riskTitles.length,
       attentionNeededCount: contexts.filter((context) => context.state === "risk" || context.state === "attention").length,
       needsReviewCount: workspace.unknownTitles.length,
+      activeTaskIds: contexts.flatMap((context) => context.actions.flatMap((action) => action.kind === "task" && action.taskId ? [action.taskId] : [])),
       currentRecommendation: active ?? (proposal
         ? { title: proposal.proposal.title, contextTitle: proposal.contextTitle, taskId: null, status: "candidate" }
         : null)
