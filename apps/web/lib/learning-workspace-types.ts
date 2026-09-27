@@ -1,3 +1,5 @@
+import type { LearningTaskProposal } from "@amber/core";
+
 export type LearningWorkspaceState = "normal" | "attention" | "risk" | "unknown";
 
 export interface LearningWorkspaceAssessment {
@@ -46,6 +48,8 @@ export interface LearningWorkspaceAction {
   readonly policyName: string | null;
   readonly source: string;
   readonly reasons: readonly { readonly code: string; readonly evidence: Readonly<Record<string, string | number | boolean | null>> }[];
+  readonly estimatedMinutes: number | null;
+  readonly proposal: LearningTaskProposal | null;
 }
 
 export interface LearningWorkspacePolicy {
@@ -82,6 +86,11 @@ export interface LearningWorkspaceContext {
   readonly statusLine: string;
   readonly forecastLabel: string;
   readonly forecastDetail: string;
+  readonly forecast: {
+    readonly status: "PROJECTED" | "ALREADY_COMPLETE" | "UNKNOWN" | "BEYOND_HORIZON";
+    readonly projectedCompletionDate: string | null;
+    readonly scheduleSlackDays: number | null;
+  };
   readonly activity: readonly { readonly id: string; readonly label: string; readonly detail: string; readonly occurredAt: string }[];
 }
 

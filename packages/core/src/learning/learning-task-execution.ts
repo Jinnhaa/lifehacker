@@ -28,6 +28,8 @@ export interface LearningTaskProposal {
   readonly title: string;
   readonly completionCriteria: string;
   readonly assignedUnits: number;
+  /** Capacity evidence only; never semantic completion progress. */
+  readonly estimatedMinutes?: number | null;
   readonly startSequence: number | null;
   readonly endSequence: number | null;
   readonly learningUnitIds: readonly string[];
@@ -92,6 +94,7 @@ export function proposeLearningTasks(input: {
         title: `${material.title} ${quantity}${label}`,
         completionCriteria: `${quantity}${label} 학습 완료`,
         assignedUnits: quantity,
+        estimatedMinutes: allocation.estimatedMinutesMax,
         startSequence: null,
         endSequence: null,
         learningUnitIds: [],
@@ -132,6 +135,7 @@ export function proposeLearningTasks(input: {
       title: `${material.title} ${scope}`,
       completionCriteria: `${end}${label}까지 학습 완료`,
       assignedUnits: selected.length,
+      estimatedMinutes: allocation.estimatedMinutesMax,
       startSequence: start,
       endSequence: end,
       learningUnitIds: selected.map((unit) => unit.learningUnitId),

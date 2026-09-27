@@ -4,8 +4,10 @@ import { getDaysUntilDeadline } from "../rules/deadline.js";
 import { calculateTaskWorkload, mergeIntervals } from "../morning/morning-planner.js";
 import { zonedDateTimeToUtc } from "@amber/shared";
 import { projectFutureCapacity, type FutureCapacityProjection } from "../future-capacity/future-capacity.js";
+import type { ChiefLearningCandidate } from "../learning/chief-learning-candidate.js";
 import type { LearningUnit } from "../learning/learning-unit.js";
 import type { MorningObservation, TimeInterval } from "../morning/morning.js";
+import type { Task } from "../task/task.js";
 
 export interface OutcomeEvidence {
   dependencies: { taskId: string; prerequisiteTaskId: string; completed: boolean }[];
@@ -25,8 +27,12 @@ export interface OutcomeEvidence {
   focusEvidence?: { workContextId: string; completedSessions: number; actualMinutes: number }[];
 }
 
-export const reasonCodeSchema = z.enum(["OVERDUE", "DUE_TODAY", "INTERNAL_DEADLINE", "ASSESSMENT_RISK", "WEEKLY_GAP", "DEADLINE_RISK", "COMMITMENT", "IMPORTANT", "GOAL", "UNBLOCKS", "REVIEW_NEXT", "CONTINUITY", "SCHEDULE_FIT", "BLOCKED", "CAPACITY", "UNKNOWN_EFFORT", "NOT_SELECTED", "ACTIVE_FOCUS", "APPROVED_PLAN", "CARRYOVER", "ESTIMATE_HISTORY", "BLOCKER_HISTORY", "USER_FEEDBACK", "FUTURE_CAPACITY_DEFICIT", "FUTURE_CAPACITY_UNKNOWN", "REQUIRED_COMMITMENT", "WEEKLY_FOCUS", "MONTHLY_FOCUS", "STRATEGIC_IMPORTANCE", "CUMULATIVE_PROTECTION", "OPTIONAL_YIELDS", "CAPACITY_UNKNOWN", "LEARNING_STATE"]);
-const choiceSchema = z.object({ taskId: z.string(), outcome: z.string(), reasonCodes: z.array(reasonCodeSchema).min(1), rationale: z.string(), evidenceRefs: z.array(z.string()), minutes: z.number().nonnegative(), completionCriteria: z.string().nullable().optional(), capacityWindowSlackMinutes: z.number().nullable().optional() });
+export const reasonCodeSchema = z.enum(["OVERDUE", "DUE_TODAY", "INTERNAL_DEADLINE", "ASSESSMENT_RISK", "WEEKLY_GAP", "DEADLINE_RISK", "COMMITMENT", "IMPORTANT", "GOAL", "UNBLOCKS", "REVIEW_NEXT", "CONTINUITY", "SCHEDULE_FIT", "BLOCKED", "CAPACITY", "UNKNOWN_EFFORT", "NOT_SELECTED", "ACTIVE_FOCUS", "APPROVED_PLAN", "CARRYOVER", "ESTIMATE_HISTORY", "BLOCKER_HISTORY", "USER_FEEDBACK", "FUTURE_CAPACITY_DEFICIT", "FUTURE_CAPACITY_UNKNOWN", "REQUIRED_COMMITMENT", "WEEKLY_FOCUS", "MONTHLY_FOCUS", "STRATEGIC_IMPORTANCE", "CUMULATIVE_PROTECTION", "OPTIONAL_YIELDS", "CAPACITY_UNKNOWN", "LEARNING_STATE", "LEARNING_PROPOSAL", "LEARNING_SCHEDULE_RISK", "LEARNING_SLACK"]);
+const choiceSchema = z.object({ taskId: z.string(), outcome: z.string(), reasonCodes: z.array(reasonCodeSchema).min(1), rationale: z.string(), evidenceRefs: z.array(z.string()), minutes: z.number().nonnegative(), completionCriteria: z.string().nullable().optional(), capacityWindowSlackMinutes: z.number().nullable().optional(),
+  candidateSource: z.enum(["task", "learning_proposal"]).default("task"), contextId: z.string().nullable().default(null),
+  contextTitle: z.string().nullable().default(null), exactScope: z.string().nullable().default(null), relevantDeadline: z.string().nullable().default(null),
+  learningJudgmentState: z.enum(["RISK", "ATTENTION", "SAFE", "NEEDS_REVIEW"]).nullable().default(null),
+  forecastSlackDays: z.number().nullable().default(null), selectedPolicyName: z.string().nullable().default(null) });
 export const outcomeJudgmentSchema = z.object({
   version: z.literal("chief-outcome-v1"),
   todayPriority: z.array(choiceSchema).max(3), futureRelief: choiceSchema.nullable(),
@@ -40,7 +46,7 @@ export const outcomeJudgmentSchema = z.object({
 });
 export type OutcomeJudgment = z.infer<typeof outcomeJudgmentSchema>;
 type Choice = z.infer<typeof choiceSchema>;
-export interface OutcomeInput { observation: MorningObservation; now: Date; workUntil: Date | null; privateIntervals: readonly TimeInterval[]; localWeekday: number; currentCapacityMinutes?: number | null; futureCapacity?: FutureCapacityProjection }
+export interface OutcomeInput { observation: MorningObservation; now: Date; workUntil: Date | null; privateIntervals: readonly TimeInterval[]; localWeekday: number; currentCapacityMinutes?: number | null; futureCapacity?: FutureCapacityProjection; learningCandidates?: readonly ChiefLearningCandidate[] }
 
 export const outcomeLocalDate = (now: Date, timeZone: string): string => {
   const parts = new Intl.DateTimeFormat("en", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
@@ -64,7 +70,7 @@ export function outcomeAvailableMinutes(input: OutcomeInput): number | null {
 export function projectOutcomeCapacity(input: OutcomeInput): FutureCapacityProjection {
   if (input.futureCapacity) return input.futureCapacity;
   const startDate = outcomeLocalDate(input.now, input.observation.timeZone);
-  const tasks = input.observation.tasks.map(task => {
+  const tasks = [...input.observation.tasks, ...(input.learningCandidates ?? []).map(candidate => learningCandidateTask(candidate, input.observation.timeZone, input.now))].map(task => {
     const examDate = input.observation.outcomeEvidence?.contexts?.find(c => c.id === task.workContextId)?.examDate;
     return !task.officialDeadline && !task.internalDeadline && examDate ? { ...task, officialDeadline: zonedDateTimeToUtc(`${examDate}T23:59:59`, input.observation.timeZone) } : task;
   });
@@ -76,11 +82,23 @@ export function projectOutcomeCapacity(input: OutcomeInput): FutureCapacityProje
     planningBufferMinutes: input.observation.planningBufferMinutes, tasks });
 }
 
+const learningCandidateTask = (candidate: ChiefLearningCandidate, timeZone: string, now: Date): Task => ({
+  id: candidate.candidateId as Task["id"], userId: "00000000-0000-0000-0000-000000000000" as Task["userId"],
+  workContextId: candidate.contextId, objectiveId: null, title: candidate.proposal.title, description: null,
+  executionMode: "learning_required", officialDeadline: candidate.assessment
+    ? zonedDateTimeToUtc(`${candidate.assessment.dueDate}T23:59:59`, timeZone) : null,
+  internalDeadline: null, plannedDate: candidate.proposal.planDate, estimatedMinutes: candidate.proposal.estimatedMinutes ?? null,
+  estimatedUserMinutes: null, actualMinutes: 0, importance: candidate.strategicImportance ?? candidate.proposal.importance,
+  status: "PLANNED", nextAction: candidate.proposal.title, completionCriteria: candidate.proposal.completionCriteria,
+  completionSource: null, createdAt: now, completedAt: null, updatedAt: now
+});
+
 const labels: Record<z.infer<typeof reasonCodeSchema>, string> = {
   FUTURE_CAPACITY_DEFICIT: "마감일까지 알려진 수요가 가용시간을 초과합니다", FUTURE_CAPACITY_UNKNOWN: "미래 가용시간 또는 필요한 분량이 미정이라 안전한 유예를 보장할 수 없습니다",
   REQUIRED_COMMITMENT: "필수 commitment입니다", WEEKLY_FOCUS: "현재 Weekly Focus에 연결됩니다", MONTHLY_FOCUS: "현재 Monthly Goal에 연결됩니다",
   STRATEGIC_IMPORTANCE: "사용자가 정한 전략 중요도를 비교합니다", CUMULATIVE_PROTECTION: "마감 수요와 용량 부족 근거로 누적 학습을 보호합니다",
   OPTIONAL_YIELDS: "더 강한 필수/중요 업무를 보호하기 위해 optional 업무를 뒤로 둡니다", CAPACITY_UNKNOWN: "현재 가용시간을 확인해야 합니다", LEARNING_STATE: "사용자가 기록한 독립 학습 상태를 근거로 보존합니다",
+  LEARNING_PROPOSAL: "Learning이 정확한 실행 범위를 제안했습니다", LEARNING_SCHEDULE_RISK: "학습 완료 예상과 평가 일정 사이 여유가 부족합니다", LEARNING_SLACK: "현재 예상 완료일과 평가 일정 사이 확인된 여유가 있습니다",
   CARRYOVER: "이전 Day Close에서 미완료로 확인되어 다시 검토합니다",
   ESTIMATE_HISTORY: "같은 작업 범위의 소요시간 오차가 여러 날 관찰되어 예상시간 확인이 필요합니다",
   BLOCKER_HISTORY: "같은 작업 범위의 막힘이 여러 날 관찰되어 시작 전 준비를 확인합니다",
@@ -98,10 +116,12 @@ const labels: Record<z.infer<typeof reasonCodeSchema>, string> = {
 export function judgeOutcomes(input: OutcomeInput): OutcomeJudgment {
   const { observation, now } = input;
   const evidence = observation.outcomeEvidence;
+  const learningById = new Map((input.learningCandidates ?? []).map(candidate => [candidate.candidateId, candidate]));
   const capacity = projectOutcomeCapacity(input);
   const currentCapacity = outcomeAvailableMinutes(input);
   const todayDate = outcomeLocalDate(now, observation.timeZone);
-  const candidates = observation.tasks.filter(t => ["INBOX", "PLANNED", "IN_PROGRESS", "BLOCKED", "WAITING_FOR_USER"].includes(t.status));
+  const candidates = [...observation.tasks, ...(input.learningCandidates ?? []).map(candidate => learningCandidateTask(candidate, observation.timeZone, now))]
+    .filter(t => ["INBOX", "PLANNED", "IN_PROGRESS", "BLOCKED", "WAITING_FOR_USER"].includes(t.status));
   const blocked = new Set(candidates.filter(t => ["BLOCKED", "WAITING_FOR_USER"].includes(t.status)).map(t => t.id as string));
   for (const edge of evidence?.dependencies ?? []) if (!edge.completed) blocked.add(edge.taskId);
   for (const task of candidates) {
@@ -109,9 +129,16 @@ export function judgeOutcomes(input: OutcomeInput): OutcomeJudgment {
     if (first && ["dependency_waiting", "waiting_for_review", "blocked"].includes(first.status)) blocked.add(task.id);
   }
   const choices = candidates.map(task => {
+    const learning = learningById.get(String(task.id));
     const codes: Choice["reasonCodes"] = [];
-    const refs = [`task:${task.id}`];
-    const context = evidence?.contexts?.find(c => c.id === task.workContextId);
+    const refs = learning ? [...learning.evidenceRefs] : [`task:${task.id}`];
+    const storedContext = evidence?.contexts?.find(c => c.id === task.workContextId);
+    const context = learning ? { id: learning.contextId, commitmentLevel: learning.commitmentLevel,
+      strategicImportance: learning.strategicImportance, studyMode: learning.studyMode,
+      examDate: learning.assessment?.dueDate ?? null } : storedContext;
+    if (learning) codes.push("LEARNING_PROPOSAL");
+    if (learning?.judgmentState === "RISK") codes.push("LEARNING_SCHEDULE_RISK");
+    if (learning?.forecast.scheduleSlackDays !== null && learning.forecast.scheduleSlackDays > 0) codes.push("LEARNING_SLACK");
     if (context) refs.push(`work-context:${context.id}`);
     if (context?.commitmentLevel === "REQUIRED") codes.push("REQUIRED_COMMITMENT");
     if (context?.strategicImportance !== null && context?.strategicImportance !== undefined) codes.push("STRATEGIC_IMPORTANCE");
@@ -120,7 +147,7 @@ export function judgeOutcomes(input: OutcomeInput): OutcomeJudgment {
     if (deficit) codes.push("FUTURE_CAPACITY_DEFICIT");
     else if (windows.some(window => window.slackMinutes === null) || (!windows.length && (task.officialDeadline || task.internalDeadline || context?.examDate))) codes.push("FUTURE_CAPACITY_UNKNOWN");
     refs.push(...windows.map(window => `capacity-window:${window.startDate}:${window.endDate}`));
-    if (context?.studyMode === "CUMULATIVE" && deficit && context.commitmentLevel !== "OPTIONAL") codes.push("CUMULATIVE_PROTECTION");
+    if (context?.studyMode === "CUMULATIVE" && (deficit || learning?.judgmentState === "RISK") && context.commitmentLevel !== "OPTIONAL") codes.push("CUMULATIVE_PROTECTION");
     const units = evidence?.learningUnits?.filter(unit => unit.workContextId === task.workContextId) ?? [];
     if (units.length) { codes.push("LEARNING_STATE"); refs.push(...units.map(unit => `learning-unit:${unit.id}:${unit.exposureState}:${unit.understandingState}:${unit.validationState}`)); }
     if(observation.carryoverContext?.taskIds.includes(task.id)) { codes.push("CARRYOVER"); refs.push(`day-close:${observation.carryoverContext.sourceDate}`); }
@@ -162,11 +189,15 @@ export function judgeOutcomes(input: OutcomeInput): OutcomeJudgment {
     });
     return { taskId: task.id as string, outcome: task.completionCriteria || task.title, completionCriteria: task.completionCriteria, reasonCodes: [...new Set(codes)], rationale: "", evidenceRefs: refs, minutes, deadline: task.officialDeadline?.getTime() ?? task.internalDeadline?.getTime() ?? Infinity, importance: task.importance, unlocks: downstream.length,
       commitment: context?.commitmentLevel ?? null, strategicImportance: context?.strategicImportance ?? null, studyMode: context?.studyMode ?? null, seriousDependency,
-      capacityWindowSlackMinutes: windows.length && windows.every(window=>window.slackMinutes!==null) ? Math.min(...windows.map(window=>window.slackMinutes!)) : null };
+      capacityWindowSlackMinutes: windows.length && windows.every(window=>window.slackMinutes!==null) ? Math.min(...windows.map(window=>window.slackMinutes!)) : null,
+      candidateSource: learning ? "learning_proposal" as const : "task" as const, contextId: task.workContextId,
+      contextTitle: learning?.contextTitle ?? null, exactScope: learning?.proposal.title ?? null,
+      relevantDeadline: learning?.assessment?.dueDate ?? null, learningJudgmentState: learning?.judgmentState ?? null,
+      forecastSlackDays: learning?.forecast.scheduleSlackDays ?? null, selectedPolicyName: learning?.proposal.allocationPolicyName ?? null };
   });
   // Ordered policy bands, not a weighted score. Calendar only validates fit.
   const band = (c: typeof choices[number]) => c.reasonCodes.includes("OVERDUE") || c.reasonCodes.includes("DUE_TODAY") ? 0
-    : c.seriousDependency ? 1 : c.reasonCodes.includes("FUTURE_CAPACITY_DEFICIT") && c.commitment !== "OPTIONAL" ? 1
+    : c.seriousDependency ? 1 : (c.reasonCodes.includes("FUTURE_CAPACITY_DEFICIT") || c.reasonCodes.includes("LEARNING_SCHEDULE_RISK")) && c.commitment !== "OPTIONAL" ? 1
     : c.reasonCodes.includes("COMMITMENT") || c.reasonCodes.includes("INTERNAL_DEADLINE") || (c.reasonCodes.includes("CARRYOVER") && c.importance >= 4) ? 2
       : c.reasonCodes.includes("IMPORTANT") || c.reasonCodes.includes("GOAL") ? 3
         : c.reasonCodes.includes("UNBLOCKS") ? 4 : 5;
@@ -200,7 +231,9 @@ export function judgeOutcomes(input: OutcomeInput): OutcomeJudgment {
     && !(c.commitment === "OPTIONAL" && choices.some(other => !blocked.has(other.taskId) && other.commitment !== "OPTIONAL" && band(other) <= 1 && !selected.includes(other)))) { relief=c; selected.push(c); break; }
   const finish = (c: typeof choices[number], extra: Choice["reasonCodes"][number]): Choice => {
     const reasonCodes = [...new Set([...c.reasonCodes, extra])];
-    return { taskId:c.taskId, outcome:c.outcome, completionCriteria:c.completionCriteria, capacityWindowSlackMinutes:c.capacityWindowSlackMinutes, minutes:c.minutes, evidenceRefs:c.evidenceRefs, reasonCodes, rationale:reasonCodes.map(code=>labels[code]).join(". ") + "." };
+    return { taskId:c.taskId, outcome:c.outcome, completionCriteria:c.completionCriteria, capacityWindowSlackMinutes:c.capacityWindowSlackMinutes, minutes:c.minutes, evidenceRefs:c.evidenceRefs, reasonCodes, rationale:reasonCodes.map(code=>labels[code]).join(". ") + ".",
+      candidateSource:c.candidateSource,contextId:c.contextId,contextTitle:c.contextTitle,exactScope:c.exactScope,relevantDeadline:c.relevantDeadline,
+      learningJudgmentState:c.learningJudgmentState,forecastSlackDays:c.forecastSlackDays,selectedPolicyName:c.selectedPolicyName };
   };
   const notToday = choices.filter(c=>!selected.includes(c)).map(c => {
     const capacityMiss = !blocked.has(c.taskId) && c.minutes > 0 && !fit(c);
@@ -217,11 +250,12 @@ export function judgeOutcomes(input: OutcomeInput): OutcomeJudgment {
     const action = evidence?.approvedAction;
     const actionChoice = action?.taskId ? eligible.find((choice) => choice.taskId === action.taskId) : null;
     const top = selected[0];
-    if (!occupied && top && (!actionChoice || top.taskId !== actionChoice.taskId)) currentMission={taskId:top.taskId,title:top.outcome,source:"chief_recommendation",reasonCodes:finish(top,currentCapacity === null ? "CAPACITY_UNKNOWN" : "SCHEDULE_FIT").reasonCodes};
+    if (!occupied && top && (!actionChoice || top.taskId !== actionChoice.taskId)) currentMission={taskId:top.taskId,title:top.exactScope ?? top.outcome,source:"chief_recommendation",reasonCodes:finish(top,currentCapacity === null ? "CAPACITY_UNKNOWN" : "SCHEDULE_FIT").reasonCodes};
     else if (!occupied && action && new Date(action.startsAt)<=now && new Date(action.endsAt)>now && (!action.taskId || actionChoice)) currentMission={ taskId:action.taskId,title:action.title,source:"plan_item",reasonCodes:["APPROVED_PLAN"] };
-    else if (!occupied && top) currentMission={taskId:top.taskId,title:top.outcome,source:"chief_recommendation",reasonCodes:finish(top,currentCapacity === null ? "CAPACITY_UNKNOWN" : "SCHEDULE_FIT").reasonCodes};
+    else if (!occupied && top) currentMission={taskId:top.taskId,title:top.exactScope ?? top.outcome,source:"chief_recommendation",reasonCodes:finish(top,currentCapacity === null ? "CAPACITY_UNKNOWN" : "SCHEDULE_FIT").reasonCodes};
   }
-  return outcomeJudgmentSchema.parse({ contextRefs:observation.learningContext?.workstyle.map(p=>`workstyle:${p.id}:v${p.revision}`) ?? [], version:"chief-outcome-v1",todayPriority:today.map(c=>finish(c,currentCapacity === null ? "CAPACITY_UNKNOWN" : "SCHEDULE_FIT")),futureRelief:relief ? finish(relief,"SCHEDULE_FIT") : null,notToday,risks:notToday.filter(c=>c.reasonCodes.some(r=>["OVERDUE","DUE_TODAY","DEADLINE_RISK","COMMITMENT","FUTURE_CAPACITY_DEFICIT","FUTURE_CAPACITY_UNKNOWN"].includes(r))),currentMission,selectedTaskIds:selected.map(c=>c.taskId),eligibleTaskIds:eligible.map(c=>c.taskId),approvedPlan:evidence?.approvedPlan ?? null,capacityKnown:currentCapacity!==null,
+  return outcomeJudgmentSchema.parse({ contextRefs:[...(observation.learningContext?.workstyle.map(p=>`workstyle:${p.id}:v${p.revision}`) ?? []),
+    ...(input.learningCandidates ?? []).flatMap(candidate => candidate.evidenceRefs)], version:"chief-outcome-v1",todayPriority:today.map(c=>finish(c,currentCapacity === null ? "CAPACITY_UNKNOWN" : "SCHEDULE_FIT")),futureRelief:relief ? finish(relief,"SCHEDULE_FIT") : null,notToday,risks:notToday.filter(c=>c.reasonCodes.some(r=>["OVERDUE","DUE_TODAY","DEADLINE_RISK","COMMITMENT","FUTURE_CAPACITY_DEFICIT","FUTURE_CAPACITY_UNKNOWN","LEARNING_SCHEDULE_RISK"].includes(r))),currentMission,selectedTaskIds:selected.map(c=>c.taskId),eligibleTaskIds:eligible.map(c=>c.taskId),approvedPlan:evidence?.approvedPlan ?? null,capacityKnown:currentCapacity!==null,
     capacityConflicts:capacity.deadlineWindows.filter(window => window.availableMinutes !== null && window.knownRequiredWorkMinutes > window.availableMinutes).map(window => ({ startDate:window.startDate,endDate:window.endDate,availableMinutes:window.availableMinutes,knownRequiredWorkMinutes:window.knownRequiredWorkMinutes,taskIds:[...window.requiredTaskIds] })) });
 }
 

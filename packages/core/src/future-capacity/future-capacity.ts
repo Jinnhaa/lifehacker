@@ -4,6 +4,7 @@ import { mergeIntervals } from "../morning/morning-planner.js";
 import type { TimeInterval } from "../morning/morning.js";
 import { getRemainingMinutes } from "../rules/duration.js";
 import type { Task } from "../task/task.js";
+import { isTerminalTaskStatus } from "../task/task.js";
 
 export type FutureCapacityTask = Pick<Task, "id" | "status" | "plannedDate" | "internalDeadline" | "officialDeadline" | "estimatedUserMinutes" | "estimatedMinutes" | "actualMinutes">;
 export interface FutureCapacityInput {
@@ -98,7 +99,7 @@ export function projectFutureCapacity(input: FutureCapacityInput): FutureCapacit
   const workload: FutureWorkloadEvidence[] = input.tasks.flatMap((task) => {
     if (ids.has(task.id)) throw new Error("Duplicate Task evidence");
     ids.add(task.id);
-    if (task.status === "DONE") return [];
+    if (isTerminalTaskStatus(task.status)) return [];
     validMinutes(task.actualMinutes);
     if (task.estimatedUserMinutes !== null) validMinutes(task.estimatedUserMinutes);
     if (task.estimatedMinutes !== null) validMinutes(task.estimatedMinutes);

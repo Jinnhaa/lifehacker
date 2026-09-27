@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   deriveMaterialProgress,
+  deriveLearningRecovery,
   projectMaterialCompletion,
   proposeLearningTasks,
   resolveLearningAllocation
@@ -33,8 +34,11 @@ type UnitRow = {
 };
 type AssessmentRow = { id: string; workContextId: string; title: string; dueDate: string | Date | null; dueAt: string | Date | null };
 type ActiveTaskRow = { taskId: string; targetId: string; workContextId: string; materialId: string; title: string;
-  assignedUnits: number; startSequence: number | null; endSequence: number | null; allocationPolicyId: string | null; policyName: string | null };
+  assignedUnits: number; startSequence: number | null; endSequence: number | null; allocationPolicyId: string | null; policyName: string | null;
+  estimatedMinutes: number | null };
 type ActivityRow = { id: string; workContextId: string; kind: "focus" | "task" | "event"; title: string; minutes: number | null; occurredAt: string | Date };
+type ResolvedTargetRow = { materialId: string; materializationKey: string | null; executionStatus: "COMPLETED" | "PARTIAL" | "SKIPPED" | "CANCELLED";
+  recoveryMode: "REDISTRIBUTE" | "RESET" | "CARRY_FORWARD" | "MANUAL" | null; assignedUnits: number; resolvedAt: string | Date; planDate: string };
 
 const seoulDate = (): string => new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit"
@@ -96,7 +100,7 @@ export async function loadLearningWorkspace(): Promise<LearningWorkspaceModel> {
     const sql = getWebSql();
     const userId = getWebUserId();
     const base = await loadLearningContexts();
-    const [stages, materials, units, policies, items, assessments, tasks, activities] = await Promise.all([
+    const [stages, materials, units, policies, items, assessments, tasks, resolvedTargets, activities] = await Promise.all([
       sql<LearningStage[]>`select id,user_id "userId",work_context_id "workContextId",title,position,status,
         completion_mode "completionMode",transition_mode "transitionMode",target_start_date "targetStartDate",
         target_end_date "targetEndDate",config,created_at "createdAt",updated_at "updatedAt"
@@ -119,11 +123,17 @@ export async function loadLearningWorkspace(): Promise<LearningWorkspaceModel> {
         from public.course_assessments where user_id=${userId} and (due_date>=${today} or due_at>=now()) order by coalesce(due_at,due_date::timestamptz)`,
       sql<ActiveTaskRow[]>`select t.id "taskId",x.id "targetId",t.work_context_id "workContextId",x.material_id "materialId",t.title,
         x.assigned_units "assignedUnits",x.start_sequence "startSequence",x.end_sequence "endSequence",
-        x.allocation_policy_id "allocationPolicyId",p.name "policyName"
+        x.allocation_policy_id "allocationPolicyId",p.name "policyName",t.estimated_minutes "estimatedMinutes"
         from public.task_learning_targets x join public.tasks t on t.id=x.task_id and t.user_id=x.user_id
         left join public.learning_allocation_policies p on p.id=x.allocation_policy_id and p.user_id=x.user_id
         where x.user_id=${userId} and x.execution_status='PENDING' and x.material_id is not null and x.assigned_units is not null
           and t.status in ('INBOX','PLANNED','IN_PROGRESS','BLOCKED','WAITING_FOR_USER')`,
+      sql<ResolvedTargetRow[]>`select x.material_id "materialId",x.materialization_key "materializationKey",
+        x.execution_status "executionStatus",x.recovery_mode "recoveryMode",x.assigned_units "assignedUnits",
+        x.resolved_at "resolvedAt",t.planned_date::text "planDate"
+        from public.task_learning_targets x join public.tasks t on t.id=x.task_id and t.user_id=x.user_id
+        where x.user_id=${userId} and x.execution_status<>'PENDING' and x.material_id is not null and x.assigned_units is not null
+        order by x.resolved_at desc`,
       sql<ActivityRow[]>`select * from (
         select f.id,t.work_context_id "workContextId",'focus'::text kind,t.title,f.actual_minutes minutes,f.ended_at "occurredAt"
           from public.focus_sessions f join public.tasks t on t.id=f.task_id and t.user_id=f.user_id
@@ -157,13 +167,27 @@ export async function loadLearningWorkspace(): Promise<LearningWorkspaceModel> {
           units: units.filter((unit) => unit.materialId === material.id && unit.sequenceNo !== null).map((unit) => ({
             learningUnitId: unit.id, sequenceNo: unit.sequenceNo!, exposureState: unit.exposureState })) })) }) : null;
       const activeTasks = tasks.filter((task) => task.workContextId === context.id);
-      const actionViews: LearningWorkspaceAction[] = activeTasks.length ? activeTasks.map((task) => ({ kind: "task", taskId: task.taskId,
+      const activeViews: LearningWorkspaceAction[] = activeTasks.map((task) => ({ kind: "task", taskId: task.taskId,
         targetId: task.targetId, materialId: task.materialId, allocationPolicyId: task.allocationPolicyId, title: task.title, assignedUnits: task.assignedUnits,
-        startSequence: task.startSequence, endSequence: task.endSequence, policyName: task.policyName, source: "CANONICAL_TASK", reasons: [] }))
-        : (proposed?.proposals ?? []).map((proposal) => ({ kind: "proposal", taskId: null, targetId: null,
+        startSequence: task.startSequence, endSequence: task.endSequence, policyName: task.policyName, source: "CANONICAL_TASK", reasons: [],
+        estimatedMinutes: task.estimatedMinutes, proposal: null }));
+      let recoveryNeedsReview = false;
+      const proposalViews: LearningWorkspaceAction[] = (proposed?.proposals ?? []).flatMap((proposal) => {
+        if (activeTasks.some((task) => task.materialId === proposal.materialId)) return [];
+        if (resolvedTargets.some((target) => target.materializationKey === proposal.materializationKey)) return [];
+        const previousResolution = resolvedTargets.find((target) => target.materialId === proposal.materialId && target.planDate < today);
+        if (previousResolution?.executionStatus === "SKIPPED" && previousResolution.recoveryMode) {
+          const recovery = deriveLearningRecovery({ recoveryMode: previousResolution.recoveryMode,
+            normalTargetUnits: proposal.assignedUnits, missedUnits: previousResolution.assignedUnits,
+            existingPendingUnits: 0, carryForwardLimitUnits: null });
+          if (recovery.proposedNextEligibleDayUnits === null) { recoveryNeedsReview = true; return []; }
+        }
+        return [{ kind: "proposal" as const, taskId: null, targetId: null,
           materialId: proposal.materialId, allocationPolicyId: proposal.allocationPolicyId, title: proposal.title, assignedUnits: proposal.assignedUnits,
           startSequence: proposal.startSequence, endSequence: proposal.endSequence, policyName: proposal.allocationPolicyName,
-          source: proposal.source, reasons: proposal.reasons }));
+          source: proposal.source, reasons: proposal.reasons, estimatedMinutes: proposal.estimatedMinutes ?? null, proposal }];
+      });
+      const actionViews: LearningWorkspaceAction[] = [...activeViews, ...proposalViews];
       const contextAssessments = assessments.filter((assessment) => assessment.workContextId === context.id).map((assessment) => ({
         id: assessment.id, title: assessment.title, dueDate: isoDate(assessment.dueDate), dueAt: isoTime(assessment.dueAt), sortAt: assessmentSort(assessment)
       }));
@@ -184,9 +208,12 @@ export async function loadLearningWorkspace(): Promise<LearningWorkspaceModel> {
       const forecastDefensible = stageMaterials.length > 0 && materialForecasts.every((forecast) => forecast?.status === "PROJECTED" || forecast?.status === "ALREADY_COMPLETE");
       const projected = forecastDefensible ? materialForecasts.map((forecast) => forecast?.projectedCompletionDate ?? today).sort().at(-1) ?? null : null;
       const due = nextAssessment?.sortAt?.slice(0, 10) ?? null;
+      const scheduleSlackDays = projected && due ? dayNumber(due) - dayNumber(projected) : null;
+      const forecastStatus = forecastDefensible ? projected === today ? "ALREADY_COMPLETE" as const : "PROJECTED" as const
+        : materialForecasts.some((forecast) => forecast?.status === "BEYOND_HORIZON") ? "BEYOND_HORIZON" as const : "UNKNOWN" as const;
       const risk = Boolean(projected && due && projected > due);
-      const unknown = !risk && (contextMaterials.length === 0 || !activeStage || materialViews.some((material) => material.totalScopedUnits === null)
-        || (nextAssessment === null && context.kind === "certification") || allocation.status !== "RESOLVED");
+      const unknown = !risk && (recoveryNeedsReview || contextMaterials.length === 0 || !activeStage || !forecastDefensible
+        || nextAssessment === null || materialViews.some((material) => material.totalScopedUnits === null) || allocation.status !== "RESOLVED");
       const state = risk ? "risk" : unknown ? "unknown" : projected && due && dayNumber(due) - dayNumber(projected) < 7 ? "attention" : "normal";
       const statusLine = contextMaterials.length === 0 ? "학습 자료 확인 필요"
         : materialViews.some((material) => material.totalScopedUnits === null) ? "전체 분량 확인 필요"
@@ -211,6 +238,7 @@ export async function loadLearningWorkspace(): Promise<LearningWorkspaceModel> {
         statusLine, forecastLabel: projected ? `${activeStage?.title ?? "현재 단계"} 예상 완료 ${projected.slice(5).replace("-", "/")}` : "예상 완료 계산 불가",
         forecastDetail: projected && due ? `일정 여유 ${dayNumber(due) - dayNumber(projected)}일`
           : materialForecasts.some((forecast) => forecast?.status === "BEYOND_HORIZON") ? "현재 계획으로는 90일 범위 밖입니다." : "전체 분량 또는 일일 학습량이 필요합니다.",
+        forecast: { status: forecastStatus, projectedCompletionDate: projected, scheduleSlackDays },
         activity: activities.filter((item) => item.workContextId === context.id).slice(0, 12).map(activityView)
       };
     });
@@ -235,6 +263,7 @@ export async function findLearningProposal(contextId: string, materialId: string
   const context = [...model.courses, ...model.certifications].find((item) => item.id === contextId);
   const action = context?.actions.find((item) => item.kind === "proposal" && item.materialId === materialId);
   if (!context || !context.activeStage || !action) throw new Error("현재 실행 가능한 학습 제안을 찾지 못했습니다.");
+  if (overrideUnits === undefined && action.proposal) return action.proposal;
   const assignedUnits = overrideUnits ?? action.assignedUnits;
   if (!Number.isInteger(assignedUnits) || assignedUnits <= 0) throw new Error("오늘 학습량은 1 이상이어야 합니다.");
   const material = context.materials.find((item) => item.id === materialId)!;
@@ -248,6 +277,7 @@ export async function findLearningProposal(contextId: string, materialId: string
     allocationPolicyName: overrideUnits === undefined ? action.policyName : "오늘만 조정", planDate: model.today,
     importance: context.strategicImportance ?? 3, title: `${material.title} ${startSequence === null ? `${assignedUnits}${label}` : startSequence === endSequence ? `${startSequence}${label}` : `${startSequence}~${endSequence}${label}`}`,
     completionCriteria: `${assignedUnits}${label} 학습 완료`, assignedUnits, startSequence, endSequence,
+    estimatedMinutes: action.estimatedMinutes,
     learningUnitIds: [], recoveryMode: "MANUAL", source: overrideUnits === undefined ? "PERSISTED_POLICY" : "TODAY_ONLY_OVERRIDE",
     reasons: [{ code: overrideUnits === undefined ? "CURRENT_DETERMINISTIC_PROPOSAL" : "TODAY_ONLY_USER_OVERRIDE", evidence: { temporary: overrideUnits !== undefined } }]
   };

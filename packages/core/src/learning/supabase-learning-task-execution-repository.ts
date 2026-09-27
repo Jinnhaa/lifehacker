@@ -106,8 +106,8 @@ export class SupabaseLearningTaskExecutionRepository {
         if (bounded[0]?.count !== proposal.assignedUnits) throw new Error("Bounded proposal no longer matches incomplete Learning Units");
       }
       const tasks = await tx<{ id: string }[]>`
-        insert into public.tasks(user_id,work_context_id,title,execution_mode,planned_date,importance,status,completion_criteria)
-        values(${userId},${proposal.workContextId},${proposal.title},'learning_required',${proposal.planDate},${proposal.importance},'PLANNED',${proposal.completionCriteria})
+        insert into public.tasks(user_id,work_context_id,title,execution_mode,planned_date,importance,status,completion_criteria,estimated_minutes)
+        values(${userId},${proposal.workContextId},${proposal.title},'learning_required',${proposal.planDate},${proposal.importance},'PLANNED',${proposal.completionCriteria},${proposal.estimatedMinutes ?? null})
         returning id`;
       const taskId = tasks[0]!.id;
       const targets = await tx<{ id: string }[]>`

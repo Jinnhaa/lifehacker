@@ -6,6 +6,8 @@ import { deriveCurrentAction } from "../execution/current-action.js";
 import { judgeOutcomes, outcomeFingerprint, outcomeJudgmentSchema, type OutcomeEvidence, type OutcomeInput, type OutcomeJudgment } from "./outcome-priority.js";
 import { deriveCurrentStatus } from "./current-status.js";
 import { SupabaseLearningUnitRepository } from "../learning/supabase-learning-unit-repository.js";
+import { SupabaseLearningTaskExecutionRepository } from "../learning/supabase-learning-task-execution-repository.js";
+import type { ChiefLearningCandidate } from "../learning/chief-learning-candidate.js";
 
 export async function loadOutcomeEvidence(sql: Sql, userId: UserId, date: string, timeZone = "Asia/Seoul"): Promise<OutcomeEvidence> {
   const dayStart = zonedDateTimeToUtc(`${date}T00:00:00`, timeZone);
@@ -23,7 +25,9 @@ export async function loadOutcomeEvidence(sql: Sql, userId: UserId, date: string
       left join public.tasks t on t.id=f.task_id and t.user_id=f.user_id
       left join public.activity_occurrences o on o.id=f.activity_occurrence_id and o.user_id=f.user_id
       left join public.recurring_activities a on a.id=o.recurring_activity_id and a.user_id=o.user_id
-      where f.user_id=${userId} and f.status='active' order by f.started_at desc limit 1`,
+      where f.user_id=${userId} and f.status='active'
+        and (f.task_id is null or t.status in ('INBOX','PLANNED','IN_PROGRESS','BLOCKED','WAITING_FOR_USER'))
+      order by f.started_at desc limit 1`,
     deriveCurrentAction(sql,userId,date,timeZone),
     sql<{ count: number }[]>`select count(*)::int count from public.tasks where user_id=${userId} and status='DONE' and completed_at>=${dayStart} and completed_at<=${dayEnd}`,
     sql<{ task_id: string }[]>`
@@ -91,7 +95,8 @@ export async function persistOutcomeJudgment(sql:Sql,userId:UserId,input:Outcome
   });
 }
 
-export async function getHomeOutcome(sql:Sql,userId:UserId,date:string,observation:MorningObservation,now:Date) {
+export async function getHomeOutcome(sql:Sql,userId:UserId,date:string,observation:MorningObservation,now:Date,
+  learningCandidates: readonly ChiefLearningCandidate[] = []) {
   const [workflows]=await sql<{checkpoint_state:Record<string,unknown>}[]>`select checkpoint_state from public.workflow_runs where user_id=${userId} and workflow_type='morning' and checkpoint_state->>'planDate'=${date} order by updated_at desc limit 1`;
   const configured=observation.planningPolicy.defaultWorkUntil ?? observation.planningPolicy.workUntil;
   const value=workflows?.checkpoint_state.workUntil;
@@ -103,8 +108,26 @@ export async function getHomeOutcome(sql:Sql,userId:UserId,date:string,observati
     return Number.isFinite(start.getTime()) && end>start ? [{start,end}] : [];
   }) : [];
   const weekday=new Date(`${date}T00:00:00Z`).getUTCDay();
-  const input:OutcomeInput={observation,now:new Date(Math.ceil(now.getTime()/60_000)*60_000),workUntil:workUntil && Number.isFinite(workUntil.getTime()) ? workUntil : null,privateIntervals,localWeekday:weekday || 7};
-  const judgment=outcomeJudgmentSchema.parse(judgeOutcomes(input));
+  const input:OutcomeInput={observation,now:new Date(Math.ceil(now.getTime()/60_000)*60_000),workUntil:workUntil && Number.isFinite(workUntil.getTime()) ? workUntil : null,privateIntervals,localWeekday:weekday || 7,learningCandidates};
+  let judgment=outcomeJudgmentSchema.parse(judgeOutcomes(input));
+  const selectedLearning = learningCandidates.find(candidate => candidate.candidateId === judgment.currentMission?.taskId);
+  if (selectedLearning) {
+    const materialized = await new SupabaseLearningTaskExecutionRepository(sql).materialize(userId, selectedLearning.proposal, input.now);
+    const replace = (item: OutcomeJudgment["todayPriority"][number]): OutcomeJudgment["todayPriority"][number] => item.taskId === selectedLearning.candidateId
+      ? { ...item, taskId: materialized.taskId } : item;
+    judgment = outcomeJudgmentSchema.parse({
+      ...judgment,
+      todayPriority: judgment.todayPriority.map(replace),
+      futureRelief: judgment.futureRelief ? replace(judgment.futureRelief) : null,
+      notToday: judgment.notToday.map(replace),
+      risks: judgment.risks.map(replace),
+      currentMission: judgment.currentMission ? { ...judgment.currentMission, taskId: materialized.taskId } : null,
+      selectedTaskIds: judgment.selectedTaskIds.map(id => id === selectedLearning.candidateId ? materialized.taskId : id),
+      eligibleTaskIds: judgment.eligibleTaskIds.map(id => id === selectedLearning.candidateId ? materialized.taskId : id),
+      capacityConflicts: judgment.capacityConflicts.map(conflict => ({ ...conflict,
+        taskIds: conflict.taskIds.map(id => id === selectedLearning.candidateId ? materialized.taskId : id) }))
+    });
+  }
   const decisionId=await persistOutcomeJudgment(sql,userId,input,judgment);
   const capacityEnd=input.workUntil && input.workUntil>input.now ? input.workUntil : null;
   const occupied=[...observation.constraints.filter(item=>item.blocksCapacity),...privateIntervals]

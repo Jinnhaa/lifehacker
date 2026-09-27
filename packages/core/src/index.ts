@@ -42,6 +42,7 @@ export * from "./learning/learning-allocation.js";
 export * from "./learning/learning-recovery.js";
 export * from "./learning/learning-forecast.js";
 export * from "./learning/learning-task-execution.js";
+export * from "./learning/chief-learning-candidate.js";
 export * from "./learning/supabase-learning-task-execution-repository.js";
 export * from "./learning/supabase-learning-unit-repository.js";
 export * from "./learning/supabase-learning-bootstrap-repository.js";
