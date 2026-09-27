@@ -9,7 +9,10 @@ export type TaskEventType =
   | "task_blocked"
   | "task_waiting_for_user"
   | "task_resumed"
-  | "task_completed";
+  | "task_completed"
+  | "task_closed_partial"
+  | "task_skipped"
+  | "task_cancelled";
 
 export interface TaskEventPayload {
   readonly previous_status: TaskStatus | null;
@@ -39,6 +42,9 @@ export const getTaskEventType = (previous: TaskStatus, next: TaskStatus): TaskEv
   if (next === "BLOCKED") return "task_blocked";
   if (next === "WAITING_FOR_USER") return "task_waiting_for_user";
   if (next === "DONE") return "task_completed";
+  if (next === "CLOSED_PARTIAL") return "task_closed_partial";
+  if (next === "SKIPPED") return "task_skipped";
+  if (next === "CANCELLED") return "task_cancelled";
   if (next === "IN_PROGRESS" && (previous === "BLOCKED" || previous === "WAITING_FOR_USER")) {
     return "task_resumed";
   }

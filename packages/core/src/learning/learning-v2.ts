@@ -8,6 +8,7 @@ export const learningStageTransitionModeSchema = z.enum(["MANUAL", "SEQUENTIAL",
 export const learningMaterialStatusSchema = z.enum(["ACTIVE", "COMPLETED", "ARCHIVED"]);
 export const learningTrackingModeSchema = z.enum(["UNIT_COUNT", "LEARNING_STATE", "TIME", "UNTRACKED"]);
 export const learningRecoveryModeSchema = z.enum(["REDISTRIBUTE", "RESET", "CARRY_FORWARD", "MANUAL"]);
+export const learningTargetExecutionStatusSchema = z.enum(["PENDING", "COMPLETED", "PARTIAL", "SKIPPED", "CANCELLED"]);
 export const learningAssessmentTypeSchema = z.enum([
   "quiz", "midterm", "final", "assignment", "project", "team_project", "exam", "mock_exam", "attendance", "other"
 ]);
@@ -17,6 +18,7 @@ export type LearningStageCompletionMode = z.infer<typeof learningStageCompletion
 export type LearningStageTransitionMode = z.infer<typeof learningStageTransitionModeSchema>;
 export type LearningTrackingMode = z.infer<typeof learningTrackingModeSchema>;
 export type LearningRecoveryMode = z.infer<typeof learningRecoveryModeSchema>;
+export type LearningTargetExecutionStatus = z.infer<typeof learningTargetExecutionStatusSchema>;
 export type LearningAssessmentType = z.infer<typeof learningAssessmentTypeSchema>;
 
 interface LearningRecord {
@@ -97,6 +99,13 @@ export interface TaskLearningTarget {
   readonly startSequence: number | null;
   readonly endSequence: number | null;
   readonly allocationPolicyId: string | null;
+  readonly assignedUnits: number | null;
+  readonly completedUnits: number;
+  readonly completedThroughSequence: number | null;
+  readonly executionStatus: LearningTargetExecutionStatus;
+  readonly resolvedAt: string | null;
+  readonly recoveryMode: LearningRecoveryMode | null;
+  readonly materializationKey: string | null;
   readonly createdAt: string;
 }
 
