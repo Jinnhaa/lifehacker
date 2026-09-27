@@ -11,6 +11,7 @@ async function lockLearningContext(tx: TransactionSql, userId: UserId, contextId
 }
 async function loadUnit(tx: TransactionSql, userId: UserId, contextId: string, id: string): Promise<LearningUnit> {
   const rows = await tx<LearningUnit[]>`select id,user_id "userId",work_context_id "workContextId",title,position,
+    stage_id "stageId",material_id "materialId",sequence_no "sequenceNo",unit_type "unitType",canonical_topic_key "canonicalTopicKey",
     exposure_state "exposureState",understanding_state "understandingState",validation_state "validationState"
     from public.learning_units where id=${id} and user_id=${userId} and work_context_id=${contextId} for update`;
   if (!rows[0]) throw new Error("Learning Unit을 찾지 못했습니다.");
@@ -31,6 +32,7 @@ export class SupabaseLearningUnitRepository implements LearningUnitRepository {
   constructor(private readonly sql: Sql) {}
   async list(userId: UserId): Promise<readonly LearningUnit[]> {
     return this.sql<LearningUnit[]>`select u.id,u.user_id "userId",u.work_context_id "workContextId",u.title,u.position,
+      u.stage_id "stageId",u.material_id "materialId",u.sequence_no "sequenceNo",u.unit_type "unitType",u.canonical_topic_key "canonicalTopicKey",
       u.exposure_state "exposureState",u.understanding_state "understandingState",u.validation_state "validationState"
       from public.learning_units u join public.work_contexts w on w.id=u.work_context_id and w.user_id=u.user_id
       where u.user_id=${userId} and w.kind in ('course','certification') and w.status='active' and w.archived_at is null
@@ -44,8 +46,10 @@ export class SupabaseLearningUnitRepository implements LearningUnitRepository {
       const position = input.position ?? Number(positions[0]!.next_position);
       if (position > 2147483647) throw new Error("사용 가능한 순서 범위를 초과했습니다.");
       await checkPosition(tx, contextId, position, null);
-      const rows = await tx<{ id: string }[]>`insert into public.learning_units(user_id,work_context_id,title,position,exposure_state,understanding_state,validation_state)
-        values(${userId},${contextId},${input.title},${position},${input.exposureState},${input.understandingState},${input.validationState}) returning id`;
+      const rows = await tx<{ id: string }[]>`insert into public.learning_units(user_id,work_context_id,title,position,exposure_state,understanding_state,validation_state,
+        stage_id,material_id,sequence_no,unit_type,canonical_topic_key)
+        values(${userId},${contextId},${input.title},${position},${input.exposureState},${input.understandingState},${input.validationState},
+          ${input.stageId ?? null},${input.materialId ?? null},${input.sequenceNo ?? null},${input.unitType ?? null},${input.canonicalTopicKey ?? null}) returning id`;
       const unit = await loadUnit(tx, userId, contextId, rows[0]!.id);
       await recordEvent(tx, userId, "learning_unit_created", unit.id, null, unit);
       return unit;
@@ -57,6 +61,11 @@ export class SupabaseLearningUnitRepository implements LearningUnitRepository {
       const before = await loadUnit(tx, userId, contextId, id);
       if (input.position !== undefined) await checkPosition(tx, contextId, input.position, id);
       await tx`update public.learning_units set title=${input.title ?? before.title},position=${input.position ?? before.position},
+        stage_id=${input.stageId === undefined ? before.stageId ?? null : input.stageId},
+        material_id=${input.materialId === undefined ? before.materialId ?? null : input.materialId},
+        sequence_no=${input.sequenceNo === undefined ? before.sequenceNo ?? null : input.sequenceNo},
+        unit_type=${input.unitType === undefined ? before.unitType ?? null : input.unitType},
+        canonical_topic_key=${input.canonicalTopicKey === undefined ? before.canonicalTopicKey ?? null : input.canonicalTopicKey},
         exposure_state=${input.exposureState ?? before.exposureState},understanding_state=${input.understandingState ?? before.understandingState},
         validation_state=${input.validationState ?? before.validationState},updated_at=now()
         where id=${id} and user_id=${userId} and work_context_id=${contextId}`;

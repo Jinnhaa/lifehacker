@@ -35,6 +35,7 @@ export * from "./goal-planning/period-goal-management.js";
 export * from "./goal-planning/supabase-period-goal-management-repository.js";
 export * from "./context-management/context-management.js";
 export * from "./learning/learning-unit.js";
+export * from "./learning/learning-v2.js";
 export * from "./learning/supabase-learning-unit-repository.js";
 export * from "./context-management/supabase-context-management-repository.js";
 export * from "./integrations/integration-settings.js";

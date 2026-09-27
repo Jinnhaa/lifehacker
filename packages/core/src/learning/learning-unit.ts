@@ -6,13 +6,22 @@ export const understandingStateSchema = z.enum(["UNKNOWN", "WEAK", "OK", "STRONG
 export const validationStateSchema = z.enum(["NOT_TESTED", "FAILED", "PASSED"]);
 const titleSchema = z.string().trim().min(1, "제목을 입력해 주세요.").max(300);
 const positionSchema = z.number().int().positive().max(2147483647);
+const learningUnitLinks = {
+  stageId: z.uuid().nullable().optional(),
+  materialId: z.uuid().nullable().optional(),
+  sequenceNo: positionSchema.nullable().optional(),
+  unitType: z.string().trim().min(1).nullable().optional(),
+  canonicalTopicKey: z.string().trim().min(1).nullable().optional()
+};
 const createSchema = z.object({
+  ...learningUnitLinks,
   title: titleSchema, position: positionSchema.nullable().default(null),
   exposureState: exposureStateSchema.default("NOT_STARTED"),
   understandingState: understandingStateSchema.default("UNKNOWN"),
   validationState: validationStateSchema.default("NOT_TESTED")
 });
 const updateSchema = z.object({
+  ...learningUnitLinks,
   title: titleSchema.optional(), position: positionSchema.optional(),
   exposureState: exposureStateSchema.optional(), understandingState: understandingStateSchema.optional(),
   validationState: validationStateSchema.optional()
@@ -23,6 +32,12 @@ export type LearningUnitUpdate = z.infer<typeof updateSchema>;
 export interface LearningUnit {
   readonly id: string; readonly userId: UserId; readonly workContextId: string;
   readonly title: string; readonly position: number;
+  // Optional for legacy in-memory callers; persisted V2 rows return explicit nullable links.
+  readonly stageId?: string | null;
+  readonly materialId?: string | null;
+  readonly sequenceNo?: number | null;
+  readonly unitType?: string | null;
+  readonly canonicalTopicKey?: string | null;
   readonly exposureState: z.infer<typeof exposureStateSchema>;
   readonly understandingState: z.infer<typeof understandingStateSchema>;
   readonly validationState: z.infer<typeof validationStateSchema>;
