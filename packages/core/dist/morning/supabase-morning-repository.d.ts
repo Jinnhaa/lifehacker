@@ -14,7 +14,7 @@ export declare class SupabaseMorningRepository implements MorningRepository {
         plan: MorningPlan;
         duplicate: boolean;
     }>;
-    deriveCurrentAction(userId: UserId, planDate: string): Promise<CurrentAction | null>;
+    deriveCurrentAction(userId: UserId, planDate: string, timeZone?: string, now?: Date): Promise<CurrentAction | null>;
     private getPlan;
 }
 //# sourceMappingURL=supabase-morning-repository.d.ts.map

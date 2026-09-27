@@ -105,7 +105,7 @@ export interface ReplanRepository {
     reject(workflow: ReplanWorkflowRun, now: Date, messageId: string): Promise<{
         readonly duplicate: boolean;
     }>;
-    deriveCurrentAction(userId: UserId, planDate: string): Promise<DerivedCurrentAction | null>;
+    deriveCurrentAction(userId: UserId, planDate: string, timeZone?: string, now?: Date): Promise<DerivedCurrentAction | null>;
 }
 export interface ReplanProcessor {
     processLatestTrigger(userId: UserId, timeZone: string, receivedAt: Date): Promise<string | null>;

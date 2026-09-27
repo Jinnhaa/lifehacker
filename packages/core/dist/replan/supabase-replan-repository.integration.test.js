@@ -77,7 +77,7 @@ describe("Supabase dynamic replanning", () => {
             planned_end_at: new Date("2026-09-04T04:00:00.000Z"),
             planned_minutes: 60
         });
-        const current = await repository.deriveCurrentAction(smallUser, "2026-09-04");
+        const current = await repository.deriveCurrentAction(smallUser, "2026-09-04", "Asia/Seoul", now);
         expect(current).toMatchObject({ source: "plan_item", taskId: smallTask, title: "작은 변경 과제" });
         const events = await sql `
       select
@@ -99,7 +99,7 @@ describe("Supabase dynamic replanning", () => {
       select revision_no,status from public.daily_plans where user_id=${importantUser} order by revision_no
     `;
         expect(before).toEqual([{ revision_no: 1, status: "approved" }, { revision_no: 2, status: "pending_approval" }]);
-        expect(await repository.deriveCurrentAction(importantUser, "2026-09-04")).toMatchObject({ taskId: importantTask });
+        expect(await repository.deriveCurrentAction(importantUser, "2026-09-04", "Asia/Seoul", now)).toMatchObject({ taskId: importantTask });
         const rejection = await service.handleReplanMessage({
             userId: importantUser, timeZone: "Asia/Seoul", text: "거절", messageId: "web:rest-reject", receivedAt: now
         });
@@ -107,7 +107,7 @@ describe("Supabase dynamic replanning", () => {
         expect(await sql `
       select revision_no,status from public.daily_plans where user_id=${importantUser} order by revision_no
     `).toEqual([{ revision_no: 1, status: "approved" }, { revision_no: 2, status: "superseded" }]);
-        expect(await repository.deriveCurrentAction(importantUser, "2026-09-04")).toMatchObject({ taskId: importantTask });
+        expect(await repository.deriveCurrentAction(importantUser, "2026-09-04", "Asia/Seoul", now)).toMatchObject({ taskId: importantTask });
         await service.handleReplanMessage({
             userId: importantUser, timeZone: "Asia/Seoul", text: "나 지금 1시간 쉬고 싶어", messageId: "web:rest-proposal-v2", receivedAt: now
         });
@@ -127,7 +127,7 @@ describe("Supabase dynamic replanning", () => {
         expect(after[0]).toEqual({ approved: 1, approval: 1 });
         const persisted = await repository.loadPlanState(importantUser, "2026-09-04");
         expect(persisted).toMatchObject({ revisionNo: 3 });
-        expect(await repository.deriveCurrentAction(importantUser, "2026-09-04")).toMatchObject({ source: "plan_item", title: "휴식" });
+        expect(await repository.deriveCurrentAction(importantUser, "2026-09-04", "Asia/Seoul", now)).toMatchObject({ source: "plan_item", title: "휴식" });
         const editable = persisted.items[0];
         await service.editPlan({
             userId: importantUser, planId: persisted.planId, receivedAt: now, idempotencyKey: "direct-edit-reject",

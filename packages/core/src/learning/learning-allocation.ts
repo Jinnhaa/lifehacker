@@ -215,8 +215,9 @@ function itemRecoveryMode(
   materials: readonly AllocationMaterialState[]
 ): LearningRecoveryMode {
   const materialKey = materials.find((material) => material.materialId === materialId)?.key;
-  if (!materialKey || !record(policy.config)) return policy.recoveryMode;
-  const modes = policy.config.itemRecoveryModes;
+  const config: unknown = policy.config;
+  if (!materialKey || !record(config)) return policy.recoveryMode;
+  const modes = config.itemRecoveryModes;
   if (!record(modes)) return policy.recoveryMode;
   const mode = modes[materialKey];
   return mode === "REDISTRIBUTE" || mode === "RESET" || mode === "CARRY_FORWARD" || mode === "MANUAL"

@@ -362,8 +362,8 @@ export class SupabaseMorningRepository {
             return { plan: (await this.getPlan(tx, run.userId, planId)), duplicate: false };
         });
     }
-    async deriveCurrentAction(userId, planDate) {
-        const action = await deriveCurrentAction(this.sql, userId, planDate);
+    async deriveCurrentAction(userId, planDate, timeZone = "Asia/Seoul", now = new Date()) {
+        const action = await deriveCurrentAction(this.sql, userId, planDate, timeZone, now);
         return action ? { title: action.title, source: action.source } : null;
     }
     async getPlan(sql, userId, planId) {

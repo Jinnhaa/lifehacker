@@ -402,8 +402,8 @@ export class SupabaseMorningRepository implements MorningRepository {
     });
   }
 
-  async deriveCurrentAction(userId: UserId, planDate: string): Promise<CurrentAction | null> {
-    const action = await deriveCurrentAction(this.sql, userId, planDate);
+  async deriveCurrentAction(userId: UserId, planDate: string, timeZone = "Asia/Seoul", now = new Date()): Promise<CurrentAction | null> {
+    const action = await deriveCurrentAction(this.sql, userId, planDate, timeZone, now);
     return action ? { title: action.title, source: action.source } : null;
   }
 

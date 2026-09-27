@@ -180,3 +180,13 @@ export async function updateAllocationItemAction(_state: LearningWorkspaceAction
     refresh(); return workspaceResult("success", "기본 학습량을 변경했습니다.");
   } catch (error) { return workspaceResult("error", error instanceof Error ? error.message : "기본 학습량을 변경하지 못했습니다."); }
 }
+
+export async function updateAllocationPolicyAction(_state: LearningWorkspaceActionState, form: FormData): Promise<LearningWorkspaceActionState> {
+  try {
+    const id = uuid.parse(form.get("policyId"));
+    const recoveryMode = z.enum(["REDISTRIBUTE", "RESET", "CARRY_FORWARD", "MANUAL"]).parse(form.get("recoveryMode"));
+    await getWebSql()`update public.learning_allocation_policies set recovery_mode=${recoveryMode},updated_at=now()
+      where id=${id} and user_id=${getWebUserId()}`;
+    refresh(); return workspaceResult("success", "밀린 학습 처리 방식을 변경했습니다.");
+  } catch (error) { return workspaceResult("error", error instanceof Error ? error.message : "밀린 학습 처리 방식을 변경하지 못했습니다."); }
+}

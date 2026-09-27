@@ -110,7 +110,7 @@ export class DynamicReplanningService {
                 return completed ? { handled: true, reply: "이미 새 계획을 승인했어." } : { handled: false };
             }
             const result = await this.observationReader.approve(asMorningWorkflow(workflow), this.clock.now(), message.messageId);
-            const action = await this.repository.deriveCurrentAction(message.userId, planDate);
+            const action = await this.repository.deriveCurrentAction(message.userId, planDate, message.timeZone, this.clock.now());
             const baseReply = result.duplicate
                 ? "이미 새 계획을 승인했어."
                 : action ? `새 계획을 승인했어. 다음 할 일은 ${action.title}이야.` : "새 계획을 승인했어. 지금 시작할 계획 항목은 없어.";
@@ -204,7 +204,7 @@ export class DynamicReplanningService {
             : classified;
         const result = await this.repository.createRevision(trigger, stateHash(trigger, current, observation), current, draft, decision, now);
         if (result.workflow.impact === "SMALL_CHANGE") {
-            const action = await this.repository.deriveCurrentAction(trigger.userId, previous.planDate);
+            const action = await this.repository.deriveCurrentAction(trigger.userId, previous.planDate, timeZone, now);
             const next = action ? `\n\n다음 할 일은 ${action.title}이야.` : "";
             return `일정 조금 조정했어. ${reasonText(trigger.reason)} 남은 순서를 다시 맞췄어. 휴식과 버퍼는 보호했어.\n\n${formatPlan(result.plan, timeZone)}${next}`;
         }

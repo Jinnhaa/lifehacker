@@ -15,7 +15,7 @@ export declare class SupabaseReplanRepository implements ReplanRepository {
     loadEditablePlanState(userId: UserId, planId: string): Promise<ReplanPlanState | null>;
     createRevision(trigger: ReplanTrigger, stateHash: string, previous: ReplanPlanState, draft: MorningPlanDraft, decision: ReplanDecision, now: Date): Promise<ReplanRevisionResult>;
     createDirectEditRevision(userId: UserId, idempotencyKey: string, previous: ReplanPlanState, draft: MorningPlanDraft, interpretation: DirectPlanEditInterpretation, now: Date): Promise<DirectPlanEditResult>;
-    deriveCurrentAction(userId: UserId, planDate: string): Promise<import("../execution/current-action.js").DerivedCurrentAction | null>;
+    deriveCurrentAction(userId: UserId, planDate: string, timeZone?: string, now?: Date): Promise<import("../execution/current-action.js").DerivedCurrentAction | null>;
     reject(workflow: ReplanWorkflowRun, now: Date, messageId: string): Promise<{
         duplicate: boolean;
     }>;

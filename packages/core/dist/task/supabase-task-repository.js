@@ -56,7 +56,9 @@ export class SupabaseTaskRepository {
     }
     async listActiveTasks(userId) {
         const rows = await this.sql `
-      select * from public.tasks where user_id=${userId} and status<>'DONE' order by created_at
+      select * from public.tasks
+      where user_id=${userId} and status not in ('DONE','CLOSED_PARTIAL','SKIPPED','CANCELLED')
+      order by created_at
     `;
         return rows.map(mapTask);
     }

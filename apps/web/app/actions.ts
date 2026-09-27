@@ -213,7 +213,7 @@ export const completeHomeQuestAction = async (_previous: RuntimeActionState, for
     revalidatePath("/");
     revalidatePath("/work");
     if ("learning" in result) revalidatePath("/learning");
-    const officialPending = "officialSubmission" in result && result.officialSubmission.state === "pending_confirmation";
+    const officialPending = "officialSubmission" in result && result.officialSubmission?.state === "pending_confirmation";
     return {
       status: "success",
       message: result.duplicate ? "이미 완료된 Quest입니다. 현재 상태를 다시 확인했습니다."

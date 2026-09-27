@@ -136,9 +136,10 @@ export function judgeOutcomes(input: OutcomeInput): OutcomeJudgment {
     const context = learning ? { id: learning.contextId, commitmentLevel: learning.commitmentLevel,
       strategicImportance: learning.strategicImportance, studyMode: learning.studyMode,
       examDate: learning.assessment?.dueDate ?? null } : storedContext;
+    const learningSlackDays = learning?.forecast.scheduleSlackDays ?? null;
     if (learning) codes.push("LEARNING_PROPOSAL");
     if (learning?.judgmentState === "RISK") codes.push("LEARNING_SCHEDULE_RISK");
-    if (learning?.forecast.scheduleSlackDays !== null && learning.forecast.scheduleSlackDays > 0) codes.push("LEARNING_SLACK");
+    if (learningSlackDays !== null && learningSlackDays > 0) codes.push("LEARNING_SLACK");
     if (context) refs.push(`work-context:${context.id}`);
     if (context?.commitmentLevel === "REQUIRED") codes.push("REQUIRED_COMMITMENT");
     if (context?.strategicImportance !== null && context?.strategicImportance !== undefined) codes.push("STRATEGIC_IMPORTANCE");

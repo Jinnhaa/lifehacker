@@ -115,7 +115,7 @@ export interface MorningRepository {
         readonly plan: MorningPlan;
         readonly duplicate: boolean;
     }>;
-    deriveCurrentAction(userId: UserId, planDate: string): Promise<CurrentAction | null>;
+    deriveCurrentAction(userId: UserId, planDate: string, timeZone?: string, now?: Date): Promise<CurrentAction | null>;
 }
 export interface MorningMessage {
     readonly userId: UserId;

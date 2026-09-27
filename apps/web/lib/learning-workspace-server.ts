@@ -264,10 +264,13 @@ export async function findLearningProposal(contextId: string, materialId: string
   const action = context?.actions.find((item) => item.kind === "proposal" && item.materialId === materialId);
   if (!context || !context.activeStage || !action) throw new Error("현재 실행 가능한 학습 제안을 찾지 못했습니다.");
   if (overrideUnits === undefined && action.proposal) return action.proposal;
-  const assignedUnits = overrideUnits ?? action.assignedUnits;
-  if (!Number.isInteger(assignedUnits) || assignedUnits <= 0) throw new Error("오늘 학습량은 1 이상이어야 합니다.");
   const material = context.materials.find((item) => item.id === materialId)!;
   const startSequence = action.startSequence;
+  const requestedUnits = overrideUnits ?? action.assignedUnits;
+  const assignedUnits = startSequence !== null && material.totalUnits !== null
+    ? Math.min(requestedUnits, material.totalUnits - startSequence + 1)
+    : requestedUnits;
+  if (!Number.isInteger(assignedUnits) || assignedUnits <= 0) throw new Error("오늘 학습량은 1 이상이어야 합니다.");
   const endSequence = startSequence === null ? null : startSequence + assignedUnits - 1;
   const label = material.unitType === "LESSON" ? "강" : material.unitType === "CHAPTER" ? "챕터" : "단위";
   return {
