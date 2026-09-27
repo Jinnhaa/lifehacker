@@ -107,6 +107,9 @@ export interface LearningAssessment extends LearningRecord {
   readonly assessmentType: LearningAssessmentType;
   readonly title: string;
   readonly weightPercent: number | null;
+  /** Authoritative calendar date when no exact time is known. */
+  readonly dueDate: string | null;
+  /** Exact timestamp only; never synthesized from dueDate. */
   readonly dueAt: string | null;
   readonly score: number | null;
   readonly maxScore: number | null;
