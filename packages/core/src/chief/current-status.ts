@@ -1,5 +1,6 @@
 import { getDaysUntilDeadline } from "../rules/deadline.js";
 import type { MorningObservation, MorningRecurringActivity, MorningStrategicDirective } from "../morning/morning.js";
+import { judgeOutcomes, outcomeInputFromObservation, type OutcomeJudgment } from "./outcome-priority.js";
 
 export type AssessmentReadiness = "NOT_STARTED" | "IN_PROGRESS" | "READY" | "UNKNOWN";
 export type CurrentStatusPriorityBand = "P0" | "P1" | "P2" | "P3" | "P4";
@@ -92,15 +93,12 @@ const localTime = (value: Date, timeZone: string): string => new Intl.DateTimeFo
 
 const readinessFor = (
   activity: MorningRecurringActivity,
-  focusMinutes: number,
-  videoExcluded: boolean
+  observation: MorningObservation
 ): AssessmentReadiness => {
-  const explicit = activity.courseStudy?.signals.readiness;
-  if (explicit === "NOT_STARTED" || explicit === "IN_PROGRESS" || explicit === "READY" || explicit === "UNKNOWN") return explicit;
-  const evidenceCount = activity.completedCount + (focusMinutes > 0 ? 1 : 0);
-  if (evidenceCount === 0) return "NOT_STARTED";
-  const remainingLectureMinutes = videoExcluded ? 0 : Number(activity.courseStudy?.signals.remainingLectureMinutes ?? 0);
-  if (remainingLectureMinutes <= 0 && focusMinutes >= (activity.courseStudy?.todayMinutes ?? activity.expectedMinutes)) return "READY";
+  const units = observation.outcomeEvidence?.learningUnits?.filter(unit => unit.workContextId === activity.courseStudy?.workContextId) ?? [];
+  if (!units.length) return "UNKNOWN";
+  if (units.every(unit => unit.exposureState === "NOT_STARTED")) return "NOT_STARTED";
+  if (units.every(unit => unit.exposureState === "COMPLETE" && ["OK","STRONG"].includes(unit.understandingState) && unit.validationState === "PASSED")) return "READY";
   return "IN_PROGRESS";
 };
 
@@ -139,7 +137,7 @@ const assessmentFor = (
     type: nearest.type,
     dueAt: nearest.dueAt.toISOString(),
     daysUntil: nearest.days,
-    readiness: readinessFor(activity, focus?.actualMinutes ?? 0, strategy.excludeVideo),
+    readiness: readinessFor(activity, observation),
     studyEvidenceCount: activity.completedCount + (focus?.completedSessions ?? 0),
     focusMinutes: focus?.actualMinutes ?? 0,
     videoExcluded: strategy.excludeVideo
@@ -151,6 +149,7 @@ export function deriveCurrentStatus(input: {
   readonly now: Date;
   readonly planDate: string;
   readonly remainingCapacityMinutes: number | null;
+  readonly priorityJudgment?: OutcomeJudgment;
 }): ChiefCurrentStatus {
   const { observation, now, planDate } = input;
   const activeFocusTaskId = observation.outcomeEvidence?.activeFocusTaskId ?? null;
@@ -242,6 +241,18 @@ export function deriveCurrentStatus(input: {
     || Number(overrideTaskIds.has(right.taskId ?? "")) - Number(overrideTaskIds.has(left.taskId ?? ""))
     || left.title.localeCompare(right.title, "ko-KR"));
 
+  const judgment = input.priorityJudgment ?? judgeOutcomes({ ...outcomeInputFromObservation(observation, now), currentCapacityMinutes: input.remainingCapacityMinutes });
+  const canonical = [...judgment.todayPriority, ...(judgment.futureRelief ? [judgment.futureRelief] : []), ...judgment.notToday]
+    .filter(choice => judgment.eligibleTaskIds.includes(choice.taskId)).map(choice => {
+      const task = observation.tasks.find(task => task.id === choice.taskId)!;
+      const band: CurrentStatusPriorityBand = choice.reasonCodes.some(code => ["OVERDUE","DUE_TODAY"].includes(code)) ? "P0"
+        : choice.reasonCodes.some(code => ["FUTURE_CAPACITY_DEFICIT","CUMULATIVE_PROTECTION"].includes(code)) ? "P1"
+        : choice.reasonCodes.some(code => ["INTERNAL_DEADLINE","REQUIRED_COMMITMENT","COMMITMENT"].includes(code)) ? "P2"
+        : choice.reasonCodes.some(code => ["GOAL","IMPORTANT","WEEKLY_FOCUS","MONTHLY_FOCUS"].includes(code)) ? "P3" : "P4";
+      return { id:choice.taskId,kind:"task" as const,band,title:choice.outcome,whyNow:choice.rationale,minutes:choice.minutes,taskId:choice.taskId,
+        recurringActivityId:null,occurrenceId:null,workContextId:task.workContextId };
+    });
+
   return {
     version: "chief-current-status-v1",
     observedAt: now.toISOString(),
@@ -264,6 +275,7 @@ export function deriveCurrentStatus(input: {
     approvedPlan: observation.outcomeEvidence?.approvedPlan ?? null,
     approvedActionTitle: observation.outcomeEvidence?.approvedAction?.title ?? null,
     overrides,
-    priorities
+    // Legacy recurring-activity presentation remains only when no Task outcome exists.
+    priorities: canonical.length ? canonical : priorities.filter(priority => priority.kind === "course_study")
   };
 }

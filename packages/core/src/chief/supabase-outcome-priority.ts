@@ -5,15 +5,18 @@ import type { MorningObservation } from "../morning/morning.js";
 import { deriveCurrentAction } from "../execution/current-action.js";
 import { judgeOutcomes, outcomeFingerprint, outcomeJudgmentSchema, type OutcomeEvidence, type OutcomeInput, type OutcomeJudgment } from "./outcome-priority.js";
 import { deriveCurrentStatus } from "./current-status.js";
+import { SupabaseLearningUnitRepository } from "../learning/supabase-learning-unit-repository.js";
+import { SupabaseLearningTaskExecutionRepository } from "../learning/supabase-learning-task-execution-repository.js";
+import type { ChiefLearningCandidate } from "../learning/chief-learning-candidate.js";
 
 export async function loadOutcomeEvidence(sql: Sql, userId: UserId, date: string, timeZone = "Asia/Seoul"): Promise<OutcomeEvidence> {
   const dayStart = zonedDateTimeToUtc(`${date}T00:00:00`, timeZone);
   const dayEnd = zonedDateTimeToUtc(`${date}T23:59:59`, timeZone);
-  const [dependencies, steps, objectives, goals, artifacts, plans, focuses, action, completed, plannedToday, focusEvidence] = await Promise.all([
+  const [dependencies, steps, objectives, goals, artifacts, plans, focuses, action, completed, plannedToday, focusEvidence, contexts, learningUnits, capacityConstraints] = await Promise.all([
     sql<{ task_id:string; prerequisite_task_id:string; completed:boolean }[]>`select d.task_id,d.prerequisite_task_id,(p.status='DONE') completed from public.task_dependencies d join public.tasks p on p.id=d.prerequisite_task_id and p.user_id=d.user_id join public.tasks t on t.id=d.task_id and t.user_id=d.user_id where d.user_id=${userId} and t.status<>'DONE' order by d.task_id,d.prerequisite_task_id`,
     sql<{ id:string; task_id:string; position:number; owner:string; status:string; review_of_step_id:string|null }[]>`select id,task_id,position,owner,status,review_of_step_id from public.task_steps where user_id=${userId} order by task_id,position`,
     sql<{ id:string; title:string; goal_id:string|null; importance:number; status:string }[]>`select id,title,goal_id,importance,status from public.objectives where user_id=${userId} order by id`,
-    sql<{ id:string; title:string; importance:number; status:string }[]>`select id,title,importance,status from public.goals where user_id=${userId} order by id`,
+    sql<{ id:string; title:string; importance:number; status:string; level:string; period_start:string|null; period_end:string|null }[]>`select id,title,importance,status,level,period_start::text,period_end::text from public.goals where user_id=${userId} order by id`,
     sql<{ id:string; task_id:string|null; work_context_id:string|null; artifact_type:string; review_status:string|null; content_hash:string|null }[]>`select id,task_id,work_context_id,artifact_type,review_status,content_hash from public.artifacts where user_id=${userId} and (review_status='accepted' or artifact_type in ('project_state_snapshot','gap_analysis')) order by id`,
     sql<{id:string; revision_no:number}[]>`select id,revision_no from public.daily_plans where user_id=${userId} and plan_date=${date} and status='approved' order by revision_no desc limit 1`,
     sql<{ task_id: string | null; activity_occurrence_id: string | null; title: string }[]>`
@@ -22,7 +25,9 @@ export async function loadOutcomeEvidence(sql: Sql, userId: UserId, date: string
       left join public.tasks t on t.id=f.task_id and t.user_id=f.user_id
       left join public.activity_occurrences o on o.id=f.activity_occurrence_id and o.user_id=f.user_id
       left join public.recurring_activities a on a.id=o.recurring_activity_id and a.user_id=o.user_id
-      where f.user_id=${userId} and f.status='active' order by f.started_at desc limit 1`,
+      where f.user_id=${userId} and f.status='active'
+        and (f.task_id is null or t.status in ('INBOX','PLANNED','IN_PROGRESS','BLOCKED','WAITING_FOR_USER'))
+      order by f.started_at desc limit 1`,
     deriveCurrentAction(sql,userId,date,timeZone),
     sql<{ count: number }[]>`select count(*)::int count from public.tasks where user_id=${userId} and status='DONE' and completed_at>=${dayStart} and completed_at<=${dayEnd}`,
     sql<{ task_id: string }[]>`
@@ -44,13 +49,22 @@ export async function loadOutcomeEvidence(sql: Sql, userId: UserId, date: string
         limit 1
       ) x on x.work_context_id is not null
       where f.user_id=${userId}
-      group by x.work_context_id`
+      group by x.work_context_id`,
+    sql<{ id:string; commitment_level:"REQUIRED"|"IMPORTANT"|"OPTIONAL"|null; strategic_importance:number|null; study_mode:"CUMULATIVE"|"MIXED"|"CRAMMABLE"|null; exam_date:string|null }[]>`
+      select w.id,w.commitment_level,w.strategic_importance,c.study_mode,c.exam_date::text
+      from public.work_contexts w left join public.certification_profiles c on c.work_context_id=w.id and c.user_id=w.user_id
+      where w.user_id=${userId} and w.status='active' and w.archived_at is null order by w.id`,
+    new SupabaseLearningUnitRepository(sql).list(userId),
+    sql<{valid_from:Date;valid_until:Date|null;value:Record<string,unknown>}[]>`select valid_from,valid_until,value from public.constraints where user_id=${userId} and (valid_until is null or valid_until>${dayStart}) order by valid_from`
   ]);
   const times = action?.planItemId ? await sql<{planned_start_at:Date; planned_end_at:Date}[]>`select planned_start_at,planned_end_at from public.plan_items where id=${action.planItemId} and user_id=${userId}` : [];
   return {
     dependencies:dependencies.map(d=>({taskId:d.task_id,prerequisiteTaskId:d.prerequisite_task_id,completed:d.completed})),
     steps:steps.map(s=>({id:s.id,taskId:s.task_id,position:s.position,owner:s.owner,status:s.status,reviewOfStepId:s.review_of_step_id})),
-    objectives:objectives.map(o=>({id:o.id,title:o.title,goalId:o.goal_id,importance:o.importance,status:o.status})),goals,
+    objectives:objectives.map(o=>({id:o.id,title:o.title,goalId:o.goal_id,importance:o.importance,status:o.status})),
+    goals:goals.map(goal=>({id:goal.id,title:goal.title,importance:goal.importance,status:goal.status,level:goal.level,periodStart:goal.period_start,periodEnd:goal.period_end})),
+    contexts:contexts.map(context=>({id:context.id,commitmentLevel:context.commitment_level,strategicImportance:context.strategic_importance,studyMode:context.study_mode,examDate:context.exam_date})), learningUnits,
+    capacityConstraints:capacityConstraints.map(constraint=>({start:constraint.valid_from,end:constraint.valid_until ?? dayEnd,blocksCapacity:constraint.value.blocksCapacity===true})),
     artifacts:artifacts.map(a=>({id:a.id,taskId:a.task_id,workContextId:a.work_context_id,type:a.artifact_type,reviewStatus:a.review_status,hash:a.content_hash})),
     approvedPlan:plans[0] ? {id:plans[0].id,revisionNo:plans[0].revision_no} : null,
     activeFocusTaskId:focuses[0]?.task_id ?? null,
@@ -74,13 +88,15 @@ export async function persistOutcomeJudgment(sql:Sql,userId:UserId,input:Outcome
     if(existing[0]) return existing[0].id;
     const correlation=randomUUID();
     const [workflow]=await tx<{id:string}[]>`insert into public.workflow_runs(user_id,workflow_type,status,current_step,checkpoint_state,checkpoint_version,idempotency_key,correlation_id,started_at,completed_at) values(${userId},'chief_outcome_priority','completed','judged',${tx.json({hash})},1,${`chief-outcome:${hash}`},${correlation},${input.now},${input.now}) returning id`;
-    const [decision]=await tx<{id:string}[]>`insert into public.decisions(user_id,workflow_run_id,question,why_now,options,ai_recommendation,ai_reason,impact,status) values(${userId},${workflow!.id},'오늘 무엇을 끝낼 것인가?','실제 마감·약속·dependency와 가용시간 검토',${tx.json(judgment.notToday as unknown as JSONValue)},${tx.json(judgment as unknown as JSONValue)},'chief-outcome-v1 deterministic evidence policy',${tx.json(JSON.parse(JSON.stringify(input)) as JSONValue)},'recommended') returning id`;
+    const impact = { observation:input.observation,now:input.now,workUntil:input.workUntil,privateIntervals:input.privateIntervals,localWeekday:input.localWeekday };
+    const [decision]=await tx<{id:string}[]>`insert into public.decisions(user_id,workflow_run_id,question,why_now,options,ai_recommendation,ai_reason,impact,status) values(${userId},${workflow!.id},'오늘 무엇을 끝낼 것인가?','실제 마감·약속·dependency와 가용시간 검토',${tx.json(judgment.notToday as unknown as JSONValue)},${tx.json(judgment as unknown as JSONValue)},'chief-priority-v2 deterministic evidence policy',${tx.json(JSON.parse(JSON.stringify(impact)) as JSONValue)},'recommended') returning id`;
     await tx`insert into public.domain_events(user_id,event_type,aggregate_type,aggregate_id,actor_type,occurred_at,correlation_id,workflow_run_id,idempotency_key,payload_version,payload) values(${userId},'chief_outcome_judged','decision',${decision!.id},'system',${input.now},${correlation},${workflow!.id},${`chief-outcome:${hash}`},1,${tx.json({decisionId:decision!.id,hash,approvedPlan:judgment.approvedPlan})})`;
     return decision!.id;
   });
 }
 
-export async function getHomeOutcome(sql:Sql,userId:UserId,date:string,observation:MorningObservation,now:Date) {
+export async function getHomeOutcome(sql:Sql,userId:UserId,date:string,observation:MorningObservation,now:Date,
+  learningCandidates: readonly ChiefLearningCandidate[] = []) {
   const [workflows]=await sql<{checkpoint_state:Record<string,unknown>}[]>`select checkpoint_state from public.workflow_runs where user_id=${userId} and workflow_type='morning' and checkpoint_state->>'planDate'=${date} order by updated_at desc limit 1`;
   const configured=observation.planningPolicy.defaultWorkUntil ?? observation.planningPolicy.workUntil;
   const value=workflows?.checkpoint_state.workUntil;
@@ -92,8 +108,26 @@ export async function getHomeOutcome(sql:Sql,userId:UserId,date:string,observati
     return Number.isFinite(start.getTime()) && end>start ? [{start,end}] : [];
   }) : [];
   const weekday=new Date(`${date}T00:00:00Z`).getUTCDay();
-  const input:OutcomeInput={observation,now:new Date(Math.ceil(now.getTime()/60_000)*60_000),workUntil:workUntil && Number.isFinite(workUntil.getTime()) ? workUntil : null,privateIntervals,localWeekday:weekday || 7};
-  const judgment=outcomeJudgmentSchema.parse(judgeOutcomes(input));
+  const input:OutcomeInput={observation,now:new Date(Math.ceil(now.getTime()/60_000)*60_000),workUntil:workUntil && Number.isFinite(workUntil.getTime()) ? workUntil : null,privateIntervals,localWeekday:weekday || 7,learningCandidates};
+  let judgment=outcomeJudgmentSchema.parse(judgeOutcomes(input));
+  const selectedLearning = learningCandidates.find(candidate => candidate.candidateId === judgment.currentMission?.taskId);
+  if (selectedLearning) {
+    const materialized = await new SupabaseLearningTaskExecutionRepository(sql).materialize(userId, selectedLearning.proposal, input.now);
+    const replace = (item: OutcomeJudgment["todayPriority"][number]): OutcomeJudgment["todayPriority"][number] => item.taskId === selectedLearning.candidateId
+      ? { ...item, taskId: materialized.taskId } : item;
+    judgment = outcomeJudgmentSchema.parse({
+      ...judgment,
+      todayPriority: judgment.todayPriority.map(replace),
+      futureRelief: judgment.futureRelief ? replace(judgment.futureRelief) : null,
+      notToday: judgment.notToday.map(replace),
+      risks: judgment.risks.map(replace),
+      currentMission: judgment.currentMission ? { ...judgment.currentMission, taskId: materialized.taskId } : null,
+      selectedTaskIds: judgment.selectedTaskIds.map(id => id === selectedLearning.candidateId ? materialized.taskId : id),
+      eligibleTaskIds: judgment.eligibleTaskIds.map(id => id === selectedLearning.candidateId ? materialized.taskId : id),
+      capacityConflicts: judgment.capacityConflicts.map(conflict => ({ ...conflict,
+        taskIds: conflict.taskIds.map(id => id === selectedLearning.candidateId ? materialized.taskId : id) }))
+    });
+  }
   const decisionId=await persistOutcomeJudgment(sql,userId,input,judgment);
   const capacityEnd=input.workUntil && input.workUntil>input.now ? input.workUntil : null;
   const occupied=[...observation.constraints.filter(item=>item.blocksCapacity),...privateIntervals]
@@ -102,6 +136,6 @@ export async function getHomeOutcome(sql:Sql,userId:UserId,date:string,observati
   let blockedMinutes=0;let cursor=0;
   for(const item of occupied){const start=Math.max(cursor,item.start.getTime());if(item.end.getTime()>start){blockedMinutes+=(item.end.getTime()-start)/60_000;cursor=item.end.getTime();}}
   const remainingCapacityMinutes=capacityEnd ? Math.max(0,Math.floor((capacityEnd.getTime()-input.now.getTime())/60_000-blockedMinutes-observation.planningBufferMinutes)) : null;
-  const currentStatus=deriveCurrentStatus({observation,now:input.now,planDate:date,remainingCapacityMinutes});
+  const currentStatus=deriveCurrentStatus({observation,now:input.now,planDate:date,remainingCapacityMinutes,priorityJudgment:judgment});
   return {judgment,decisionId,currentStatus};
 }

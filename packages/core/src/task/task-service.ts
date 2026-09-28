@@ -10,7 +10,7 @@ import {
 } from "@amber/shared";
 import { z } from "zod";
 import type { CreateTaskRecord, Task, TaskStatus } from "./task.js";
-import { taskExecutionModes } from "./task.js";
+import { isTerminalTaskStatus, taskExecutionModes } from "./task.js";
 import { getTaskEventType, type TaskDomainEventInput } from "./task-event.js";
 import type { TaskRepository } from "./task-repository.js";
 import { assertTaskTransition } from "./task-state-machine.js";
@@ -218,6 +218,11 @@ export class TaskService {
     const current = await this.repository.getTaskById(parsed.userId, parsed.taskId);
     if (!current) throw this.notFound(parsed.taskId);
     if (current.status === "DONE") return current;
+    if (isTerminalTaskStatus(current.status)) {
+      throw new DomainError("CONFLICT", "Terminal Task outcome cannot be overwritten by external completion", {
+        currentStatus: current.status
+      });
+    }
     const changedAt = this.clock.now();
     const result = await this.repository.transitionTask(
       parsed.userId,
@@ -278,6 +283,18 @@ export class TaskService {
     return this.transition(options, "DONE");
   }
 
+  closePartialTask(options: TransitionOptions & { readonly reason: string }): Promise<Task> {
+    return this.transition(options, "CLOSED_PARTIAL", true);
+  }
+
+  skipTask(options: TransitionOptions & { readonly reason: string }): Promise<Task> {
+    return this.transition(options, "SKIPPED", true);
+  }
+
+  cancelTask(options: TransitionOptions & { readonly reason: string }): Promise<Task> {
+    return this.transition(options, "CANCELLED", true);
+  }
+
   private async transition(options: TransitionOptions, nextStatus: TaskStatus, reasonRequired = false): Promise<Task> {
     const userId = this.parse(userIdSchema, options.userId);
     const taskId = this.parse(taskIdSchema, options.taskId);
@@ -314,7 +331,7 @@ export class TaskService {
       taskId,
       current.status,
       nextStatus,
-      nextStatus === "DONE" ? changedAt : null,
+      nextStatus === "DONE" || nextStatus === "CLOSED_PARTIAL" ? changedAt : null,
       event
     );
     if (result.kind === "updated") return result.task;

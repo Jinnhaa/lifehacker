@@ -1,5 +1,7 @@
 # Amber HQ Product Rules
 
+Chief P0의 행동·범위는 [Chief P0 Policy v0.1](./chief-p0-policy.md)이 우선한다. 기존 V1/Foundation 설명과 구현 기록은 유지하되 Morning / Recovery / Day Close는 P0 필수 사용자 의식이 아니며, 기존 AI 가능 목록은 P0 runtime 허가가 아니다. Wave 1은 문서 동결만 수행하고 코드·테스트·migration을 변경하지 않는다.
+
 **Status:** V1 product policy baseline  
 **Purpose:** Amber HQ가 무엇을 어떻게 판단해야 하는지 정의한다.  
 **Scope:** 기술 구현 방식이 아니라 제품 행동, 사용자 권한, 자동화 정책, 개인화 원칙을 정의한다.
@@ -47,6 +49,15 @@ Amber HQ를 계속 사용할 이유는 다음 세 가지로 판단한다.
 ---
 
 ## 3. 기본 행동 원칙
+
+Chief P0의 canonical loop는 다음과 같다.
+
+```text
+Observe → Assess → Decide → Define / Bound Done → Protect → Reassure
+→ Execute → Checkpoint → Stop / Continue / Switch → Observe again
+```
+
+Morning 없이 현재 상태에서 유용해야 한다. 아래는 장기 V1의 행동 설명이며 P0 runtime AI 범위를 확대하지 않는다.
 
 Amber HQ는 다음 순서로 행동한다.
 
@@ -201,14 +212,15 @@ Task는 단순 할 일 목록이 아니다.
 기본 관계:
 
 ```text
-Long-term Goal
-      ↓
-Project / Course / Objective
-      ↓
-Task
-      ↓
-Task Step
+Long-term Goal → Monthly Goal → Weekly Focus Goal
+→ Objective / Measurable Subgoal → Task / Learning Mission → Daily Quest
+
+Task → Task Step (실행 분해)
 ```
+
+Monthly / Weekly Goal은 capacity 집중 방향이며 hard deadline, critical loss, serious dependency, major risk보다 우선하지 않는다. Daily Quest는 derived execution choice다. Project / Course / Certification은 Goal 계층과 구분되는 Context다. 전략 중요도·commitment·goals·수동 공식 날짜·내부 전략·알 수 없는 실제 학습 상태는 사용자 소유이며, urgency·pressure·risk·future capacity conflict·priority·현재 추천은 Chief가 도출한다.
+
+Goal progress는 명시적 학습 단위/Task 완료, milestone, completion criteria로만 판단한다. 시간이나 예상 작업량을 의미적 완료율로 환산하지 않는다. 근거가 없으면 unknown이다. Task 완료 기준과 현재 session에서 제외하는 scope를 명시한다.
 
 Task는 가능하면 다음과 연결한다.
 
@@ -490,6 +502,8 @@ Chief의 목표는 가능한 범위 안에서 모든 중요한 외부 마감과 
 
 외부에서 정해진 마감은 협상 가능한 것으로 가정하지 않는다.
 
+P0에서는 먼저 각 Goal의 Minimum Sufficient Outcome을 정의하고 둘 다 보존 가능한지 검토한 뒤 capacity를 배분한다. 불가능하면 expected loss, commitment, dependency, future capacity를 비교해 사용자에게 중요한 tradeoff를 요청한다. 임의 진행률로 선택하지 않는다. 아래 AI 선행작업 확대는 장기 V1 정책이며 P0 runtime LLM 허가가 아니다.
+
 시간이 부족할 경우 우선 검토:
 
 1. 사용자 직접 작업량 줄이기
@@ -535,7 +549,7 @@ Context Package 예:
 
 ## 17. Morning Briefing
 
-하루 시작은 사용자의 `일어남`을 기본 Trigger로 한다.
+기존 Morning의 Trigger는 `일어남`이다. P0에서 Morning을 해야만 상황 평가나 Main Quest를 얻을 수 있는 구조는 금지한다. 아래는 유지되는 기존 workflow 설명이다.
 
 전날 목표 기상시간이 설정되어 있으면 해당 시간부터 Wake Workflow를 실행할 수 있다.
 
@@ -567,7 +581,7 @@ Morning Workflow:
 
 ### 17A. Chief Outcome Priority
 
-Morning Plan을 만들기 전에 Chief는 현재 Task, 마감, 명시적 약속, Goal/Objective 연결,
+현재 상태 평가 시 Chief는 현재 Task, 마감, 명시적 약속, Goal/Objective 연결,
 실행 가능한 dependency, 고정 Calendar 제약과 확인된 가용시간을 함께 검토한다.
 
 Chief의 결과는 다음 세 가지로 압축한다.
@@ -578,7 +592,9 @@ Chief의 결과는 다음 세 가지로 압축한다.
 
 마감·약속·dependency 같은 hard constraint와 후보 필터는 코드로 검증한다.
 Chief 판단은 Daily Plan의 우선 후보와 이유를 제공하고, 언제 배치할지는 기존 Morning Planner가 결정한다.
-우선순위 계산만으로 이미 승인된 Daily Plan을 supersede하지 않는다.
+우선순위 계산만으로 이미 승인된 Daily Plan을 supersede하지 않는다. P0 priority는 hard deadline / immediate loss, external dependency, commitment, strategic importance, Monthly / Weekly Focus, Future Capacity, 누적 Goal 보호, blocked/executable state, continuity, cognitive load를 함께 고려한다.
+
+새 optional commitment가 중요한 기존 commitment를 실질적으로 위협하면 결정 전에 한 번 capacity 영향을 경고하고 최종 선택은 사용자에게 남긴다. Certification은 Learning Context이며 CUMULATIVE / MIXED / CRAMMABLE 특성을 보호 시점에 반영한다.
 
 ---
 
@@ -731,7 +747,7 @@ Focus 중 사용자가 갑자기 다른 Task로 바꾸려고 하면 Chief는 한
 
 작은 시간 차이는 코드 규칙으로 처리한다.
 
-복합 충돌이나 큰 우선순위 판단이 필요한 경우에만 AI를 호출한다.
+P0에서는 복합 충돌도 deterministic policy와 압축된 사용자 결정으로 처리한다. 복합 planning AI 호출은 현재 P0 runtime 허가에 포함되지 않는다.
 
 남는 시간이 생겼다고 무조건 일을 더 넣지 않는다.
 
@@ -942,7 +958,7 @@ AI 사용량을 최소화한다.
 → 고성능 AI
 ```
 
-AI를 사용하지 않아도 되는 계산을 AI에게 맡기지 않는다.
+AI를 사용하지 않아도 되는 계산을 AI에게 맡기지 않는다. P0 runtime LLM은 큰 learning unit을 실행 가능한 Learning Missions로 분해하는 용도만 승인되어 있다. D-Day, deadline rules, capacity, conflict, Task state, progress arithmetic, deterministic priority rules는 API 없이 처리한다.
 
 AI 사용 시 전체 Memory를 보내지 않는다.
 

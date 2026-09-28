@@ -1,0 +1,246 @@
+{
+  "name": "current-learning-2026-2",
+  "contexts": [
+    {
+      "key": "database",
+      "kind": "course",
+      "title": "데이터베이스",
+      "commitmentLevel": null,
+      "strategyConfig": {
+        "provenance": "user_strategy",
+        "primaryStudySource": "lecture_materials",
+        "assessmentSignalSource": "wednesday_professor_examples",
+        "preparationSequence": ["professor_examples", "similar_patterns", "novel_variants", "past_exam_patterns", "validation"],
+        "exposureDoesNotProveUnderstanding": true,
+        "assessmentGroups": { "quizzes": { "weightPercent": 10 } }
+      },
+      "courseProfile": { "term": "2026-2", "targetGrade": "A+/A0" },
+      "certificationProfile": null,
+      "stages": [],
+      "materials": [],
+      "allocationPolicies": [],
+      "assessments": [
+        { "type": "midterm", "title": "중간고사", "weightPercent": 25, "dueDate": "2026-10-21", "dueAt": null, "provenance": "syllabus" },
+        { "type": "final", "title": "기말고사", "weightPercent": 25, "dueDate": "2026-12-09", "dueAt": null, "provenance": "syllabus" },
+        { "type": "assignment", "title": "ISQL", "weightPercent": 10, "dueDate": "2026-11-09", "dueAt": null, "provenance": "syllabus" },
+        { "type": "assignment", "title": "ESQL", "weightPercent": 20, "dueDate": "2026-11-25", "dueAt": null, "provenance": "syllabus" },
+        { "type": "quiz", "title": "Quiz #1", "weightPercent": null, "dueDate": "2026-09-23", "dueAt": null, "provenance": "syllabus" },
+        { "type": "quiz", "title": "Quiz #2", "weightPercent": null, "dueDate": "2026-11-18", "dueAt": null, "provenance": "syllabus" },
+        { "type": "attendance", "title": "출석", "weightPercent": 10, "dueDate": null, "dueAt": null, "provenance": "syllabus" }
+      ]
+    },
+    {
+      "key": "algorithms",
+      "kind": "course",
+      "title": "알고리즘입문",
+      "commitmentLevel": null,
+      "strategyConfig": {
+        "provenance": "user_strategy",
+        "practiceLanguage": "Python",
+        "writtenTheoryLanguage": "C",
+        "approximatePracticalProblemCount": 61,
+        "problemCountIsApproximate": true,
+        "studySequence": ["concept", "manual_tracing", "python_implementation", "c_written_tracing", "validation_problem_pass"]
+      },
+      "courseProfile": { "term": "2026-2", "targetGrade": "A+/A0" },
+      "certificationProfile": null,
+      "stages": [], "materials": [], "allocationPolicies": [],
+      "assessments": [
+        { "type": "assignment", "title": "실습 과제", "weightPercent": 30, "dueDate": null, "dueAt": null, "provenance": "syllabus" },
+        { "type": "quiz", "title": "온라인 퀴즈", "weightPercent": 20, "dueDate": null, "dueAt": null, "provenance": "syllabus" },
+        { "type": "attendance", "title": "온라인 출석", "weightPercent": 5, "dueDate": null, "dueAt": null, "provenance": "syllabus" },
+        { "type": "attendance", "title": "오프라인 출석", "weightPercent": 5, "dueDate": null, "dueAt": null, "provenance": "syllabus" },
+        { "type": "midterm", "title": "중간고사", "weightPercent": 20, "dueDate": "2026-10-13", "dueAt": null, "provenance": "syllabus" },
+        { "type": "final", "title": "기말고사", "weightPercent": 20, "dueDate": "2026-12-01", "dueAt": null, "provenance": "syllabus" }
+      ]
+    },
+    {
+      "key": "intro-ai",
+      "kind": "course",
+      "title": "인공지능입문",
+      "commitmentLevel": null,
+      "strategyConfig": {
+        "provenance": "user_strategy",
+        "studySequence": ["lecture_material", "understanding", "lecture_note", "validation_problem_review", "weakness", "revalidation"],
+        "submissionDoesNotProveUnderstanding": true
+      },
+      "courseProfile": { "term": "2026-2", "targetGrade": "A+/A0" },
+      "certificationProfile": null,
+      "stages": [], "materials": [], "allocationPolicies": [],
+      "assessments": [
+        { "type": "attendance", "title": "출석", "weightPercent": 10, "dueDate": null, "dueAt": null, "provenance": "syllabus" },
+        { "type": "assignment", "title": "강의노트 제출", "weightPercent": 10, "dueDate": null, "dueAt": null, "provenance": "syllabus" },
+        { "type": "midterm", "title": "중간고사", "weightPercent": 35, "dueDate": null, "dueAt": null, "provenance": "syllabus" },
+        { "type": "final", "title": "기말고사", "weightPercent": 35, "dueDate": null, "dueAt": null, "provenance": "syllabus" },
+        { "type": "assignment", "title": "기말 과제", "weightPercent": 10, "dueDate": null, "dueAt": null, "provenance": "syllabus" }
+      ]
+    },
+    {
+      "key": "programming-methodology",
+      "kind": "course",
+      "title": "프로그래밍방법론",
+      "commitmentLevel": null,
+      "strategyConfig": {
+        "provenance": "user_strategy",
+        "primaryStudySource": "lecture_materials",
+        "studySequence": ["lecture_material", "code_comprehension", "execute_code", "manual_tracing", "output_prediction", "handwritten_code_reasoning_validation"],
+        "executionAloneDoesNotProveUnderstanding": true
+      },
+      "courseProfile": { "term": "2026-2", "targetGrade": "A+/A0" },
+      "certificationProfile": null,
+      "stages": [], "materials": [], "allocationPolicies": [],
+      "assessments": [
+        { "type": "midterm", "title": "중간고사 (필기·폐쇄형)", "weightPercent": 30, "dueDate": "2026-10-22", "dueAt": null, "provenance": "syllabus" },
+        { "type": "final", "title": "기말고사 (필기·폐쇄형)", "weightPercent": 40, "dueDate": "2026-12-10", "dueAt": null, "provenance": "syllabus" },
+        { "type": "assignment", "title": "주간 코딩 과제", "weightPercent": 20, "dueDate": null, "dueAt": null, "provenance": "syllabus" },
+        { "type": "attendance", "title": "출석", "weightPercent": 10, "dueDate": null, "dueAt": null, "provenance": "syllabus" }
+      ]
+    },
+    {
+      "key": "mobile-programming",
+      "kind": "course",
+      "title": "모바일프로그래밍",
+      "commitmentLevel": null,
+      "strategyConfig": {
+        "provenance": "user_strategy",
+        "primaryStudySources": ["snowboard_lecture_materials", "practice_materials"],
+        "studySequence": ["lecture_material", "reproduce_example", "independent_implementation", "verify_behavior"],
+        "validationRequiresImplementationAbility": true,
+        "practicalAssignmentCount": 5
+      },
+      "courseProfile": { "term": "2026-2", "targetGrade": "A+/A0" },
+      "certificationProfile": null,
+      "stages": [], "materials": [], "allocationPolicies": [],
+      "assessments": [
+        { "type": "assignment", "title": "실습 과제 5회", "weightPercent": 30, "dueDate": null, "dueAt": null, "provenance": "syllabus" },
+        { "type": "project", "title": "중간 프로젝트", "weightPercent": 25, "dueDate": null, "dueAt": null, "provenance": "syllabus" },
+        { "type": "project", "title": "기말 프로젝트", "weightPercent": 35, "dueDate": null, "dueAt": null, "provenance": "syllabus" },
+        { "type": "attendance", "title": "출석", "weightPercent": 10, "dueDate": null, "dueAt": null, "provenance": "syllabus" }
+      ]
+    },
+    {
+      "key": "ai-thinking-communication",
+      "kind": "course",
+      "title": "AI시대의사고와의사소통",
+      "commitmentLevel": null,
+      "strategyConfig": {
+        "provenance": "user_strategy",
+        "studySequence": ["lecture_or_reading", "analysis_and_thought", "writing_or_presentation_output", "submission_and_feedback"],
+        "outputOriented": true,
+        "untrustedUnitDenominator": true
+      },
+      "courseProfile": { "term": "2026-2", "targetGrade": "A+/A0" },
+      "certificationProfile": null,
+      "stages": [], "materials": [], "allocationPolicies": [],
+      "assessments": [
+        { "type": "attendance", "title": "출석", "weightPercent": 10, "dueDate": null, "dueAt": null, "provenance": "syllabus" },
+        { "type": "other", "title": "글쓰기·발표 등", "weightPercent": 10, "dueDate": null, "dueAt": null, "provenance": "syllabus" },
+        { "type": "exam", "title": "중간·기말 통합", "weightPercent": 50, "dueDate": null, "dueAt": null, "provenance": "syllabus" },
+        { "type": "project", "title": "디지털 영상 발표", "weightPercent": 30, "dueDate": null, "dueAt": null, "provenance": "syllabus" }
+      ]
+    },
+    {
+      "key": "jlpt-n2",
+      "kind": "certification",
+      "title": "JLPT N2",
+      "commitmentLevel": null,
+      "strategyConfig": {
+        "provenance": "user_strategy",
+        "commitmentStatement": "required/important",
+        "capacityAdjustmentIsFutureRuntime": true,
+        "missedTextbookUnits": "redistribute_over_future_capacity",
+        "officialProgressDoesNotImplyLearning": true
+      },
+      "courseProfile": null,
+      "certificationProfile": { "targetOutcome": "PASS", "examDate": "2026-12-06", "studyMode": "CUMULATIVE", "currentLevel": null },
+      "stages": [
+        { "key": "foundation", "title": "Foundation", "position": 1, "status": "ACTIVE", "completionMode": "ALL_REQUIRED_MATERIALS", "transitionMode": "PARALLEL", "config": { "provenance": "user_strategy", "requiredMaterialKeys": ["japanese-core", "grammar-core"], "nonBlockingMaterialKeys": ["vocabulary-app"] } },
+        { "key": "n3-prep", "title": "N3 preparation", "position": 2, "status": "NOT_STARTED", "completionMode": "MANUAL", "transitionMode": "SEQUENTIAL", "config": { "provenance": "user_strategy", "materials": "TBD" } },
+        { "key": "n2-prep", "title": "N2 preparation", "position": 3, "status": "NOT_STARTED", "completionMode": "MANUAL", "transitionMode": "SEQUENTIAL", "config": { "provenance": "user_strategy", "materials": "TBD" } },
+        { "key": "mock-exams", "title": "Mock Exams", "position": 4, "status": "NOT_STARTED", "completionMode": "MANUAL", "transitionMode": "SEQUENTIAL", "config": { "provenance": "user_strategy", "materials": "TBD" } }
+      ],
+      "materials": [
+        { "key": "japanese-core", "stageKey": "foundation", "title": "일본어 무작정 따라하기", "materialType": "BOOK", "role": "CORE", "trackingMode": "UNIT_COUNT", "unitType": "LESSON", "totalUnits": 60, "startUnit": 14, "status": "ACTIVE", "sourceReference": { "provenance": "user_confirmed" }, "config": { "trackingRange": { "from": 14, "to": 60 }, "nextUnit": 14 }, "generateUnits": { "from": 14, "to": 60, "titlePrefix": "Lesson" } },
+        { "key": "grammar-core", "stageKey": "foundation", "title": "일본어 문법 무작정 따라하기", "materialType": "BOOK", "role": "CORE", "trackingMode": "UNIT_COUNT", "unitType": "LESSON", "totalUnits": 58, "startUnit": 4, "status": "ACTIVE", "sourceReference": { "provenance": "user_confirmed" }, "config": { "trackingRange": { "from": 4, "to": 58 }, "nextUnit": 4 }, "generateUnits": { "from": 4, "to": 58, "titlePrefix": "Lesson" } },
+        { "key": "vocabulary-app", "stageKey": "foundation", "title": "JLPT 단어 앱", "materialType": "APP", "role": "ONGOING", "trackingMode": "UNIT_COUNT", "unitType": "CHAPTER", "totalUnits": null, "startUnit": null, "status": "ACTIVE", "sourceReference": { "provenance": "user_confirmed" }, "config": { "openEnded": true, "missedDayCreatesBacklog": false }, "generateUnits": null }
+      ],
+      "allocationPolicies": [
+        {
+          "name": "Foundation profile A",
+          "stageKey": "foundation",
+          "profileType": "MATERIAL_STATE",
+          "activationCondition": { "all": [{ "materialKey": "japanese-core", "status": "ACTIVE" }, { "materialKey": "grammar-core", "status": "ACTIVE" }] },
+          "recoveryMode": "MANUAL",
+          "priority": 1,
+          "config": { "provenance": "user_strategy", "itemRecoveryModes": { "japanese-core": "REDISTRIBUTE", "grammar-core": "REDISTRIBUTE", "vocabulary-app": "RESET" } },
+          "items": [
+            { "materialKey": "japanese-core", "targetUnits": 3, "minimumUnits": null, "estimatedMinutesMin": null, "estimatedMinutesMax": null, "position": 1 },
+            { "materialKey": "grammar-core", "targetUnits": 3, "minimumUnits": null, "estimatedMinutesMin": null, "estimatedMinutesMax": null, "position": 2 },
+            { "materialKey": "vocabulary-app", "targetUnits": 1, "minimumUnits": null, "estimatedMinutesMin": 20, "estimatedMinutesMax": 30, "position": 3 }
+          ]
+        },
+        {
+          "name": "Foundation profile B",
+          "stageKey": "foundation",
+          "profileType": "MATERIAL_STATE",
+          "activationCondition": { "all": [{ "materialKey": "japanese-core", "status": "COMPLETED" }, { "materialKey": "grammar-core", "status": "ACTIVE" }] },
+          "recoveryMode": "MANUAL",
+          "priority": 2,
+          "config": { "provenance": "user_strategy", "itemRecoveryModes": { "grammar-core": "REDISTRIBUTE", "vocabulary-app": "RESET" }, "exactTargets": true },
+          "items": [
+            { "materialKey": "grammar-core", "targetUnits": 5, "minimumUnits": null, "estimatedMinutesMin": null, "estimatedMinutesMax": null, "position": 1 },
+            { "materialKey": "vocabulary-app", "targetUnits": 2, "minimumUnits": null, "estimatedMinutesMin": 20, "estimatedMinutesMax": 30, "position": 2 }
+          ]
+        }
+      ],
+      "assessments": [
+        { "type": "exam", "title": "JLPT N2 시험", "weightPercent": null, "dueDate": "2026-12-06", "dueAt": null, "provenance": "user_confirmed" }
+      ]
+    },
+    {
+      "key": "sqld",
+      "kind": "certification",
+      "title": "SQLD",
+      "commitmentLevel": null,
+      "strategyConfig": { "provenance": "user_strategy", "frontLoadWherePossible": true, "maximizeDatabaseCourseOverlap": true, "preparationState": "NOT_STARTED" },
+      "courseProfile": null,
+      "certificationProfile": { "targetOutcome": "PASS", "examDate": "2026-11-14", "studyMode": null, "currentLevel": "NOT_STARTED" },
+      "stages": [
+        { "key": "concept", "title": "Concept and range study", "position": 1, "status": "NOT_STARTED", "completionMode": "MANUAL", "transitionMode": "SEQUENTIAL", "config": { "provenance": "user_strategy" } },
+        { "key": "practice", "title": "Practice", "position": 2, "status": "NOT_STARTED", "completionMode": "MANUAL", "transitionMode": "SEQUENTIAL", "config": { "provenance": "user_strategy" } },
+        { "key": "review", "title": "Mock and error review", "position": 3, "status": "NOT_STARTED", "completionMode": "MANUAL", "transitionMode": "SEQUENTIAL", "config": { "provenance": "user_strategy" } }
+      ],
+      "materials": [
+        { "key": "sqld-2026", "stageKey": null, "title": "이기적 SQLD 2026", "materialType": "BOOK", "role": "CORE", "trackingMode": "UNTRACKED", "unitType": null, "totalUnits": null, "startUnit": null, "status": "ACTIVE", "sourceReference": { "provenance": "user_confirmed" }, "config": { "counts": "UNKNOWN" }, "generateUnits": null },
+        { "key": "sql-practice", "stageKey": null, "title": "SQL 자격검정 실전문제", "materialType": "BOOK", "role": "PRACTICE", "trackingMode": "UNTRACKED", "unitType": null, "totalUnits": null, "startUnit": null, "status": "ACTIVE", "sourceReference": { "provenance": "user_confirmed" }, "config": { "counts": "UNKNOWN" }, "generateUnits": null }
+      ],
+      "allocationPolicies": [],
+      "assessments": [
+        { "type": "exam", "title": "SQLD 시험", "weightPercent": null, "dueDate": "2026-11-14", "dueAt": null, "provenance": "user_confirmed" }
+      ]
+    },
+    {
+      "key": "topcit",
+      "kind": "certification",
+      "title": "TOPCIT",
+      "commitmentLevel": "REQUIRED",
+      "strategyConfig": { "provenance": "user_strategy", "hardThresholdScore": 150, "thresholdPurpose": "graduation_requirement", "avoidUnnecessaryScoreOptimization": true, "safetyMarginScore": null },
+      "courseProfile": null,
+      "certificationProfile": { "targetOutcome": "score >= 150", "examDate": "2026-10-10", "studyMode": null, "currentLevel": null },
+      "stages": [
+        { "key": "diagnostic", "title": "Diagnostic", "position": 1, "status": "NOT_STARTED", "completionMode": "MANUAL", "transitionMode": "SEQUENTIAL", "config": { "provenance": "user_strategy" } },
+        { "key": "gap-study", "title": "High-ROI Gap Study", "position": 2, "status": "NOT_STARTED", "completionMode": "MANUAL", "transitionMode": "SEQUENTIAL", "config": { "provenance": "user_strategy" } },
+        { "key": "validation", "title": "Validation/Reassessment", "position": 3, "status": "NOT_STARTED", "completionMode": "ASSESSMENT_THRESHOLD", "transitionMode": "SEQUENTIAL", "config": { "provenance": "user_strategy", "thresholdScore": 150, "safetyMarginScore": null } },
+        { "key": "stop", "title": "Stop with safe margin", "position": 4, "status": "NOT_STARTED", "completionMode": "MANUAL", "transitionMode": "SEQUENTIAL", "config": { "provenance": "user_strategy", "exactSafetyMargin": "UNKNOWN" } }
+      ],
+      "materials": [], "allocationPolicies": [],
+      "assessments": [
+        { "type": "exam", "title": "TOPCIT 시험", "weightPercent": null, "dueDate": "2026-10-10", "dueAt": null, "provenance": "user_confirmed" }
+      ]
+    }
+  ],
+  "relations": [
+    { "fromContextKey": "database", "toContextKey": "sqld", "relationType": "LEARNING_SYNERGY", "config": { "provenance": "user_strategy", "avoidDuplicateSharedTopicTasks": true } },
+    { "fromContextKey": "sqld", "toContextKey": "database", "relationType": "LEARNING_SYNERGY", "config": { "provenance": "user_strategy", "avoidDuplicateSharedTopicTasks": true } }
+  ]
+}

@@ -6,9 +6,16 @@ export const taskStatuses = [
   "IN_PROGRESS",
   "BLOCKED",
   "WAITING_FOR_USER",
-  "DONE"
+  "DONE",
+  "CLOSED_PARTIAL",
+  "SKIPPED",
+  "CANCELLED"
 ] as const;
 export type TaskStatus = (typeof taskStatuses)[number];
+export const terminalTaskStatuses = ["DONE", "CLOSED_PARTIAL", "SKIPPED", "CANCELLED"] as const;
+export type TerminalTaskStatus = (typeof terminalTaskStatuses)[number];
+export const isTerminalTaskStatus = (status: TaskStatus): status is TerminalTaskStatus =>
+  (terminalTaskStatuses as readonly TaskStatus[]).includes(status);
 
 export const taskExecutionModes = ["standard", "learning_required", "output_focused", "mixed"] as const;
 export type TaskExecutionMode = (typeof taskExecutionModes)[number];

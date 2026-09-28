@@ -52,9 +52,45 @@ export type HomeWeekDay = {
   readonly items: readonly HomeTimelineItem[];
 };
 
+export type HomeChiefQuest = {
+  readonly taskId: string;
+  readonly title: string;
+  readonly context: string | null;
+  readonly minutes: number;
+  readonly whyNow: string;
+  readonly candidateSource: "task" | "learning_proposal";
+  readonly contextId: string | null;
+  readonly completionCriteria: string | null;
+};
+export type HomeReassurance = {
+  readonly taskId: string;
+  readonly title: string;
+  readonly whyNotNow: string;
+  readonly status: "safe" | "protected" | "constrained" | "uncertain";
+  readonly explanation: string;
+  readonly candidateSource: "task" | "learning_proposal";
+  readonly context: string | null;
+  readonly riskTrigger: string | null;
+};
+
 export type HomeViewModel = {
   readonly outcomePriority?: { readonly judgment: OutcomeJudgment; readonly decisionId: string } | null;
   readonly currentStatus: ChiefCurrentStatus | null;
+  readonly nextQuests: readonly HomeChiefQuest[];
+  readonly reassurance: readonly HomeReassurance[];
+  readonly learningSpecialist: null | {
+    readonly nearestEvent: { readonly contextTitle: string; readonly eventTitle: string; readonly dateLabel: string; readonly days: number } | null;
+    readonly riskCount: number;
+    readonly attentionNeededCount: number;
+    readonly needsReviewCount: number;
+    readonly activeTaskIds?: readonly string[];
+    readonly currentRecommendation: {
+      readonly title: string;
+      readonly contextTitle: string;
+      readonly taskId: string | null;
+      readonly status: "active_task" | "candidate";
+    } | null;
+  };
   readonly missionProgress: Readonly<Record<string, { readonly completed: number; readonly total: number }>>;
   readonly configured: boolean;
   readonly error: string | null;
@@ -71,6 +107,12 @@ export type HomeViewModel = {
     readonly context: string | null;
     readonly source: string;
     readonly whyNow: string;
+    readonly completionCriteria?: string | null;
+    readonly scopeExclusions?: string | null;
+    readonly candidateSource?: "task" | "learning_proposal";
+    readonly reasonCodes?: readonly string[];
+    readonly relevantDeadline?: string | null;
+    readonly selectedPolicyName?: string | null;
   };
   readonly approvedPlan: null | { readonly id: string; readonly revisionNo: number };
   readonly availableMinutes: number | null;
@@ -85,6 +127,11 @@ export type HomeViewModel = {
     readonly lastSyncedAt: string | null;
     readonly fixedCommitmentCount: number;
   };
+  readonly nextFixedSchedule?: null | {
+    readonly title: string;
+    readonly startsAt: string;
+    readonly endsAt: string;
+  };
   readonly focus: null | {
     readonly step: "active" | "awaiting_block_reason" | "awaiting_missing_detail" | "awaiting_other_detail" | "recovery_ready" | "awaiting_switch_confirmation";
     readonly taskId: string | null;
@@ -93,6 +140,7 @@ export type HomeViewModel = {
     readonly startedAt: string | null;
     readonly durationMinutes: number;
     readonly stepTitle: string | null;
+    readonly title?: string | null;
   };
   readonly reviewArtifacts: readonly {
     readonly id: string;

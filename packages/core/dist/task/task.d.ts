@@ -1,6 +1,9 @@
 import type { TaskId, UserId } from "@amber/shared";
-export declare const taskStatuses: readonly ["INBOX", "PLANNED", "IN_PROGRESS", "BLOCKED", "WAITING_FOR_USER", "DONE"];
+export declare const taskStatuses: readonly ["INBOX", "PLANNED", "IN_PROGRESS", "BLOCKED", "WAITING_FOR_USER", "DONE", "CLOSED_PARTIAL", "SKIPPED", "CANCELLED"];
 export type TaskStatus = (typeof taskStatuses)[number];
+export declare const terminalTaskStatuses: readonly ["DONE", "CLOSED_PARTIAL", "SKIPPED", "CANCELLED"];
+export type TerminalTaskStatus = (typeof terminalTaskStatuses)[number];
+export declare const isTerminalTaskStatus: (status: TaskStatus) => status is TerminalTaskStatus;
 export declare const taskExecutionModes: readonly ["standard", "learning_required", "output_focused", "mixed"];
 export type TaskExecutionMode = (typeof taskExecutionModes)[number];
 export interface Task {

@@ -423,8 +423,8 @@ export class SupabaseReplanRepository implements ReplanRepository {
     });
   }
 
-  async deriveCurrentAction(userId: UserId, planDate: string) {
-    return deriveCurrentAction(this.sql, userId, planDate);
+  async deriveCurrentAction(userId: UserId, planDate: string, timeZone = "Asia/Seoul", now = new Date()) {
+    return deriveCurrentAction(this.sql, userId, planDate, timeZone, now);
   }
 
   async reject(workflow: ReplanWorkflowRun, now: Date, messageId: string): Promise<{ duplicate: boolean }> {

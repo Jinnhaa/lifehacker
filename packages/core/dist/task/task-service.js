@@ -1,6 +1,6 @@
 import { DomainError, SystemIdGenerator, correlationIdSchema, taskIdSchema, userIdSchema } from "@amber/shared";
 import { z } from "zod";
-import { taskExecutionModes } from "./task.js";
+import { isTerminalTaskStatus, taskExecutionModes } from "./task.js";
 import { getTaskEventType } from "./task-event.js";
 import { assertTaskTransition } from "./task-state-machine.js";
 const nullableDate = z.union([z.date(), z.null()]).optional();
@@ -193,6 +193,11 @@ export class TaskService {
             throw this.notFound(parsed.taskId);
         if (current.status === "DONE")
             return current;
+        if (isTerminalTaskStatus(current.status)) {
+            throw new DomainError("CONFLICT", "Terminal Task outcome cannot be overwritten by external completion", {
+                currentStatus: current.status
+            });
+        }
         const changedAt = this.clock.now();
         const result = await this.repository.transitionTask(parsed.userId, parsed.taskId, current.status, "DONE", changedAt, {
             userId: parsed.userId,
@@ -242,6 +247,15 @@ export class TaskService {
     completeTask(options) {
         return this.transition(options, "DONE");
     }
+    closePartialTask(options) {
+        return this.transition(options, "CLOSED_PARTIAL", true);
+    }
+    skipTask(options) {
+        return this.transition(options, "SKIPPED", true);
+    }
+    cancelTask(options) {
+        return this.transition(options, "CANCELLED", true);
+    }
     async transition(options, nextStatus, reasonRequired = false) {
         const userId = this.parse(userIdSchema, options.userId);
         const taskId = this.parse(taskIdSchema, options.taskId);
@@ -273,7 +287,7 @@ export class TaskService {
                 changed_at: changedAt.toISOString()
             }
         };
-        const result = await this.repository.transitionTask(userId, taskId, current.status, nextStatus, nextStatus === "DONE" ? changedAt : null, event);
+        const result = await this.repository.transitionTask(userId, taskId, current.status, nextStatus, nextStatus === "DONE" || nextStatus === "CLOSED_PARTIAL" ? changedAt : null, event);
         if (result.kind === "updated")
             return result.task;
         if (result.kind === "not_found")

@@ -378,8 +378,8 @@ export class SupabaseReplanRepository {
             return { workflow, plan, interpretation, duplicate: false };
         });
     }
-    async deriveCurrentAction(userId, planDate) {
-        return deriveCurrentAction(this.sql, userId, planDate);
+    async deriveCurrentAction(userId, planDate, timeZone = "Asia/Seoul", now = new Date()) {
+        return deriveCurrentAction(this.sql, userId, planDate, timeZone, now);
     }
     async reject(workflow, now, messageId) {
         return this.sql.begin(async (tx) => {

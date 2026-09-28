@@ -69,7 +69,7 @@ export const calculateTaskWorkload = (
 const minutesBetween = (interval: TimeInterval): number =>
   Math.max(0, Math.floor((interval.end.getTime() - interval.start.getTime()) / MINUTE));
 
-const mergeIntervals = (intervals: readonly TimeInterval[], horizon: TimeInterval): TimeInterval[] => {
+export const mergeIntervals = (intervals: readonly TimeInterval[], horizon: TimeInterval): TimeInterval[] => {
   const clipped = intervals
     .map((value) => ({
       start: new Date(Math.max(value.start.getTime(), horizon.start.getTime())),

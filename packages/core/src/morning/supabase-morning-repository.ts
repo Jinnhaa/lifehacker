@@ -83,6 +83,7 @@ const mapTask = (row: Record<string, unknown>): Task => ({
   executionMode: String(row.execution_mode) as TaskExecutionMode,
   officialDeadline: row.official_deadline ? new Date(String(row.official_deadline)) : null,
   internalDeadline: row.internal_deadline ? new Date(String(row.internal_deadline)) : null,
+  plannedDate: row.planned_date instanceof Date ? row.planned_date.toISOString().slice(0,10) : typeof row.planned_date === "string" ? row.planned_date : null,
   estimatedMinutes: row.estimated_minutes === null ? null : Number(row.estimated_minutes),
   estimatedUserMinutes: row.estimated_user_minutes === null ? null : Number(row.estimated_user_minutes),
   actualMinutes: Number(row.actual_minutes), importance: Number(row.importance), status: String(row.status) as TaskStatus,
@@ -401,8 +402,8 @@ export class SupabaseMorningRepository implements MorningRepository {
     });
   }
 
-  async deriveCurrentAction(userId: UserId, planDate: string): Promise<CurrentAction | null> {
-    const action = await deriveCurrentAction(this.sql, userId, planDate);
+  async deriveCurrentAction(userId: UserId, planDate: string, timeZone = "Asia/Seoul", now = new Date()): Promise<CurrentAction | null> {
+    const action = await deriveCurrentAction(this.sql, userId, planDate, timeZone, now);
     return action ? { title: action.title, source: action.source } : null;
   }
 

@@ -4,6 +4,7 @@
   "private": true,
   "packageManager": "pnpm@11.24.0",
   "scripts": {
+    "bootstrap:learning": "pnpm --filter @amber/core bootstrap:learning",
     "build": "tsc -b",
     "lint": "eslint .",
     "typecheck": "tsc -b --pretty false",

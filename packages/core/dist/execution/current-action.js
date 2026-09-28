@@ -6,6 +6,7 @@ export const deriveCurrentAction = async (sql, userId, planDate, timeZone = "Asi
     left join public.activity_occurrences o on o.id=f.activity_occurrence_id and o.user_id=f.user_id
     left join public.recurring_activities a on a.id=o.recurring_activity_id and a.user_id=o.user_id
     where f.user_id=${userId} and f.status='active'
+      and (f.task_id is null or t.status in ('INBOX','PLANNED','IN_PROGRESS','BLOCKED','WAITING_FOR_USER'))
     order by f.started_at desc limit 1
   `;
     if (focus[0]) {

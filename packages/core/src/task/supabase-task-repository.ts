@@ -89,7 +89,9 @@ export class SupabaseTaskRepository implements TaskRepository {
 
   async listActiveTasks(userId: UserId): Promise<readonly Task[]> {
     const rows = await this.sql<TaskRow[]>`
-      select * from public.tasks where user_id=${userId} and status<>'DONE' order by created_at
+      select * from public.tasks
+      where user_id=${userId} and status not in ('DONE','CLOSED_PARTIAL','SKIPPED','CANCELLED')
+      order by created_at
     `;
     return rows.map(mapTask);
   }

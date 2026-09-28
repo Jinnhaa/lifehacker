@@ -205,14 +205,14 @@ describe("ChiefAgentService", () => {
     expect(projectPm.getProjectReport).not.toHaveBeenCalled();
   });
 
-  it("uses the derived Current Action without recommending another Task", async () => {
+  it("recommends the hard deadline instead of trapping the user in a weaker Current Action", async () => {
     const loaded = context({
       currentAction: { kind: "task", source: "focus_session", title: "데이터구조 복습", taskId: "current-task", planItemId: null }
     });
     const { service } = serviceWith(loaded);
     const result = await service.handleChiefMessage(message("지금 뭐 해야 해?"));
-    expect(result.reply).toContain("데이터구조 복습");
-    expect(result.reply).not.toContain("지금 할 일\n운영체제 과제");
+    expect(result.reply).toContain("지금 할 일\n운영체제 과제");
+    expect(result.reply).not.toContain("데이터구조 복습");
   });
 
   it("does not let an old planning preference override unambiguous P0 evidence", async () => {

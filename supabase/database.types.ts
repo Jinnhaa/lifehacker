@@ -161,48 +161,72 @@ export type Database = {
       agent_runs: {
         Row: {
           agent_instance_id: string
+          attempt_number: number | null
           context_package_id: string | null
           cost_budget_krw: number | null
           created_at: string
           ended_at: string | null
+          execution_key: string | null
+          failure_code: string | null
+          failure_reason: string | null
           id: string
+          idempotency_key: string | null
           max_tool_calls: number
           max_turns: number
           policy_version: string
+          skill_key: string | null
+          skill_version: string | null
           started_at: string
           status: string
+          task_step_id: string | null
           template_version: string
           user_id: string
           workflow_run_id: string | null
         }
         Insert: {
           agent_instance_id: string
+          attempt_number?: number | null
           context_package_id?: string | null
           cost_budget_krw?: number | null
           created_at?: string
           ended_at?: string | null
+          execution_key?: string | null
+          failure_code?: string | null
+          failure_reason?: string | null
           id?: string
+          idempotency_key?: string | null
           max_tool_calls: number
           max_turns: number
           policy_version: string
+          skill_key?: string | null
+          skill_version?: string | null
           started_at: string
           status: string
+          task_step_id?: string | null
           template_version: string
           user_id: string
           workflow_run_id?: string | null
         }
         Update: {
           agent_instance_id?: string
+          attempt_number?: number | null
           context_package_id?: string | null
           cost_budget_krw?: number | null
           created_at?: string
           ended_at?: string | null
+          execution_key?: string | null
+          failure_code?: string | null
+          failure_reason?: string | null
           id?: string
+          idempotency_key?: string | null
           max_tool_calls?: number
           max_turns?: number
           policy_version?: string
+          skill_key?: string | null
+          skill_version?: string | null
           started_at?: string
           status?: string
+          task_step_id?: string | null
           template_version?: string
           user_id?: string
           workflow_run_id?: string | null
@@ -220,6 +244,13 @@ export type Database = {
             columns: ["context_package_id", "user_id"]
             isOneToOne: false
             referencedRelation: "context_packages"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "agent_runs_task_step_id_user_id_fkey"
+            columns: ["task_step_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "task_steps"
             referencedColumns: ["id", "user_id"]
           },
           {
@@ -505,12 +536,18 @@ export type Database = {
           content_text: string | null
           created_at: string
           id: string
+          review_status: string | null
+          revision_of_artifact_id: string | null
+          schema_version: string | null
           source_agent_run_id: string | null
           source_ai_execution_id: string | null
+          source_refs: Json | null
           storage_path: string | null
           task_id: string | null
+          task_step_id: string | null
           title: string | null
           user_id: string
+          verification_status: string | null
           work_context_id: string | null
         }
         Insert: {
@@ -519,12 +556,18 @@ export type Database = {
           content_text?: string | null
           created_at?: string
           id?: string
+          review_status?: string | null
+          revision_of_artifact_id?: string | null
+          schema_version?: string | null
           source_agent_run_id?: string | null
           source_ai_execution_id?: string | null
+          source_refs?: Json | null
           storage_path?: string | null
           task_id?: string | null
+          task_step_id?: string | null
           title?: string | null
           user_id: string
+          verification_status?: string | null
           work_context_id?: string | null
         }
         Update: {
@@ -533,15 +576,28 @@ export type Database = {
           content_text?: string | null
           created_at?: string
           id?: string
+          review_status?: string | null
+          revision_of_artifact_id?: string | null
+          schema_version?: string | null
           source_agent_run_id?: string | null
           source_ai_execution_id?: string | null
+          source_refs?: Json | null
           storage_path?: string | null
           task_id?: string | null
+          task_step_id?: string | null
           title?: string | null
           user_id?: string
+          verification_status?: string | null
           work_context_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "artifacts_revision_of_artifact_id_user_id_fkey"
+            columns: ["revision_of_artifact_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "artifacts"
+            referencedColumns: ["id", "user_id"]
+          },
           {
             foreignKeyName: "artifacts_source_agent_run_id_user_id_fkey"
             columns: ["source_agent_run_id", "user_id"]
@@ -564,6 +620,13 @@ export type Database = {
             referencedColumns: ["id", "user_id"]
           },
           {
+            foreignKeyName: "artifacts_task_step_id_user_id_fkey"
+            columns: ["task_step_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "task_steps"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
             foreignKeyName: "artifacts_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
@@ -572,6 +635,47 @@ export type Database = {
           },
           {
             foreignKeyName: "artifacts_work_context_id_user_id_fkey"
+            columns: ["work_context_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "work_contexts"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
+      }
+      certification_profiles: {
+        Row: {
+          created_at: string
+          current_level: string | null
+          exam_date: string | null
+          study_mode: string | null
+          target_outcome: string | null
+          updated_at: string
+          user_id: string
+          work_context_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_level?: string | null
+          exam_date?: string | null
+          study_mode?: string | null
+          target_outcome?: string | null
+          updated_at?: string
+          user_id: string
+          work_context_id: string
+        }
+        Update: {
+          created_at?: string
+          current_level?: string | null
+          exam_date?: string | null
+          study_mode?: string | null
+          target_outcome?: string | null
+          updated_at?: string
+          user_id?: string
+          work_context_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "certification_profiles_work_context_id_user_id_fkey"
             columns: ["work_context_id", "user_id"]
             isOneToOne: false
             referencedRelation: "work_contexts"
@@ -636,6 +740,7 @@ export type Database = {
           scope_id: string
           source_refs: Json
           task_id: string | null
+          task_step_id: string | null
           user_id: string
           work_context_id: string | null
         }
@@ -648,6 +753,7 @@ export type Database = {
           scope_id: string
           source_refs: Json
           task_id?: string | null
+          task_step_id?: string | null
           user_id: string
           work_context_id?: string | null
         }
@@ -660,6 +766,7 @@ export type Database = {
           scope_id?: string
           source_refs?: Json
           task_id?: string | null
+          task_step_id?: string | null
           user_id?: string
           work_context_id?: string | null
         }
@@ -676,6 +783,13 @@ export type Database = {
             columns: ["task_id", "user_id"]
             isOneToOne: false
             referencedRelation: "tasks"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "context_packages_task_step_id_user_id_fkey"
+            columns: ["task_step_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "task_steps"
             referencedColumns: ["id", "user_id"]
           },
           {
@@ -1213,7 +1327,9 @@ export type Database = {
       }
       focus_sessions: {
         Row: {
+          activity_occurrence_id: string | null
           actual_minutes: number
+          actual_seconds: number
           created_at: string
           current_step_id: string | null
           end_reason: string | null
@@ -1221,13 +1337,16 @@ export type Database = {
           id: string
           paused_at: string | null
           plan_item_id: string | null
+          planned_minutes: number | null
           started_at: string
           status: string
-          task_id: string
+          task_id: string | null
           user_id: string
         }
         Insert: {
+          activity_occurrence_id?: string | null
           actual_minutes?: number
+          actual_seconds?: number
           created_at?: string
           current_step_id?: string | null
           end_reason?: string | null
@@ -1235,13 +1354,16 @@ export type Database = {
           id?: string
           paused_at?: string | null
           plan_item_id?: string | null
+          planned_minutes?: number | null
           started_at: string
           status: string
-          task_id: string
+          task_id?: string | null
           user_id: string
         }
         Update: {
+          activity_occurrence_id?: string | null
           actual_minutes?: number
+          actual_seconds?: number
           created_at?: string
           current_step_id?: string | null
           end_reason?: string | null
@@ -1249,12 +1371,20 @@ export type Database = {
           id?: string
           paused_at?: string | null
           plan_item_id?: string | null
+          planned_minutes?: number | null
           started_at?: string
           status?: string
-          task_id?: string
+          task_id?: string | null
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "focus_sessions_activity_occurrence_owner_fk"
+            columns: ["activity_occurrence_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "activity_occurrences"
+            referencedColumns: ["id", "user_id"]
+          },
           {
             foreignKeyName: "focus_sessions_current_step_id_user_id_fkey"
             columns: ["current_step_id", "user_id"]
@@ -1292,10 +1422,16 @@ export type Database = {
           description: string | null
           id: string
           importance: number
+          level: string
           origin: string
+          parent_goal_id: string | null
+          period_end: string | null
+          period_start: string | null
+          progress: number
           scope_id: string | null
           status: string
           title: string
+          updated_at: string
           user_id: string
         }
         Insert: {
@@ -1304,10 +1440,16 @@ export type Database = {
           description?: string | null
           id?: string
           importance: number
+          level?: string
           origin: string
+          parent_goal_id?: string | null
+          period_end?: string | null
+          period_start?: string | null
+          progress?: number
           scope_id?: string | null
           status: string
           title: string
+          updated_at?: string
           user_id: string
         }
         Update: {
@@ -1316,13 +1458,26 @@ export type Database = {
           description?: string | null
           id?: string
           importance?: number
+          level?: string
           origin?: string
+          parent_goal_id?: string | null
+          period_end?: string | null
+          period_start?: string | null
+          progress?: number
           scope_id?: string | null
           status?: string
           title?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "goals_parent_owner_fk"
+            columns: ["parent_goal_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id", "user_id"]
+          },
           {
             foreignKeyName: "goals_scope_id_user_id_fkey"
             columns: ["scope_id", "user_id"]
@@ -1542,6 +1697,53 @@ export type Database = {
           },
         ]
       }
+      learning_units: {
+        Row: {
+          created_at: string
+          exposure_state: string
+          id: string
+          position: number
+          title: string
+          understanding_state: string
+          updated_at: string
+          user_id: string
+          validation_state: string
+          work_context_id: string
+        }
+        Insert: {
+          created_at?: string
+          exposure_state?: string
+          id?: string
+          position: number
+          title: string
+          understanding_state?: string
+          updated_at?: string
+          user_id: string
+          validation_state?: string
+          work_context_id: string
+        }
+        Update: {
+          created_at?: string
+          exposure_state?: string
+          id?: string
+          position?: number
+          title?: string
+          understanding_state?: string
+          updated_at?: string
+          user_id?: string
+          validation_state?: string
+          work_context_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "learning_units_work_context_id_user_id_fkey"
+            columns: ["work_context_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "work_contexts"
+            referencedColumns: ["id", "user_id"]
+          },
+        ]
+      }
       mcp_server_connections: {
         Row: {
           auth_secret_ref: string | null
@@ -1747,45 +1949,57 @@ export type Database = {
         Row: {
           completed_at: string | null
           created_at: string
+          current_value: number | null
           goal_id: string | null
           id: string
           importance: number
           origin: string
+          progress_mode: string
           scope_id: string | null
           status: string
           success_criteria: string | null
           target_date: string | null
+          target_value: number | null
           title: string
+          unit: string | null
           user_id: string
           work_context_id: string | null
         }
         Insert: {
           completed_at?: string | null
           created_at?: string
+          current_value?: number | null
           goal_id?: string | null
           id?: string
           importance: number
           origin: string
+          progress_mode?: string
           scope_id?: string | null
           status: string
           success_criteria?: string | null
           target_date?: string | null
+          target_value?: number | null
           title: string
+          unit?: string | null
           user_id: string
           work_context_id?: string | null
         }
         Update: {
           completed_at?: string | null
           created_at?: string
+          current_value?: number | null
           goal_id?: string | null
           id?: string
           importance?: number
           origin?: string
+          progress_mode?: string
           scope_id?: string | null
           status?: string
           success_criteria?: string | null
           target_date?: string | null
+          target_value?: number | null
           title?: string
+          unit?: string | null
           user_id?: string
           work_context_id?: string | null
         }
@@ -2573,6 +2787,49 @@ export type Database = {
           },
         ]
       }
+      task_dependencies: {
+        Row: {
+          created_at: string
+          prerequisite_task_id: string
+          task_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          prerequisite_task_id: string
+          task_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          prerequisite_task_id?: string
+          task_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_dependencies_prerequisite_task_id_user_id_fkey"
+            columns: ["prerequisite_task_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "task_dependencies_task_id_user_id_fkey"
+            columns: ["task_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id", "user_id"]
+          },
+          {
+            foreignKeyName: "task_dependencies_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       task_steps: {
         Row: {
           completion_criteria: string | null
@@ -2581,6 +2838,8 @@ export type Database = {
           id: string
           owner: string
           position: number
+          review_of_step_id: string | null
+          skill_key: string | null
           status: string
           task_id: string
           title: string
@@ -2594,6 +2853,8 @@ export type Database = {
           id?: string
           owner: string
           position: number
+          review_of_step_id?: string | null
+          skill_key?: string | null
           status: string
           task_id: string
           title: string
@@ -2607,6 +2868,8 @@ export type Database = {
           id?: string
           owner?: string
           position?: number
+          review_of_step_id?: string | null
+          skill_key?: string | null
           status?: string
           task_id?: string
           title?: string
@@ -2614,6 +2877,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "task_steps_review_of_step_id_user_id_fkey"
+            columns: ["review_of_step_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "task_steps"
+            referencedColumns: ["id", "user_id"]
+          },
           {
             foreignKeyName: "task_steps_task_id_user_id_fkey"
             columns: ["task_id", "user_id"]
@@ -2647,6 +2917,8 @@ export type Database = {
           next_action: string | null
           objective_id: string | null
           official_deadline: string | null
+          planned_date: string | null
+          scope_exclusions: string | null
           status: string
           title: string
           updated_at: string
@@ -2669,6 +2941,8 @@ export type Database = {
           next_action?: string | null
           objective_id?: string | null
           official_deadline?: string | null
+          planned_date?: string | null
+          scope_exclusions?: string | null
           status: string
           title: string
           updated_at?: string
@@ -2691,6 +2965,8 @@ export type Database = {
           next_action?: string | null
           objective_id?: string | null
           official_deadline?: string | null
+          planned_date?: string | null
+          scope_exclusions?: string | null
           status?: string
           title?: string
           updated_at?: string
@@ -3000,42 +3276,54 @@ export type Database = {
         Row: {
           agent_mode: string
           archived_at: string | null
+          commitment_level: string | null
           created_at: string
           description: string | null
           end_date: string | null
           id: string
+          internal_start_date: string | null
           kind: string
           scope_id: string | null
           start_date: string | null
           status: string
+          strategic_importance: number | null
+          strategy_config: Json
           title: string
           user_id: string
         }
         Insert: {
           agent_mode: string
           archived_at?: string | null
+          commitment_level?: string | null
           created_at?: string
           description?: string | null
           end_date?: string | null
           id?: string
+          internal_start_date?: string | null
           kind: string
           scope_id?: string | null
           start_date?: string | null
           status: string
+          strategic_importance?: number | null
+          strategy_config?: Json
           title: string
           user_id: string
         }
         Update: {
           agent_mode?: string
           archived_at?: string | null
+          commitment_level?: string | null
           created_at?: string
           description?: string | null
           end_date?: string | null
           id?: string
+          internal_start_date?: string | null
           kind?: string
           scope_id?: string | null
           start_date?: string | null
           status?: string
+          strategic_importance?: number | null
+          strategy_config?: Json
           title?: string
           user_id?: string
         }
@@ -3102,6 +3390,53 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "workflow_runs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workstyle_profiles: {
+        Row: {
+          active: boolean
+          agent_type: string | null
+          created_at: string
+          directives: Json
+          id: string
+          instructions: string[]
+          revision: number
+          scope_type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          agent_type?: string | null
+          created_at?: string
+          directives?: Json
+          id?: string
+          instructions?: string[]
+          revision: number
+          scope_type: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          agent_type?: string | null
+          created_at?: string
+          directives?: Json
+          id?: string
+          instructions?: string[]
+          revision?: number
+          scope_type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workstyle_profiles_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"

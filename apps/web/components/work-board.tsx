@@ -1,6 +1,7 @@
 "use client";
 
 import { startTransition, useActionState, useState } from "react";
+import { PeriodGoalManagement } from "./period-goal-management";
 import {
   completeWorkTaskAction,
   createWorkTaskAction,
@@ -28,7 +29,7 @@ function Wins({ title, wins, selected, onSelect }: {
 }) {
   return <section className="wins-shelf"><header><small>{title}</small><span>{wins.length}</span></header>
     {wins.length ? <div className="wins-grid">{wins.map((win) => <button type="button" className={selected === win.id ? "selected" : ""} onClick={() => onSelect(selected === win.id ? null : win.id)} key={win.id}>
-      <strong>{win.title}</strong><div className="win-progress"><i style={{ width: `${win.progress}%` }} /></div><span>{win.progress}% · {remaining(win.remainingMinutes)}</span>
+      <strong>{win.title}</strong>{win.evidenceKind !== "none" && <div className="win-progress"><i style={{ width: `${win.progress}%` }} /></div>}<span>{win.evidenceKind === "none" ? "진행 기준 없음" : `${win.progress}%`} · {remaining(win.remainingMinutes)}</span>
     </button>)}</div> : <p>이 기간에 연결된 Win이 아직 없습니다.</p>}
   </section>;
 }
@@ -84,14 +85,16 @@ function TodayView({ data, selectedGoalId, updateAction, estimateAction, complet
   </section><section className="today-quest-stack"><header><small>ORDERED QUESTS</small><h2>오늘 Quest</h2></header>
     <div className="today-capacity"><span>Capacity <b>{data.todayCapacityMinutes === null ? "확인 전" : duration(data.todayCapacityMinutes).replace("예상 ", "")}</b></span><span>Workload <b>{duration(data.todayWorkloadMinutes).replace("예상 ", "")}</b></span></div>
     {data.deadlineWarning && <p className="today-deadline-warning">🔥 {data.deadlineWarning}</p>}
-    <div>{data.todayQuests.map((quest, index) => <div className="today-quest" key={`${quest.kind}:${quest.id}`}><em>{index + 1}</em>{quest.kind === "task"
+    <div>{data.todayQuests.length ? data.todayQuests.map((quest, index) => <div className="today-quest" key={`${quest.kind}:${quest.id}`}><em>{index + 1}</em>{quest.kind === "task"
       ? <TaskCard task={quest.task} contexts={data.contexts} selectedGoalId={selectedGoalId} updateAction={updateAction} estimateAction={estimateAction} completeAction={completeAction} pending={pending} />
-      : <article className="planning-task-card course-study-card"><div className="planning-task-title"><span>◈</span><strong>{quest.title}</strong>{quest.priorityBand && <b>{quest.priorityBand}</b>}</div><p>{quest.contextTitle ?? "Course Study"} · {duration(quest.estimatedMinutes)}</p><small>학습 준비 상태와 이번 주 목표를 기준으로 배치</small></article>}</div>)}</div>
+      : <article className="planning-task-card course-study-card"><div className="planning-task-title"><span>◈</span><strong>{quest.title}</strong>{quest.priorityBand && <b>{quest.priorityBand}</b>}</div><p>{quest.contextTitle ?? "Course Study"} · {duration(quest.estimatedMinutes)}</p><small>학습 준비 상태와 이번 주 목표를 기준으로 배치</small></article>}</div>) : <p>현재 실행 가능한 Today Quest가 없습니다.</p>}</div>
   </section></div>;
 }
 
 function MonthView({ data, selectedGoalId, setSelectedGoalId }: { data: WorkBoardViewModel; selectedGoalId: string | null; setSelectedGoalId: (id: string | null) => void }) {
-  return <><Wins title="MONTHLY WINS" wins={data.monthlyWins} selected={selectedGoalId} onSelect={setSelectedGoalId} />
+  const monthStart = `${data.today.slice(0, 7)}-01`;
+  const monthEnd = new Date(Date.UTC(Number(data.today.slice(0, 4)), Number(data.today.slice(5, 7)), 0)).toISOString().slice(0, 10);
+  return <><PeriodGoalManagement level="MONTHLY" goals={data.monthlyWins} parents={[]} start={monthStart} end={monthEnd} selected={selectedGoalId} onSelect={setSelectedGoalId} />
     <section className="month-board"><header><h2>{data.monthLabel}</h2><div><span className="official">공식 마감</span><span className="internal">중요 내부 목표</span><span className="milestone">Milestone</span><span className="event">고정 일정</span></div></header>
       <div className="month-weekdays">{["월","화","수","목","금","토","일"].map((day) => <b key={day}>{day}</b>)}</div>
       <div className="month-grid">{data.month.map((day) => <article className={`${day.inMonth ? "" : "outside"} ${day.isToday ? "today" : ""}`} key={day.date}><time>{day.dayNumber}</time>{day.highlights.map((item) => <span className={item.kind} title={item.title} key={item.id}>{item.title}</span>)}</article>)}</div>
@@ -111,7 +114,8 @@ export function WorkBoard({ data }: { data: WorkBoardViewModel }) {
   return <main className="work-shell planning-room">
     <div className="work-top-row"><img className="work-top-logo" src="/assets/lifehacker/lifehacker-logo.png" alt="Lifehacker" /><nav className="work-view-tabs" aria-label="Work 보기">{(["today","week","month"] as const).map((item) => <button className={view === item ? "active" : ""} type="button" onClick={() => setView(item)} key={item}>{item === "today" ? "Today" : item === "week" ? "Week" : "Month"}</button>)}</nav></div>
     {!data.configured ? <section className="work-empty"><strong>Work & Calendar를 연결할 수 없습니다.</strong><p>{data.error}</p></section> : <>
-      {view !== "month" && <Wins title="THIS WEEK WINS" wins={data.weeklyWins} selected={selectedGoalId} onSelect={setSelectedGoalId} />}
+      {view === "today" && <Wins title="THIS WEEK WINS" wins={data.weeklyWins} selected={selectedGoalId} onSelect={setSelectedGoalId} />}
+      {view === "week" && <PeriodGoalManagement level="WEEKLY" goals={data.weeklyWins} parents={data.monthlyGoalOptions} start={data.week[0]?.date ?? data.today} end={data.week[6]?.date ?? data.today} selected={selectedGoalId} onSelect={setSelectedGoalId} />}
       {view === "week" && <WeekView data={data} selectedGoalId={selectedGoalId} updateAction={updateAction} estimateAction={estimateAction} completeAction={completeAction} moveAction={moveAction} pending={pending} />}
       {view === "today" && <TodayView data={data} selectedGoalId={selectedGoalId} updateAction={updateAction} estimateAction={estimateAction} completeAction={completeAction} pending={pending} />}
       {view === "month" && <MonthView data={data} selectedGoalId={selectedGoalId} setSelectedGoalId={setSelectedGoalId} />}

@@ -1,5 +1,7 @@
 # Amber HQ Domain Model
 
+Chief P0의 행동·범위는 [Chief P0 Policy v0.1](./chief-p0-policy.md)이 우선한다. 기존 V1/Foundation 설명과 구현 기록은 유지하되 Morning / Recovery / Day Close는 P0 필수 사용자 의식이 아니며, 기존 AI 가능 목록은 P0 runtime 허가가 아니다. Wave 1은 문서 동결만 수행하고 코드·테스트·migration을 변경하지 않는다.
+
 **Status:** Foundation v0.3  
 **Purpose:** Amber HQ의 요구사항을 구현할 때 필요한 핵심 Domain과 관계를 정의한다.  
 **Principle:** 기능을 먼저 만들고 DB를 뒤늦게 덧붙이지 않는다. 변경 비용이 큰 Domain 경계와 데이터 소유권을 먼저 고정한다.
@@ -23,8 +25,8 @@ RecurringActivity  Principle
         ▼              │
 Work Domain ────── Decision / Evidence
 WorkContext         Decision
-Project / Course    DecisionFeedback
-CourseProfile       LearningCase
+Project / Course / Certification    DecisionFeedback
+CourseProfile / CertificationProfile / LearningUnit    LearningCase
 CourseAssessment    PatternEvidence / Outcome
 Task / TaskStep
         │
@@ -111,7 +113,17 @@ AI가 추론한 패턴과 절대 섞지 않는다.
 
 ## 3. Goal / Objective / Recurring Activity Domain
 
-### Canonical hierarchy
+### Chief P0 conceptual contract
+
+Planning hierarchy: Long-term Goal → Monthly Goal → Weekly Focus Goal → Objective / Measurable Subgoal → Task / Learning Mission → Daily Quest. Daily Quest는 derived execution choice이며 새 Goal entity가 아니다. Monthly / Weekly Goal은 capacity 집중 방향이며 hard deadline, critical loss, serious dependency, major risk를 덮어쓰지 않는다.
+
+Portfolio Context는 Project / Course / Certification을 개념적으로 지원한다. Certification은 Learning Context이며 CUMULATIVE / MIXED / CRAMMABLE 특성을 가진다. Wave 2의 `0018_chief_p0_context_and_learning.sql`은 기존 WorkContext에 certification kind와 사용자 전략 필드를 추가하고 CertificationProfile / LearningUnit으로 학습 계약을 저장한다.
+
+사용자 소유: strategic importance, commitment, goals, 수동 공식 날짜, internal strategy, 시스템이 신뢰성 있게 알 수 없는 actual learning state. Chief-derived: urgency, pressure, risk, future capacity conflict, priority, recommended current action. 중요도와 현재 priority는 다르다. 공식 timeline과 internal plan은 분리한다.
+
+Learning state의 개념 차원은 Exposure(NOT_STARTED / PARTIAL / COMPLETE), Understanding(UNKNOWN / WEAK / OK / STRONG), Validation(NOT_TESTED / FAILED / PASSED)이다. 영상 재생만으로 이해/검증을 추론하지 않으며 알 수 없는 실제 학습은 사용자 선언이 authoritative하다. 자세한 행동은 [P0 계약](./chief-p0-policy.md)을 따른다.
+
+### Existing entity relationships
 
 ```text
 Goal
@@ -119,7 +131,8 @@ Goal
 
 WorkContext
   ├─ Project
-  └─ Course
+  ├─ Course
+  └─ Certification
 
 Task
   └─ TaskStep
@@ -130,9 +143,10 @@ RecurringActivity
 
 - Goal = 장기 방향/상태.
 - Objective = 기간·완료조건이 있는 결과. Goal 없이 standalone 가능.
-- Project와 Course는 내부적으로 공통 `WorkContext`를 사용한다.
+- Project / Course / Certification은 내부적으로 공통 `WorkContext`를 사용한다.
 - Project = `WorkContext.kind = project`.
 - Course = `WorkContext.kind = course` + `CourseProfile` / `CourseAssessment`.
+- Certification = `WorkContext.kind = certification` + `CertificationProfile`. Course / Certification의 agent_mode는 not_applicable이다.
 - Task는 최대 하나의 WorkContext에 속한다.
 - Task는 optional하게 하나의 Objective에 연결한다.
 - Task에 goal/project/course FK를 중복 저장하지 않는다.
@@ -154,6 +168,8 @@ RecurringActivity
 - `origin`
 - `created_at`, `updated_at`, `archived_at?`
 
+`progress`의 의미적 값은 명시적 단위/Task 완료, milestone, completion criteria 근거로만 도출한다. 시간/예상 작업량 가중치 fallback은 금지하며 근거가 없으면 unknown이다. 기존 필드 존재는 fake percentage 허가가 아니다. Wave 3는 legacy/stale일 수 있는 `goals.progress`를 보존하되 canonical 계산에서 읽지 않는다. `projectGoalProgress`의 derived explicit evidence가 canonical이다.
+
 ### Objective
 
 - `id`, `user_id`
@@ -162,6 +178,12 @@ RecurringActivity
 - `importance`
 - `status`: active / achieved / cancelled / archived
 - `origin`, `created_at`
+- `progress_mode`: STATUS(default) / TASK_COUNT / NUMERIC
+- `target_value?` (> 0), `current_value?` (>= 0), `unit?`
+
+STATUS는 milestone/명시적 state, TASK_COUNT는 명시적으로 정의된 child Task 완료, NUMERIC은 12 / 18 lessons 같은 측정값을 표현한다. 새 저장 percentage는 없으며 예상 workload/time을 이 필드로 이관하지 않는다. 기존 Objective는 STATUS로 유지된다.
+
+Wave 3 projection은 STATUS의 achieved/completed/done에 100, 나머지에 0을 부여한다. TASK_COUNT는 child Task 중 DONE 비율이며 child Task가 없으면 근거 없음이다. NUMERIC은 유효한 current_value / target_value 비율을 0–100으로 제한하며 값이 없거나 유효하지 않으면 근거 없음이다. usable Objective들을 동등하게 평균하고, 없으면 usable child Goal들을 동등하게 평균한다. 둘 다 없으면 progress=0, evidenceKind=none이다. 근거 종류는 status / task_count / numeric / children / mixed_objectives / none이다. remainingMinutes는 미완료 Task의 추정 effort에서 실제 effort를 차감한 값과 child Goal workload의 합으로 별도 계산한다. 진행률에는 시간 가중치를 사용하지 않는다.
 
 ### RecurringActivity
 
@@ -203,15 +225,20 @@ Unique: `(recurring_activity_id, period_key, sequence_no)`
 
 ---
 
-## 4. Work Context / Course / Task Domain
+## 4. Work Context / Learning / Task Domain
 
 ### WorkContext
 
 - `id`, `user_id`
-- `kind`: project / course
+- `kind`: project / course / certification
 - `title`, `description?`
 - `status`: active / completed / archived
-- `start_date?`, `end_date?`
+- `start_date?`, `end_date?`: 공식/external timeline
+- `internal_start_date?`: 내부 운영 시작일
+- `strategic_importance?`: 사용자 지정 1–5; default 없음, null은 미설정
+- `commitment_level?`: REQUIRED / IMPORTANT / OPTIONAL; default 없음
+- `strategy_config`: jsonb, NOT NULL default `{}`; context-type별 전략 option만 저장하며 공통 canonical field를 넣지 않는다
+- `agent_mode`: auto / disabled / not_applicable; course/certification은 not_applicable
 - `scope_id`
 - `created_at`, `archived_at?`
 
@@ -221,6 +248,30 @@ Unique: `(recurring_activity_id, period_key, sequence_no)`
 - `target_grade?`
 - `self_reported_understanding?`
 - `term?`, `instructor?`
+
+### CertificationProfile
+
+- `work_context_id`: PK, `user_id`
+- `target_outcome?`, `exam_date?` (date), `current_level?`
+- `study_mode?`: CUMULATIVE / MIXED / CRAMMABLE
+- `created_at`, `updated_at`: default now()
+
+동일 사용자 `(work_context_id, user_id) → WorkContext(id, user_id)` FK와 cascade delete를 사용한다. exam_date는 planning anchor이며 Calendar fixed-time event를 대체하지 않는다. certification kind 연결은 domain 계약이며 Wave 2에서는 cross-table kind trigger를 추가하지 않는다. 기존 Course kind trigger는 유지한다.
+
+### LearningUnit
+
+Course / Certification의 사용자 근거 학습 상태다.
+
+- `id`: UUID default gen_random_uuid(), `user_id`, `work_context_id`, `title`
+- `position`: integer > 0; unique `(work_context_id, position)`
+- `exposure_state`: NOT_STARTED(default) / PARTIAL / COMPLETE
+- `understanding_state`: UNKNOWN(default) / WEAK / OK / STRONG
+- `validation_state`: NOT_TESTED(default) / FAILED / PASSED
+- `created_at`, `updated_at`: default now()
+
+동일 사용자 WorkContext composite FK와 cascade delete, owner RLS를 사용한다. 학습용 Context kind는 domain 계약이다. 재생 기록만으로 상태를 변경하지 않으며 사용자 선언이 실제 학습 근거다. AI 필드는 없다.
+
+Learning Unit 관리는 활성 Course/Certification에 한정한다. 세 상태 차원은 수동으로 독립 수정하며 Focus 시간·재생·동기화로 자동 승격하지 않는다. 기본 position은 해당 Context의 최대 position + 1이며, 중복 position은 다른 항목을 옮기거나 덮어쓰지 않고 거절한다. 보관 필드와 참조 테이블이 없으므로 P0에서 사용자 명시 확인 후 hard delete를 허용하되, 변경 전후 값 및 삭제 전 snapshot은 별도 DomainEvent로 보존한다. Context 요약은 전체 개수, Exposure COMPLETE 개수, Understanding WEAK 개수, Validation PASSED가 아닌 개수를 계산하며 저장된 percentage를 만들지 않는다.
 
 ### CourseAssessment
 
@@ -246,6 +297,13 @@ Unique: `(recurring_activity_id, period_key, sequence_no)`
 - `planned_date?`: deadline과 독립된 이동 가능한 실행 예정일
 - `estimated_minutes?`, `estimated_user_minutes?`, `actual_minutes`
 - `importance`, `status`, `next_action?`, `completion_criteria?`
+- `scope_exclusions?`: 현재 Task/session에서 제외하는 작업
+
+P0 Task 완료는 explicit completion criteria에 의존한다. Minimum Sufficient Outcome과 이번 scope/session에서 제외하는 것을 명확히 할 수 있다. estimated/actual minutes는 workload/capacity/feasibility에 사용하며 semantic progress가 아니다.
+
+FutureCapacityProjection은 별도 entity/table이 아닌 derived Core contract다. 호출자 지정 horizon의 날짜별 gross/blocked/buffer/available/committed/remaining minutes와 Task의 planned/deadline workload evidence, deadline-window slack을 반환한다. unknown availability/effort와 날짜 미배치 수요는 명시적으로 보존하며 positive slack으로 대체하지 않는다. 예상시간 계산은 Task의 잔여 workload일 뿐 Goal/Learning semantic progress가 아니다. projection은 Task 날짜·상태를 수정하거나 저장하지 않는다. 계산 규칙은 `work-schedule-policy.md`의 Future Capacity Projection을 따른다.
+
+Chief P0 Priority v2는 `judgeOutcomes`의 단일 Task 결정 경로다. WorkContext commitment/strategic importance, 활성 Goal period와 Objective 연결, certification study_mode/exam anchor, LearningUnit 수동 상태, dependency, derived capacity-window를 evidence로 읽는다. CurrentStatus는 상태 사실과 이 judgment의 표시만 담당한다. Morning 승인 없이 추천할 수 있고 unknown 용량/effort는 안전한 유예로 해석하지 않는다. completion_criteria는 priority 결과에 보존한다. 원본 Future Capacity projection은 저장하지 않고 중요한 결정의 reason 및 충돌 근거만 기존 Decision history에 남긴다.
 
 Task state:
 `INBOX / PLANNED / IN_PROGRESS / BLOCKED / WAITING_FOR_USER / DONE`
@@ -358,6 +416,8 @@ Replan은 기존 row를 덮어쓰지 않고 새 revision을 만든다.
 1. active FocusSession이 있으면 해당 Task/Step
 2. 없으면 최신 approved DailyPlan의 첫 실행가능 미완료 PlanItem
 3. 없으면 Planner가 다음 행동 필요 상태 반환
+
+위는 기존 구현의 조회 계약이다. Chief P0의 행동 계약은 Morning 또는 DailyPlan 승인 의식을 추천의 진입 조건으로 요구하지 않는다. 현재 evidence에서 Main Quest와 완료 경계, 다른 commitment의 보호 근거를 도출해야 한다. 이 Wave는 조회 구현이나 상태 소유권을 변경하지 않는다.
 
 ### Availability
 
@@ -909,12 +969,14 @@ MCP를 사용할 경우 server 단위 connection/config.
 | Decision/Pattern/Principle | Supabase |
 | Workflow/Approval state | Supabase |
 | Fixed-time calendar event | iCloud Calendar (primary) |
-| Knowledge document | Notion |
+| Knowledge document | Notion (knowledge/context only; P0 Task SSOT 아님) |
 | Source code | GitHub |
 | Agent execution state | Supabase |
 | MCP server tool catalog | External server + cached registry |
 
 ---
+
+P0 user-created Tasks는 Lifehacker/Supabase에 저장한다. Snowboard는 공식 학교 Task 발견/import와 외부 공식 사실의 provenance를 제공한다. Calendar는 fixed-time event의 authority이며 내부 계획과 구분한다.
 
 ## 17. Foundation Rule
 

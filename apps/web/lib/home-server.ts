@@ -28,7 +28,8 @@ import { OpenAIAiTaskExecutor, OpenAIProjectAnalysisProvider, SupabaseAIExecutio
 import { SystemClock, zonedDateTimeToUtc, type UserId } from "@amber/shared";
 import type { Sql } from "postgres";
 import type { HomeProposalChange, HomeTimelineItem, HomeViewModel, HomeWeekDay } from "./home-types";
-import { remainingAvailableMinutes } from "./home-presentation";
+import { mapHomeChief } from "./home-chief-presentation";
+import { loadChiefLearningCandidates } from "./learning-chief-provider";
 import { getWebSql, getWebUserId } from "./web-runtime";
 export { getWebSql, getWebUserId } from "./web-runtime";
 
@@ -263,12 +264,25 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
     if (!profiles[0]) throw new Error("AMBER_USER_ID에 해당하는 profile을 찾지 못했습니다.");
     const timeZone = profiles[0].timezone;
     const date = localDate(now, timeZone);
-    const outcomePriority = await getHomeOutcome(sql,userId,date,await new SupabaseMorningRepository(sql).loadObservation(userId,date,timeZone),now);
+    const observation = await new SupabaseMorningRepository(sql).loadObservation(userId,date,timeZone);
+    const learning = await loadChiefLearningCandidates();
+    const outcomePriority = await getHomeOutcome(sql,userId,date,observation,now,learning.candidates);
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const judgmentIds = [...outcomePriority.judgment.todayPriority, ...(outcomePriority.judgment.futureRelief ? [outcomePriority.judgment.futureRelief] : []), ...outcomePriority.judgment.notToday]
+      .map(item => item.taskId).filter(id => uuidPattern.test(id));
+    const detailIds = [...new Set([...observation.tasks.map(task => String(task.id)), ...judgmentIds])];
+    const taskDetails = detailIds.length ? await sql<{ id:string;title:string;context:string|null;completion_criteria:string|null;scope_exclusions:string|null }[]>`
+      select t.id,t.title,coalesce(w.title,g.title) context,t.completion_criteria,t.scope_exclusions
+      from public.tasks t left join public.objectives o on o.id=t.objective_id and o.user_id=t.user_id
+      left join public.work_contexts w on w.id=coalesce(t.work_context_id,o.work_context_id) and w.user_id=t.user_id
+      left join public.goals g on g.id=o.goal_id and g.user_id=o.user_id
+      where t.user_id=${userId} and t.id=any(${detailIds}::uuid[])` : [];
     const missionIds = [...new Set([...outcomePriority.judgment.todayPriority.map((item) => item.taskId),
       ...(outcomePriority.judgment.futureRelief ? [outcomePriority.judgment.futureRelief.taskId] : [])])];
-    const missionSteps = missionIds.length ? await sql<{ task_id: string; total: number; completed: number }[]>`
+    const canonicalMissionIds = missionIds.filter(id => uuidPattern.test(id));
+    const missionSteps = canonicalMissionIds.length ? await sql<{ task_id: string; total: number; completed: number }[]>`
       select task_id,count(*)::int total,count(*) filter (where status='completed')::int completed
-      from public.task_steps where user_id=${userId} and task_id=any(${missionIds}::uuid[]) group by task_id` : [];
+      from public.task_steps where user_id=${userId} and task_id=any(${canonicalMissionIds}::uuid[]) group by task_id` : [];
     const missionProgress = Object.fromEntries(missionSteps.map((row) => [row.task_id, { completed: row.completed, total: row.total }]));
     const dates = weekDates(date);
     const [plans, planStates, currentAction, focus, focusSessions, goals, agents, decisionRows, pendingRuns, week, integrations, reviews, projectRuntime] = await Promise.all([
@@ -312,24 +326,12 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
       approved ? readItems(sql, userId, approved.id) : [],
       pendingPlan ? readItems(sql, userId, pendingPlan.id) : []
     ]);
-    const statusPriority = outcomePriority.currentStatus.priorities[0] ?? null;
-    const focused = currentAction?.source === "focus_session";
-    const statusItem = statusPriority?.taskId
-      ? approvedItems.find((item) => item.task_id === statusPriority.taskId) ?? null
-      : statusPriority?.recurringActivityId
-        ? approvedItems.find((item) => item.recurring_activity_id === statusPriority.recurringActivityId) ?? null
-        : null;
-    const selectedAction = focused ? currentAction : statusPriority ? statusPriority.kind === "task" ? {
-      kind: "task" as const, source: "current_status" as const, title: statusPriority.title,
-      taskId: statusPriority.taskId!, planItemId: statusItem?.id ?? null
-    } : {
-      kind: "routine" as const, source: "current_status" as const, title: statusPriority.title,
-      activityOccurrenceId: statusPriority.occurrenceId ?? statusItem?.activity_occurrence_id ?? "",
-      planItemId: statusItem?.id ?? null
-    } : currentAction;
-    const currentItem = selectedAction?.planItemId ? approvedItems.find((item) => item.id === selectedAction.planItemId) ?? null : null;
-    const whyNow = focused ? "진행 중인 집중을 마칠 때까지 현재 Quest를 유지해요."
-      : statusPriority?.whyNow ?? "현재 사실과 남은 가용시간을 기준으로 선택했어요.";
+    const chief = mapHomeChief(outcomePriority.judgment,taskDetails.map(task=>{
+      const item = approvedItems.find(item=>item.task_id===task.id);
+      return {id:task.id,title:task.title,context:task.context,completionCriteria:task.completion_criteria,scopeExclusions:task.scope_exclusions,
+        stepId:item?.step_id ?? null,planItemId:item?.id ?? null};
+    }));
+    const selectedAction = chief.currentAction;
     const approvedByKey = new Map(approvedItems.map((item) => [itemKey(item), item]));
     const pendingChanges = pendingItems.filter((item) => {
       const previous = approvedByKey.get(itemKey(item));
@@ -339,7 +341,7 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
         || previous.status !== item.status;
     });
     const timeline: HomeTimelineItem[] = [
-      ...approvedItems.filter((item) => item.status !== "completed" && item.task_status !== "DONE").map((item) => ({
+      ...approvedItems.filter((item) => item.status !== "completed" && !["DONE","CLOSED_PARTIAL","SKIPPED","CANCELLED"].includes(item.task_status ?? "")).map((item) => ({
         id: item.id, taskId: item.task_id, stepId: item.step_id, occurrenceId: item.activity_occurrence_id, kind: item.item_type, title: item.step_title ?? item.title,
         startsAt: item.planned_start_at.toISOString(), endsAt: item.planned_end_at.toISOString(),
         minutes: item.planned_minutes, status: item.status, context: item.context_title,
@@ -393,32 +395,26 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
       };
     });
     const calendarItems = week.flatMap((day) => day.items.filter((item) => item.kind === "calendar"));
+    const nextFixedSchedule = calendarItems.find((item) => localDate(new Date(item.startsAt), timeZone) === date
+      && new Date(item.endsAt) > now) ?? null;
     const latestSync = integrations.flatMap((item) => item.last_sync_at ? [item.last_sync_at] : [])
       .sort((left, right) => right.getTime() - left.getTime())[0] ?? null;
     return {
       configured: true, error: null, date, timeZone,
       outcomePriority,
       currentStatus: outcomePriority.currentStatus,
+      learningSpecialist: learning.specialist,
       missionProgress,
-      currentAction: selectedAction ? {
-        kind: selectedAction.kind, taskId: selectedAction.kind === "task" ? selectedAction.taskId : null,
-        stepId: currentItem?.step_id ?? null, occurrenceId: selectedAction.kind === "routine" ? selectedAction.activityOccurrenceId || null : null,
-        planItemId: selectedAction.planItemId,
-        title: selectedAction.source === "current_status" ? selectedAction.title : currentItem?.step_title ?? selectedAction.title,
-        minutes: statusPriority?.minutes ?? currentItem?.planned_minutes ?? null,
-        context: currentItem?.context_title ?? null, source: selectedAction.source,
-        whyNow
-      } : null,
+      ...chief,
       approvedPlan: approved ? { id: approved.id, revisionNo: approved.revision_no } : null,
-      availableMinutes: outcomePriority.currentStatus.remainingCapacityMinutes
-        ?? (approved ? remainingAvailableMinutes(approved.input_snapshot, now, timeline) : null),
+      availableMinutes: outcomePriority.currentStatus.remainingCapacityMinutes,
       planReview: reviewPlan ? {
         planId: reviewPlan.id, revisionNo: reviewPlan.revision_no,
         status: reviewPlan.status === "pending_approval" ? "pending_approval" : "approved",
         approvalKind: reviewApprovalKind,
         totalMinutes: reviewItems.reduce((sum, item) => sum + item.planned_minutes, 0),
         items: [
-          ...reviewItems.filter((item) => item.status !== "completed" && item.task_status !== "DONE").map((item) => ({
+          ...reviewItems.filter((item) => item.status !== "completed" && !["DONE","CLOSED_PARTIAL","SKIPPED","CANCELLED"].includes(item.task_status ?? "")).map((item) => ({
           id: item.id, taskId: item.task_id, stepId: item.step_id, occurrenceId: item.activity_occurrence_id, title: item.step_title ?? item.title, context: item.context_title,
           itemType: item.item_type === "task" && item.context_kind === "course" ? "study" as const : item.item_type,
           startsAt: item.planned_start_at.toISOString(), endsAt: item.planned_end_at.toISOString(),
@@ -441,13 +437,17 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
         lastSyncedAt: latestSync?.toISOString() ?? null,
         fixedCommitmentCount: new Set(calendarItems.map((item) => `${item.id}:${item.startsAt}:${item.endsAt}`)).size
       },
+      nextFixedSchedule: nextFixedSchedule ? {
+        title: nextFixedSchedule.title, startsAt: nextFixedSchedule.startsAt, endsAt: nextFixedSchedule.endsAt
+      } : null,
       focus: focus && focus.currentStep !== "completed" ? {
         step: focus.currentStep, taskId: focus.checkpoint.taskId,
         occurrenceId: focus.checkpoint.activityOccurrenceId ?? null,
         category: focus.checkpoint.blockCategory ?? null,
         startedAt: focusSessions[0]?.id === focus.checkpoint.sessionId ? focusSessions[0].started_at.toISOString() : null,
         durationMinutes: focusSessions[0]?.id === focus.checkpoint.sessionId ? focusSessions[0].planned_minutes ?? focus.checkpoint.durationMinutes ?? 25 : focus.checkpoint.durationMinutes ?? 25,
-        stepTitle: approvedItems.find((item) => item.task_id === focus.checkpoint.taskId)?.step_title ?? null
+        stepTitle: approvedItems.find((item) => item.task_id === focus.checkpoint.taskId)?.step_title ?? null,
+        title:currentAction?.source==="focus_session" ? currentAction.title : null
       } : null,
       reviewArtifacts,
       timeline,
@@ -466,9 +466,9 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
   } catch (error) {
     return {
       configured: false, error: error instanceof Error ? error.message : "Home 데이터를 불러오지 못했습니다.",
-      date: localDate(now, "Asia/Seoul"), timeZone: "Asia/Seoul", outcomePriority: null, currentStatus: null, missionProgress: {}, currentAction: null, approvedPlan: null, availableMinutes: null, planReview: null,
+      date: localDate(now, "Asia/Seoul"), timeZone: "Asia/Seoul", outcomePriority: null, currentStatus: null, learningSpecialist: null, missionProgress: {}, currentAction: null, nextQuests:[],reassurance:[],approvedPlan: null, availableMinutes: null, planReview: null,
       planState: { status: "no_plan", revisionNo: null, message: null },
-      calendar: { activeProviders: [], lastSyncedAt: null, fixedCommitmentCount: 0 }, focus: null, reviewArtifacts: [],
+      calendar: { activeProviders: [], lastSyncedAt: null, fixedCommitmentCount: 0 }, nextFixedSchedule: null, focus: null, reviewArtifacts: [],
       timeline: [], week: weekDates(localDate(now, "Asia/Seoul")).map((date) => ({ date, items: [] })), goals: [], agents: [], decisionCount: 0, proposal: null,
       projectRuntime: []
     };

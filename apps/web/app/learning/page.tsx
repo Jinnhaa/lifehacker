@@ -1,5 +1,8 @@
-import Link from "next/link";
+import { LearningWorkspace } from "../../components/learning-workspace";
+import { loadLearningWorkspace } from "../../lib/learning-workspace-server";
 
-export default function LearningPage() {
-  return <main className="route-shell"><small>AMBER HQ · LEARNING</small><h1>Learning</h1><p>학습 Quest를 관리하는 공간입니다.</p><Link href="/">Home으로 돌아가기</Link></main>;
+export const dynamic = "force-dynamic";
+
+export default async function LearningPage() {
+  return <LearningWorkspace model={await loadLearningWorkspace()} />;
 }

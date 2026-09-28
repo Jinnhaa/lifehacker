@@ -93,7 +93,7 @@ export class MorningWorkflowService {
         if (text === "승인" && run.currentStep === "awaiting_approval")
             return this.approve(message, run);
         if (text === "승인" && run.currentStep === "completed") {
-            const action = await this.repository.deriveCurrentAction(message.userId, planDate);
+            const action = await this.repository.deriveCurrentAction(message.userId, planDate, message.timeZone, this.clock.now());
             return { handled: true, reply: formatApproved(action) };
         }
         if ((text === "다시 짜줘" || text.startsWith("수정:")) && run.currentStep === "awaiting_approval") {
@@ -111,7 +111,7 @@ export class MorningWorkflowService {
             return proposal ? { handled: true, reply: formatProposal(proposal, message.timeZone) } : { handled: true, reply: CONTEXT_QUESTION };
         }
         if (run.currentStep === "completed") {
-            const action = await this.repository.deriveCurrentAction(message.userId, run.checkpoint.planDate);
+            const action = await this.repository.deriveCurrentAction(message.userId, run.checkpoint.planDate, message.timeZone, this.clock.now());
             return { handled: true, reply: formatApproved(action) };
         }
         return { handled: true, reply: CONTEXT_QUESTION };
@@ -125,7 +125,7 @@ export class MorningWorkflowService {
             return proposal ? { handled: true, reply: formatProposal(proposal, message.timeZone) } : this.prepareProposal(message, run);
         }
         if (run.currentStep === "completed") {
-            const action = await this.repository.deriveCurrentAction(message.userId, planDate);
+            const action = await this.repository.deriveCurrentAction(message.userId, planDate, message.timeZone, this.clock.now());
             return { handled: true, reply: formatApproved(action) };
         }
         const observation = await this.repository.loadObservation(message.userId, planDate, message.timeZone, this.clock.now());
@@ -217,7 +217,7 @@ export class MorningWorkflowService {
     }
     async approve(message, run) {
         await this.repository.approve(run, this.clock.now(), message.messageId);
-        const action = await this.repository.deriveCurrentAction(message.userId, run.checkpoint.planDate);
+        const action = await this.repository.deriveCurrentAction(message.userId, run.checkpoint.planDate, message.timeZone, this.clock.now());
         return { handled: true, reply: formatApproved(action) };
     }
 }

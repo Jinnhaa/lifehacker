@@ -84,6 +84,15 @@ export declare class TaskService {
     }): Promise<Task>;
     resumeTask(options: TransitionOptions): Promise<Task>;
     completeTask(options: TransitionOptions): Promise<Task>;
+    closePartialTask(options: TransitionOptions & {
+        readonly reason: string;
+    }): Promise<Task>;
+    skipTask(options: TransitionOptions & {
+        readonly reason: string;
+    }): Promise<Task>;
+    cancelTask(options: TransitionOptions & {
+        readonly reason: string;
+    }): Promise<Task>;
     private transition;
     private parse;
     private notFound;
