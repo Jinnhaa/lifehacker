@@ -95,22 +95,18 @@ const message = (text: string, requestUserId = userId, id = text) => ({
 });
 
 describe("MorningWorkflowService", () => {
-  it("asks only for missing hidden context, resumes one workflow, proposes, and approves idempotently", async () => {
+  it("uses the default capacity policy, resumes one workflow, proposes, and approves idempotently", async () => {
     const repository = new FakeMorningRepository();
     const service = new MorningWorkflowService({ repository, clock: new FixedClock(now) });
 
     const first = await service.handleMorningMessage(message("일어남", userId, "wake-1"));
     const resumed = await service.handleMorningMessage(message("일어남", userId, "wake-2"));
-    expect(first.reply).toContain("몇 시까지");
+    expect(first.reply).toContain("오늘은 이렇게");
     expect(resumed.reply).toBe(first.reply);
     expect(repository.createCount).toBe(1);
-    expect(repository.plans).toHaveLength(0);
-
-    const proposal = await service.handleMorningMessage(message("오후 6시까지, 3시부터 4시 개인 일정", userId, "context-1"));
-    expect(proposal.reply).toContain("운영체제 과제");
     expect(repository.plans).toHaveLength(1);
-    expect(repository.plans[0]?.items.every((item) => item.end <= new Date("2026-09-04T09:00:00.000Z"))).toBe(true);
-    expect(repository.plans[0]?.items.every((item) => item.end <= new Date("2026-09-04T06:00:00.000Z") || item.start >= new Date("2026-09-04T07:00:00.000Z"))).toBe(true);
+    expect(repository.plans[0]?.items.every((item) => item.start >= new Date("2026-09-04T01:00:00.000Z"))).toBe(true);
+    expect(repository.plans[0]?.items.every((item) => item.end <= new Date("2026-09-04T17:00:00.000Z"))).toBe(true);
 
     const approved = await service.handleMorningMessage(message("승인", userId, "approve-1"));
     const duplicate = await service.handleMorningMessage(message("승인", userId, "approve-1"));
@@ -139,7 +135,6 @@ describe("MorningWorkflowService", () => {
     const decisionLearning = { recordMaterialDecision: vi.fn().mockResolvedValue("왜 바꾸고 싶어?") };
     const service = new MorningWorkflowService({ repository, clock: new FixedClock(now), decisionLearning });
     await service.handleMorningMessage(message("일어남"));
-    await service.handleMorningMessage(message("오후 6시까지", userId, "context"));
     const firstPlan = repository.plans[0]!;
     const firstItems = [...firstPlan.items];
 
@@ -166,7 +161,6 @@ describe("MorningWorkflowService", () => {
     const decisionLearning = { recordMaterialDecision: vi.fn() };
     const service = new MorningWorkflowService({ repository, clock: new FixedClock(now), decisionLearning });
     await service.handleMorningMessage(message("일어남"));
-    await service.handleMorningMessage(message("오후 6시까지", userId, "context-minor"));
     await service.handleMorningMessage(message("수정: 운영체제 과제 제외", userId, "revision-minor"));
     expect(decisionLearning.recordMaterialDecision).not.toHaveBeenCalled();
   });
@@ -178,5 +172,13 @@ describe("MorningWorkflowService", () => {
     const result = await service.handleMorningMessage(message("일어남"));
     expect(result.reply).toContain("오늘은 이렇게");
     expect(result.reply).not.toContain("몇 시까지");
+  });
+
+  it("keeps an explicit user work-until override", async () => {
+    const repository = new FakeMorningRepository();
+    const service = new MorningWorkflowService({ repository, clock: new FixedClock(now) });
+    await service.handleMorningMessage(message("일어남"));
+    await service.handleMorningMessage(message("수정: 오후 6시까지", userId, "override"));
+    expect(repository.snapshots.at(-1)?.workUntil).toBe("2026-09-04T09:00:00.000Z");
   });
 });

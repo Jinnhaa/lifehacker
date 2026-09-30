@@ -1,5 +1,6 @@
 import type { TaskId, UserId } from "@amber/shared";
 import { describe, expect, it } from "vitest";
+import { calculateDailyCapacity } from "../rules/daily-capacity-policy.js";
 import type { Task } from "../task/task.js";
 import { calculateTaskWorkload, createMorningPlan } from "./morning-planner.js";
 import type { MorningObservation } from "./morning.js";
@@ -87,6 +88,25 @@ describe("createMorningPlan", () => {
       privateIntervals: [], localWeekday: 5
     });
     expect(plan.items).toEqual([]);
+  });
+
+  it("leaves overload unscheduled instead of extending beyond the default soft horizon", () => {
+    const now = new Date("2026-09-04T00:00:00.000Z");
+    const capacity = calculateDailyCapacity({
+      planDate: "2026-09-04", timeZone: "Asia/Seoul", now,
+      blockingIntervals: [], planningBufferMinutes: 0
+    });
+    const plan = createMorningPlan({
+      observation: observation({ constraints: [], planningBufferMinutes: 0, tasks: [task({ estimatedMinutes: 2_000 })], recurringActivities: [] }),
+      now, workUntil: capacity.softHorizon, privateIntervals: [], localWeekday: 5,
+      maximumWorkMinutes: capacity.availableMinutes
+    });
+    const plannedMinutes = plan.items.reduce((sum, item) => sum + item.plannedMinutes, 0);
+    expect(plannedMinutes).toBe(780);
+    expect(plan.items.every((item) => item.end <= capacity.softHorizon)).toBe(true);
+    expect(plan.inputSnapshot.workload).toEqual(expect.arrayContaining([
+      expect.objectContaining({ remainingMinutes: 2_000, plannedMinutes: 780, deadlineRisk: true })
+    ]));
   });
 
   it("derives deadline risk when fixed schedule leaves less capacity than today's required workload", () => {
