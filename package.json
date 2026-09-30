@@ -19,6 +19,8 @@
     "dev:local": "node scripts/dev-local.mjs",
     "dev:stop": "node scripts/dev-stop.mjs",
     "discord:dev": "pnpm --filter @amber/discord-worker dev",
+    "sync-worker:dev": "pnpm --filter @amber/sync-worker dev",
+    "sync-worker:start": "pnpm --filter @amber/sync-worker start",
     "calendar:auth": "pnpm --filter @amber/google-calendar auth",
     "calendar:sync": "pnpm --filter @amber/google-calendar sync",
     "calendar:icloud:sync": "pnpm --filter @amber/icloud-calendar sync",

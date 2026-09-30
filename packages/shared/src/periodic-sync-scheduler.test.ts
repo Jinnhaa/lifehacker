@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { CalendarSyncScheduler, type CalendarSyncTask } from "./calendar-sync-scheduler.js";
+import { PeriodicSyncScheduler, type PeriodicSyncTask } from "./periodic-sync-scheduler.js";
 
-describe("CalendarSyncScheduler", () => {
+describe("PeriodicSyncScheduler", () => {
   it("safely no-ops when no provider has an active account", async () => {
-    const scheduler = new CalendarSyncScheduler([
+    const scheduler = new PeriodicSyncScheduler([
       { provider: "google_calendar", sync: async () => null },
       { provider: "icloud_calendar", sync: async () => null }
     ], 900_000);
@@ -17,24 +17,24 @@ describe("CalendarSyncScheduler", () => {
   it("isolates one provider failure and continues the remaining sync tasks", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const second = vi.fn(async () => ({ received: 0 }));
-    const tasks: CalendarSyncTask[] = [
+    const tasks: PeriodicSyncTask[] = [
       { provider: "snowboard", sync: async () => { throw new Error("provider unavailable"); } },
       { provider: "icloud_calendar", sync: second }
     ];
 
-    await expect(new CalendarSyncScheduler(tasks, 900_000).runOnce()).resolves.toEqual([
+    await expect(new PeriodicSyncScheduler(tasks, 900_000).runOnce()).resolves.toEqual([
       { provider: "snowboard", status: "failed" },
       { provider: "icloud_calendar", status: "synced" }
     ]);
     expect(second).toHaveBeenCalledOnce();
-    expect(error).toHaveBeenCalledWith("Calendar sync iteration failed: provider=snowboard");
+    expect(error).toHaveBeenCalledWith("Periodic sync iteration failed: provider=snowboard");
     error.mockRestore();
   });
 
-  it("runs Snowboard at startup and every configured interval without duplicate timers", async () => {
+  it("runs configured tasks at startup and every configured interval without duplicate timers", async () => {
     vi.useFakeTimers();
     const sync = vi.fn(async () => ({ received: 3 }));
-    const scheduler = new CalendarSyncScheduler([{ provider: "snowboard", sync }], 900_000);
+    const scheduler = new PeriodicSyncScheduler([{ provider: "snowboard", sync }], 900_000);
 
     scheduler.start();
     scheduler.start();
@@ -47,11 +47,11 @@ describe("CalendarSyncScheduler", () => {
     vi.useRealTimers();
   });
 
-  it("does not overlap a slow Snowboard sync with the next interval", async () => {
+  it("does not overlap a slow sync with the next interval", async () => {
     vi.useFakeTimers();
     let finish: (() => void) | undefined;
     const sync = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
-    const scheduler = new CalendarSyncScheduler([{ provider: "snowboard", sync }], 900_000);
+    const scheduler = new PeriodicSyncScheduler([{ provider: "snowboard", sync }], 900_000);
 
     scheduler.start();
     await vi.advanceTimersByTimeAsync(0);

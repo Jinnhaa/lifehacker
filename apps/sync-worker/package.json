@@ -1,5 +1,5 @@
 {
-  "name": "@amber/discord-worker",
+  "name": "@amber/sync-worker",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -7,14 +7,16 @@
   "scripts": {
     "build": "tsc -b",
     "dev": "tsc -b && node --enable-source-maps dist/index.js",
+    "start": "node --enable-source-maps dist/index.js",
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
     "@amber/core": "workspace:*",
+    "@amber/google-calendar": "workspace:*",
+    "@amber/icloud-calendar": "workspace:*",
     "@amber/input": "workspace:*",
-    "@amber/notion": "workspace:*",
     "@amber/shared": "workspace:*",
-    "discord.js": "14.27.0",
+    "@amber/snowboard": "workspace:*",
     "postgres": "3.4.7",
     "zod": "4.1.5"
   }

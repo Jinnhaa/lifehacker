@@ -10,7 +10,9 @@
     { "path": "../../packages/shared" },
     { "path": "../../packages/core" },
     { "path": "../../packages/input" },
-    { "path": "../../packages/notion" }
+    { "path": "../../packages/google-calendar" },
+    { "path": "../../packages/icloud-calendar" },
+    { "path": "../../packages/snowboard" }
   ],
   "include": ["src/**/*.ts"]
 }

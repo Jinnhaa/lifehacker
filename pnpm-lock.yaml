@@ -35,6 +35,30 @@ importers:
       '@amber/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@amber/input':
+        specifier: workspace:*
+        version: link:../../packages/input
+      '@amber/notion':
+        specifier: workspace:*
+        version: link:../../packages/notion
+      '@amber/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      discord.js:
+        specifier: 14.27.0
+        version: 14.27.0
+      postgres:
+        specifier: 3.4.7
+        version: 3.4.7
+      zod:
+        specifier: 4.1.5
+        version: 4.1.5
+
+  apps/sync-worker:
+    dependencies:
+      '@amber/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@amber/google-calendar':
         specifier: workspace:*
         version: link:../../packages/google-calendar
@@ -44,18 +68,12 @@ importers:
       '@amber/input':
         specifier: workspace:*
         version: link:../../packages/input
-      '@amber/notion':
-        specifier: workspace:*
-        version: link:../../packages/notion
-      '@amber/snowboard':
-        specifier: workspace:*
-        version: link:../../packages/snowboard
       '@amber/shared':
         specifier: workspace:*
         version: link:../../packages/shared
-      discord.js:
-        specifier: 14.27.0
-        version: 14.27.0
+      '@amber/snowboard':
+        specifier: workspace:*
+        version: link:../../packages/snowboard
       postgres:
         specifier: 3.4.7
         version: 3.4.7

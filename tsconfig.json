@@ -7,6 +7,7 @@
     { "path": "packages/google-calendar" },
     { "path": "packages/icloud-calendar" },
     { "path": "packages/notion" },
-    { "path": "apps/discord-worker" }
+    { "path": "apps/discord-worker" },
+    { "path": "apps/sync-worker" }
   ]
 }
