@@ -7,6 +7,7 @@ import {
   deriveCurrentStatus,
   getHomeOutcome,
   comparePriorityBands,
+  calculateDailyCapacity,
   projectPlannedDay,
   projectGoalProgress,
   objectiveProgressLabel,
@@ -106,10 +107,16 @@ export const readWorkBoard = async (sql: Sql, userId: UserId, timeZone: string, 
     new SupabaseMorningRepository(sql).loadObservation(userId, today, timeZone),
     sql<{ input_snapshot: unknown }[]>`select input_snapshot from public.daily_plans where user_id=${userId} and plan_date=${today} and status='approved' order by revision_no desc limit 1`
   ]);
-  const planSnapshot = record(todayPlan[0]?.input_snapshot); const workUntil = typeof planSnapshot.workUntil === "string" ? new Date(planSnapshot.workUntil) : null;
-  const occupied = observation.constraints.filter((item) => item.blocksCapacity && item.end > now && (!workUntil || item.start < workUntil))
-    .reduce((sum, item) => sum + Math.max(0, Math.min(item.end.getTime(), workUntil?.getTime() ?? item.end.getTime()) - Math.max(item.start.getTime(), now.getTime())) / 60_000, 0);
-  const capacity = workUntil && workUntil > now ? Math.max(0, Math.floor((workUntil.getTime() - now.getTime()) / 60_000 - occupied - observation.planningBufferMinutes)) : null;
+  const planSnapshot = record(todayPlan[0]?.input_snapshot);
+  const workUntil = typeof planSnapshot.workUntil === "string" ? new Date(planSnapshot.workUntil) : undefined;
+  const capacity = calculateDailyCapacity({
+    planDate: today,
+    timeZone,
+    now,
+    ...(workUntil && !Number.isNaN(workUntil.getTime()) ? { planningHorizon: workUntil } : {}),
+    blockingIntervals: observation.constraints.filter((item) => item.blocksCapacity),
+    planningBufferMinutes: observation.planningBufferMinutes
+  }).availableMinutes;
   const outcomePriority = await getHomeOutcome(sql, userId, today, observation, now);
   const currentStatus = deriveCurrentStatus({ observation, now, planDate: today, remainingCapacityMinutes: capacity, priorityJudgment: outcomePriority.judgment });
   // Legacy bands remain for Task labels and Week/Month placement; Today ordering comes only from canonical Chief choices.

@@ -1,4 +1,5 @@
 import { zonedDateTimeToUtc, type Clock } from "@amber/shared";
+import { calculateDailyCapacity, getDefaultDailyCapacityPolicy } from "../rules/daily-capacity-policy.js";
 import { createMorningPlan } from "./morning-planner.js";
 import { judgeOutcomes } from "../chief/outcome-priority.js";
 import type {
@@ -14,8 +15,6 @@ import type {
   MorningWorkflowRun,
   TimeInterval
 } from "./morning.js";
-
-const CONTEXT_QUESTION = "오늘은 몇 시까지 할까? 컨디션이나 캘린더에 없는 일정이 있으면 같이 알려줘.";
 
 const localParts = (value: Date, timeZone: string): Record<string, string> =>
   Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
@@ -124,21 +123,21 @@ export class MorningWorkflowService implements MorningMessageHandler {
   }
 
   private async resumeReply(message: MorningMessage, run: MorningWorkflowRun): Promise<MorningMessageResult> {
-    if (run.currentStep === "awaiting_context") return { handled: true, reply: CONTEXT_QUESTION };
+    if (run.currentStep === "awaiting_context") return this.receiveContext({ ...message, text: "" }, run);
     if (run.currentStep === "awaiting_approval") {
       const proposal = await this.repository.getProposal(run);
-      return proposal ? { handled: true, reply: formatProposal(proposal, message.timeZone) } : { handled: true, reply: CONTEXT_QUESTION };
+      return proposal ? { handled: true, reply: formatProposal(proposal, message.timeZone) } : this.prepareProposal(message, run);
     }
     if (run.currentStep === "completed") {
       const action = await this.repository.deriveCurrentAction(message.userId, run.checkpoint.planDate, message.timeZone, this.clock.now());
       return { handled: true, reply: formatApproved(action) };
     }
-    return { handled: true, reply: CONTEXT_QUESTION };
+    return this.prepareProposal(message, run);
   }
 
   private async start(message: MorningMessage, planDate: string): Promise<MorningMessageResult> {
     const run = await this.repository.getOrCreateWorkflow(message.userId, planDate, message.timeZone, message.receivedAt);
-    if (run.currentStep === "awaiting_context") return { handled: true, reply: CONTEXT_QUESTION };
+    if (run.currentStep === "awaiting_context") return this.receiveContext({ ...message, text: "" }, run);
     if (run.currentStep === "awaiting_approval") {
       const proposal = await this.repository.getProposal(run);
       return proposal ? { handled: true, reply: formatProposal(proposal, message.timeZone) } : this.prepareProposal(message, run);
@@ -149,20 +148,17 @@ export class MorningWorkflowService implements MorningMessageHandler {
     }
     const observation = await this.repository.loadObservation(message.userId, planDate, message.timeZone, this.clock.now());
     const configured = configuredWorkUntil(observation, planDate);
-    if (!configured) {
-      await this.repository.updateCheckpoint(run, run.checkpoint, "awaiting_context", "waiting_for_user", this.clock.now(), message.messageId);
-      return { handled: true, reply: CONTEXT_QUESTION };
-    }
+    const workUntil = configured ?? getDefaultDailyCapacityPolicy(planDate, message.timeZone).softHorizon;
     const updated = await this.repository.updateCheckpoint(
-      run, { ...run.checkpoint, workUntil: configured.toISOString() }, "observe", "running", this.clock.now(), message.messageId
+      run, { ...run.checkpoint, workUntil: workUntil.toISOString() }, "observe", "running", this.clock.now(), message.messageId
     );
     return this.prepareProposal(message, updated, observation);
   }
 
   private async receiveContext(message: MorningMessage, run: MorningWorkflowRun): Promise<MorningMessageResult> {
     const checkpoint = parseContext(message.text, run.checkpoint);
-    if (!checkpoint.workUntil) return { handled: true, reply: CONTEXT_QUESTION };
-    const updated = await this.repository.updateCheckpoint(run, checkpoint, "observe", "running", this.clock.now(), message.messageId);
+    const workUntil = checkpoint.workUntil ?? getDefaultDailyCapacityPolicy(checkpoint.planDate, checkpoint.timeZone).softHorizon.toISOString();
+    const updated = await this.repository.updateCheckpoint(run, { ...checkpoint, workUntil }, "observe", "running", this.clock.now(), message.messageId);
     return this.prepareProposal(message, updated);
   }
 
@@ -213,22 +209,35 @@ export class MorningWorkflowService implements MorningMessageHandler {
     run: MorningWorkflowRun,
     loaded?: MorningObservation
   ): Promise<MorningMessageResult> {
-    const workUntil = run.checkpoint.workUntil ? new Date(run.checkpoint.workUntil) : null;
-    if (!workUntil || Number.isNaN(workUntil.getTime())) return { handled: true, reply: CONTEXT_QUESTION };
     const source = loaded ?? await this.repository.loadObservation(
       message.userId, run.checkpoint.planDate, message.timeZone, this.clock.now()
     );
+    const workUntil = run.checkpoint.workUntil ? new Date(run.checkpoint.workUntil) : getDefaultDailyCapacityPolicy(run.checkpoint.planDate, message.timeZone).softHorizon;
+    if (Number.isNaN(workUntil.getTime())) throw new Error("Morning planning horizon is invalid");
     const excluded = new Set(run.checkpoint.excludedTaskIds ?? []);
     let observation = { ...source, tasks: source.tasks.filter((task) => !excluded.has(task.id)) };
     const chiefInput = { observation, now:this.clock.now(), workUntil, privateIntervals:run.checkpoint.privateIntervals ?? [], localWeekday:localWeekday(this.clock.now(),message.timeZone) };
     const chiefJudgment = source.outcomeEvidence ? judgeOutcomes(chiefInput) : null;
     if(chiefJudgment) observation = {...observation,tasks:observation.tasks.filter(t=>chiefJudgment.selectedTaskIds.includes(t.id)),chiefTaskOrder:chiefJudgment.selectedTaskIds} as typeof observation;
+    const capacity = calculateDailyCapacity({
+      planDate: run.checkpoint.planDate,
+      timeZone: message.timeZone,
+      now: this.clock.now(),
+      planningHorizon: workUntil,
+      blockingIntervals: [
+        ...source.constraints.filter((constraint) => constraint.blocksCapacity),
+        ...(run.checkpoint.privateIntervals ?? [])
+      ],
+      planningBufferMinutes: source.planningBufferMinutes
+    });
+    const planningNow = new Date(Math.max(this.clock.now().getTime(), capacity.wakeAt.getTime()));
     const calculated = createMorningPlan({
       observation,
-      now: this.clock.now(),
+      now: planningNow,
       workUntil,
       privateIntervals: run.checkpoint.privateIntervals ?? [],
-      localWeekday: localWeekday(this.clock.now(), message.timeZone)
+      localWeekday: localWeekday(planningNow, message.timeZone),
+      maximumWorkMinutes: capacity.availableMinutes
     });
     const draft = {
       ...calculated,
@@ -237,7 +246,8 @@ export class MorningWorkflowService implements MorningMessageHandler {
         ...(chiefJudgment ? {chiefJudgment,chiefInput} : {}),
         ...(run.checkpoint.contextReply ? { contextReply: run.checkpoint.contextReply } : {}),
         ...(run.checkpoint.revisionRequest ? { revisionRequest: run.checkpoint.revisionRequest } : {}),
-        ...(run.checkpoint.excludedTaskIds ? { excludedTaskIds: run.checkpoint.excludedTaskIds } : {})
+        ...(run.checkpoint.excludedTaskIds ? { excludedTaskIds: run.checkpoint.excludedTaskIds } : {}),
+        capacityPolicy: capacity
       }
     };
     const proposal = await this.repository.createProposal(run, draft, this.clock.now(), message.messageId);

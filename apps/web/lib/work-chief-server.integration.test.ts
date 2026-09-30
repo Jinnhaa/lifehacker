@@ -72,7 +72,7 @@ describe("Work Today canonical Chief server integration", () => {
     })));
     expect(board.todayQuests.map((item) => item.id)).toEqual(outcome.judgment.todayPriority.map((item) => item.taskId));
     expect(board.todayQuests[0]?.id).toBe(home.currentAction?.taskId);
-    expect(board.todayCapacityMinutes).toBeNull();
+    expect(board.todayCapacityMinutes).toBe(705);
     expect(board.candidates.map((item) => item.title)).toContain("Unselected inventory");
     expect(board.todayEvents).toMatchObject([{ title: "Fixed meeting" }]);
     expect(board.week).toHaveLength(7);
@@ -92,7 +92,7 @@ describe("Work Today canonical Chief server integration", () => {
     await sql`insert into public.daily_plans(user_id,plan_date,timezone,revision_no,status,input_snapshot,created_by,approved_at)
       values(${owner},'2026-09-26','Asia/Seoul',2,'approved',${sql.json({ workUntil: "2026-09-26T18:00:00+09:00" })},'system',now())`;
     const board = await readWorkBoard(sql, owner, "Asia/Seoul", now);
-    expect(board.todayCapacityMinutes).toBe(465);
+    expect(board.todayCapacityMinutes).toBe(405);
     expect(board.todayEvents.map((item) => item.title)).toEqual(["Fixed meeting"]);
     expect(board.week.find((day) => day.isToday)?.events.map((item) => item.id)).toEqual([constraintId]);
     expect(board.month).toHaveLength(42);

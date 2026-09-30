@@ -1,5 +1,6 @@
 export * from "./rules/capacity.js";
 export * from "./rules/deadline.js";
+export * from "./rules/daily-capacity-policy.js";
 export * from "./rules/duration.js";
 export * from "./rules/recurring-activity.js";
 export * from "./rules/replan.js";
