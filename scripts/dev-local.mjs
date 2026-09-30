@@ -173,16 +173,12 @@ try {
   runPrerequisites();
   startChild("watch", "pnpm", ["exec", "tsc", "-b", "packages/core", "packages/input", "--watch", "--preserveWatchOutput"]);
   if (!reusedWeb) startChild("web", "pnpm", ["--dir", "apps/web", "exec", "next", "dev", "-p", String(webPort)]);
-  envStatus("DISCORD_BOT_TOKEN");
-  envStatus("DISCORD_ALLOWED_USER_ID");
   envStatus("AMBER_USER_ID");
+  envStatus("GOOGLE_CALENDAR_CLIENT_ID");
   envStatus("ICLOUD_APPLE_ID");
   envStatus("ICLOUD_APP_PASSWORD");
-  if (environment.DISCORD_BOT_TOKEN && environment.DISCORD_ALLOWED_USER_ID) {
-    startChild("worker", "pnpm", ["--filter", "@amber/discord-worker", "dev"]);
-  } else {
-    log("worker", "Skipped: Discord credentials are not configured; Web remains available");
-  }
+  envStatus("SNOWBOARD_USERNAME");
+  startChild("sync-worker", "pnpm", ["--filter", "@amber/sync-worker", "dev"]);
   writeState();
   if (await waitForWeb()) {
     log("web", `http://localhost:${webPort}`);

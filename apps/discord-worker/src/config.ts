@@ -8,8 +8,6 @@ const discordWorkerEnvironmentSchema = z.object({
   DATABASE_URL: z.string().trim().min(1).optional(),
   WAKE_POLL_INTERVAL_MS: z.coerce.number().int().min(1_000).max(300_000).optional(),
   AMBER_USER_ID: z.uuid().optional(),
-  CALENDAR_SYNC_INTERVAL_MS: z.coerce.number().int().min(60_000).max(86_400_000).optional(),
-  SNOWBOARD_SYNC_INTERVAL_MS: z.coerce.number().int().min(60_000).max(86_400_000).optional(),
   WORK_DISCOVERY_SYNC_INTERVAL_MS: z.coerce.number().int().min(60_000).max(86_400_000).optional()
 }).strip();
 
@@ -19,8 +17,6 @@ export interface DiscordWorkerConfig {
   readonly databaseUrl: string;
   readonly wakePollIntervalMs: number;
   readonly calendarUserId: string | null;
-  readonly calendarSyncIntervalMs: number;
-  readonly snowboardSyncIntervalMs: number;
   readonly workDiscoverySyncIntervalMs: number;
 }
 
@@ -34,8 +30,6 @@ export function loadDiscordWorkerConfig(
     databaseUrl: parsed.DATABASE_URL || LOCAL_SUPABASE_DATABASE_URL,
     wakePollIntervalMs: parsed.WAKE_POLL_INTERVAL_MS ?? 30_000,
     calendarUserId: parsed.AMBER_USER_ID ?? null,
-    calendarSyncIntervalMs: parsed.CALENDAR_SYNC_INTERVAL_MS ?? 900_000,
-    snowboardSyncIntervalMs: parsed.SNOWBOARD_SYNC_INTERVAL_MS ?? 900_000,
     workDiscoverySyncIntervalMs: parsed.WORK_DISCOVERY_SYNC_INTERVAL_MS ?? 900_000
   };
 }

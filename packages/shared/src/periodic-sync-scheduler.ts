@@ -1,21 +1,19 @@
-export type CalendarSyncProvider = "google_calendar" | "icloud_calendar" | "snowboard";
-
-export interface CalendarSyncTask {
-  readonly provider: CalendarSyncProvider;
+export interface PeriodicSyncTask {
+  readonly provider: string;
   sync(): Promise<unknown | null>;
 }
 
-export interface CalendarSyncRunResult {
-  readonly provider: CalendarSyncProvider;
+export interface PeriodicSyncRunResult {
+  readonly provider: string;
   readonly status: "synced" | "no_active_account" | "failed";
 }
 
-export class CalendarSyncScheduler {
+export class PeriodicSyncScheduler {
   private timer: ReturnType<typeof setInterval> | null = null;
   private running = false;
 
   constructor(
-    private readonly tasks: readonly CalendarSyncTask[],
+    private readonly tasks: readonly PeriodicSyncTask[],
     private readonly intervalMs: number
   ) {}
 
@@ -30,15 +28,15 @@ export class CalendarSyncScheduler {
     this.timer = null;
   }
 
-  async runOnce(): Promise<readonly CalendarSyncRunResult[]> {
-    const results: CalendarSyncRunResult[] = [];
+  async runOnce(): Promise<readonly PeriodicSyncRunResult[]> {
+    const results: PeriodicSyncRunResult[] = [];
     for (const task of this.tasks) {
       try {
         const result = await task.sync();
         results.push({ provider: task.provider, status: result === null ? "no_active_account" : "synced" });
       } catch {
         results.push({ provider: task.provider, status: "failed" });
-        console.error(`Calendar sync iteration failed: provider=${task.provider}`);
+        console.error(`Periodic sync iteration failed: provider=${task.provider}`);
       }
     }
     return results;
