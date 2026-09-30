@@ -14,6 +14,7 @@ const connectionString = process.env.TEST_DATABASE_URL ?? "postgresql://postgres
 const sql = postgres(connectionString, { max: 5 });
 const userId = randomUUID() as UserId;
 const contextId = randomUUID();
+const courseContextId = randomUUID();
 const weeklyGoalId = randomUUID();
 const objectiveId = randomUUID();
 const clock = new FixedClock(new Date("2026-09-13T00:00:00.000Z"));
@@ -38,6 +39,7 @@ beforeAll(async () => {
   await sql`insert into public.profiles(id,timezone) values (${userId},'Asia/Seoul')`;
   await sql`insert into public.user_settings(user_id,planning_buffer_minutes,week_starts_on) values(${userId},15,1)`;
   await sql`insert into public.work_contexts(id,user_id,kind,title,status,agent_mode) values (${contextId},${userId},'project','Work Board Project','active','auto')`;
+  await sql`insert into public.work_contexts(id,user_id,kind,title,status,agent_mode) values (${courseContextId},${userId},'course','Work Board Course','active','not_applicable')`;
   await sql`insert into public.goals(id,user_id,title,importance,status,origin,level,period_start,period_end)
     values(${weeklyGoalId},${userId},'Weekly Win',4,'active','user','WEEKLY','2026-09-07','2026-09-13')`;
   await sql`insert into public.objectives(id,user_id,goal_id,work_context_id,title,success_criteria,importance,status,origin,progress_mode)
@@ -63,6 +65,9 @@ describe("Work Board V1", () => {
       values (${userId},'notion','notion_page',${randomUUID()},'external','task',${notion.id},'active',now(),now())`;
     await taskService.createTask({ userId, title: "Project AI 업무", importance: 3, source: "backlog_approval" });
     const quick = await taskService.createTask({ userId, title: "빠른 추가 업무", importance: 3, source: "work_board" });
+    const courseTask = await taskService.createTask({
+      userId, title: "Course learning task", executionMode: "learning_required", importance: 3, source: "work_board", workContextId: courseContextId
+    });
     const pending = await inputService.processManualText({
       userId, text: "확인할 후보", source: "manual", clientRequestId: `candidate-${randomUUID()}`,
       receivedAt: "2026-09-13T09:00:00+09:00"
@@ -77,7 +82,9 @@ describe("Work Board V1", () => {
     const board = await readWorkBoard(sql, userId, "Asia/Seoul", new Date("2026-09-13T01:00:00.000Z"));
     expect(board.candidates.map((item) => item.title)).toContain("확인할 후보");
     const visible = board.week.flatMap((day) => day.tasks);
-    expect(visible.map((task) => task.title)).toEqual(expect.arrayContaining(["오늘 수동 업무", "Notion 업무", "Project AI 업무", "빠른 추가 업무"]));
+    expect(visible.map((task) => task.title)).toEqual(expect.arrayContaining(["오늘 수동 업무", "Notion 업무", "Project AI 업무", "빠른 추가 업무", "Course learning task"]));
+    expect(quick.workContextId).toBeNull();
+    expect(visible.find((task) => task.id === courseTask.id)).toMatchObject({ contextTitle: "Work Board Course", contextKind: "course" });
     expect(visible.find((task) => task.id === manual.id)).toMatchObject({
       officialDeadlineLabel: expect.any(String),
       internalDeadlineLabel: expect.any(String),
@@ -123,6 +130,20 @@ describe("Work Board V1", () => {
     await taskService.completeTask({ userId, taskId: manual.id, source: "work_board" });
     const completed = await readWorkBoard(sql, userId, "Asia/Seoul", new Date("2026-09-13T01:00:00.000Z"));
     expect(completed.weeklyWins[0]).toMatchObject({ title: "Weekly Win", progress: 0, remainingMinutes: 0, evidenceKind: "status" });
+    const cancelled = await taskService.createTask({
+      userId, title: "Cancelled task", internalDeadline: new Date("2026-09-14T06:00:00.000Z"), estimatedMinutes: 40,
+      importance: 3, source: "work_board", workContextId: contextId
+    });
+    const skipped = await taskService.createTask({ userId, title: "Skipped task", importance: 3, source: "work_board" });
+    const partial = await taskService.createTask({ userId, title: "Partial task", importance: 3, source: "work_board" });
+    await taskService.cancelTask({ userId, taskId: cancelled.id, reason: "user_deleted_from_work_board", source: "work_board" });
+    await taskService.skipTask({ userId, taskId: skipped.id, reason: "test_skip", source: "work_board" });
+    await taskService.planTask({ userId, taskId: partial.id, source: "work_board" });
+    await taskService.closePartialTask({ userId, taskId: partial.id, reason: "test_partial", source: "work_board" });
+    expect(await taskRepository.getTaskById(userId, cancelled.id)).toMatchObject({ status: "CANCELLED", title: "Cancelled task" });
+    const withoutTerminalTasks = await readWorkBoard(sql, userId, "Asia/Seoul", new Date("2026-09-13T01:00:00.000Z"));
+    const activeIds = withoutTerminalTasks.week.flatMap((day) => day.tasks).map((task) => task.id);
+    expect(activeIds).not.toEqual(expect.arrayContaining([quick.id, manual.id, cancelled.id, skipped.id, partial.id]));
     const dismissedTasks = await sql<{ count: number }[]>`select count(*)::int count from public.tasks where user_id=${userId} and title='확인할 후보'`;
     expect(dismissedTasks[0]?.count).toBe(0);
   });

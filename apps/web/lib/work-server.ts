@@ -4,6 +4,8 @@ import {
   SupabaseMorningRepository,
   SupabaseTaskRepository,
   TaskService,
+  isTerminalTaskStatus,
+  type TaskStatus,
   deriveCurrentStatus,
   getHomeOutcome,
   comparePriorityBands,
@@ -21,7 +23,7 @@ import { mapCanonicalWorkTodayQuests } from "./work-chief-presentation";
 import type { WorkBoardViewModel, WorkCalendarEvent, WorkMonthDay, WorkTaskItem } from "./work-types";
 
 type TaskRow = {
-  id: string; title: string; status: string; planned_date: string | null; official_deadline: Date | null;
+  id: string; title: string; status: TaskStatus; planned_date: string | null; official_deadline: Date | null;
   internal_deadline: Date | null; estimated_minutes: number | null; estimated_user_minutes: number | null;
   actual_minutes: number; work_context_id: string | null; context_title: string | null; context_kind: "project" | "course" | null;
   objective_id: string | null; goal_id: string | null; goal_title: string | null;
@@ -134,7 +136,7 @@ export const readWorkBoard = async (sql: Sql, userId: UserId, timeZone: string, 
     officialDeadlineDate: row.official_deadline ? localDate(row.official_deadline, timeZone) : null,
     priorityBand: priority.get(row.id) ?? null
   }, today);
-  const tasks: WorkTaskItem[] = taskRows.filter((row) => row.status !== "DONE").map((row) => {
+  const tasks: WorkTaskItem[] = taskRows.filter((row) => !isTerminalTaskStatus(row.status)).map((row) => {
     const planned = suggestedDate(row);
     return {
       id: row.id, title: row.title, status: row.status, plannedDate: planned.date, plannedDateSource: planned.source,

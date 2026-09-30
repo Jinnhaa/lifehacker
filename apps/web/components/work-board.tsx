@@ -3,6 +3,7 @@
 import { startTransition, useActionState, useState } from "react";
 import { PeriodGoalManagement } from "./period-goal-management";
 import {
+  cancelWorkTaskAction,
   completeWorkTaskAction,
   createWorkTaskAction,
   decideWorkCandidateAction,
@@ -34,9 +35,9 @@ function Wins({ title, wins, selected, onSelect }: {
   </section>;
 }
 
-function TaskCard({ task, contexts, selectedGoalId, updateAction, estimateAction, completeAction, pending }: {
+function TaskCard({ task, contexts, selectedGoalId, updateAction, estimateAction, completeAction, cancelAction, pending }: {
   task: WorkTaskItem; contexts: readonly WorkContextOption[]; selectedGoalId: string | null;
-  updateAction: (payload: FormData) => void; estimateAction: (payload: FormData) => void; completeAction: (payload: FormData) => void; pending: boolean;
+  updateAction: (payload: FormData) => void; estimateAction: (payload: FormData) => void; completeAction: (payload: FormData) => void; cancelAction: (payload: FormData) => void; pending: boolean;
 }) {
   const highlighted = selectedGoalId !== null && task.goalId === selectedGoalId;
   return <article className={`planning-task-card ${highlighted ? "goal-highlight" : ""}`} draggable
@@ -56,13 +57,13 @@ function TaskCard({ task, contexts, selectedGoalId, updateAction, estimateAction
       <label>맥락<ContextSelect contexts={contexts} defaultValue={task.workContextId} /></label>
       {task.officialDeadlineLabel && <p>공식 마감 · {task.officialDeadlineLabel} (읽기 전용)</p>}
       <button disabled={pending}>저장</button>
-    </form></details>
+    </form><form action={cancelAction}><input type="hidden" name="taskId" value={task.id} /><button disabled={pending}>삭제</button></form></details>
   </article>;
 }
 
-function WeekView({ data, selectedGoalId, updateAction, estimateAction, completeAction, moveAction, pending }: {
+function WeekView({ data, selectedGoalId, updateAction, estimateAction, completeAction, cancelAction, moveAction, pending }: {
   data: WorkBoardViewModel; selectedGoalId: string | null; updateAction: (payload: FormData) => void;
-  estimateAction: (payload: FormData) => void; completeAction: (payload: FormData) => void; moveAction: (payload: FormData) => void; pending: boolean;
+  estimateAction: (payload: FormData) => void; completeAction: (payload: FormData) => void; cancelAction: (payload: FormData) => void; moveAction: (payload: FormData) => void; pending: boolean;
 }) {
   return <div className="week-planning-board">{data.week.map((day) => <section className={`planning-day ${day.isToday ? "today" : ""}`} key={day.date}
     onDragOver={(event) => event.preventDefault()} onDrop={(event) => {
@@ -71,14 +72,14 @@ function WeekView({ data, selectedGoalId, updateAction, estimateAction, complete
     }}>
     <header><span>{day.dayLabel}</span><b>{day.dateLabel}</b>{day.isToday && <em>TODAY</em>}</header>
     {day.events.map((event) => <article className="planning-event" key={event.id}><time>{event.timeLabel}</time><strong>{event.title}</strong></article>)}
-    <div className="planning-day-tasks">{day.tasks.map((task) => <TaskCard task={task} contexts={data.contexts} selectedGoalId={selectedGoalId} updateAction={updateAction} estimateAction={estimateAction} completeAction={completeAction} pending={pending} key={task.id} />)}</div>
+    <div className="planning-day-tasks">{day.tasks.map((task) => <TaskCard task={task} contexts={data.contexts} selectedGoalId={selectedGoalId} updateAction={updateAction} estimateAction={estimateAction} completeAction={completeAction} cancelAction={cancelAction} pending={pending} key={task.id} />)}</div>
     {!day.tasks.length && <p className="day-drop-hint">여기로 Task 이동</p>}
   </section>)}</div>;
 }
 
-function TodayView({ data, selectedGoalId, updateAction, estimateAction, completeAction, pending }: {
+function TodayView({ data, selectedGoalId, updateAction, estimateAction, completeAction, cancelAction, pending }: {
   data: WorkBoardViewModel; selectedGoalId: string | null; updateAction: (payload: FormData) => void;
-  estimateAction: (payload: FormData) => void; completeAction: (payload: FormData) => void; pending: boolean;
+  estimateAction: (payload: FormData) => void; completeAction: (payload: FormData) => void; cancelAction: (payload: FormData) => void; pending: boolean;
 }) {
   return <div className="work-today-grid"><section className="today-time-rail"><header><small>FIXED CALENDAR</small><h2>오늘 시간 흐름</h2></header>
     {data.todayEvents.length ? <ol>{data.todayEvents.map((event) => <li key={event.id}><time>{event.timeLabel}</time><i /><strong>{event.title}</strong></li>)}</ol> : <p>오늘 고정 일정이 없습니다.</p>}
@@ -86,7 +87,7 @@ function TodayView({ data, selectedGoalId, updateAction, estimateAction, complet
     <div className="today-capacity"><span>Capacity <b>{data.todayCapacityMinutes === null ? "확인 전" : duration(data.todayCapacityMinutes).replace("예상 ", "")}</b></span><span>Workload <b>{duration(data.todayWorkloadMinutes).replace("예상 ", "")}</b></span></div>
     {data.deadlineWarning && <p className="today-deadline-warning">🔥 {data.deadlineWarning}</p>}
     <div>{data.todayQuests.length ? data.todayQuests.map((quest, index) => <div className="today-quest" key={`${quest.kind}:${quest.id}`}><em>{index + 1}</em>{quest.kind === "task"
-      ? <TaskCard task={quest.task} contexts={data.contexts} selectedGoalId={selectedGoalId} updateAction={updateAction} estimateAction={estimateAction} completeAction={completeAction} pending={pending} />
+      ? <TaskCard task={quest.task} contexts={data.contexts} selectedGoalId={selectedGoalId} updateAction={updateAction} estimateAction={estimateAction} completeAction={completeAction} cancelAction={cancelAction} pending={pending} />
       : <article className="planning-task-card course-study-card"><div className="planning-task-title"><span>◈</span><strong>{quest.title}</strong>{quest.priorityBand && <b>{quest.priorityBand}</b>}</div><p>{quest.contextTitle ?? "Course Study"} · {duration(quest.estimatedMinutes)}</p><small>학습 준비 상태와 이번 주 목표를 기준으로 배치</small></article>}</div>) : <p>현재 실행 가능한 Today Quest가 없습니다.</p>}</div>
   </section></div>;
 }
@@ -106,20 +107,21 @@ export function WorkBoard({ data }: { data: WorkBoardViewModel }) {
   const [candidateState, candidateAction, candidatePending] = useActionState(decideWorkCandidateAction, initialState);
   const [updateState, updateAction, updatePending] = useActionState(updateWorkTaskAction, initialState);
   const [completeState, completeAction, completePending] = useActionState(completeWorkTaskAction, initialState);
+  const [cancelState, cancelAction, cancelPending] = useActionState(cancelWorkTaskAction, initialState);
   const [createState, createAction, createPending] = useActionState(createWorkTaskAction, initialState);
   const [moveState, moveAction, movePending] = useActionState(moveWorkTaskAction, initialState);
   const [estimateState, estimateAction, estimatePending] = useActionState(updateWorkEstimateAction, initialState);
-  const states = [candidateState, updateState, completeState, createState, moveState, estimateState]; const feedback = states.find((state) => state.message)?.message;
-  const pending = updatePending || completePending || movePending || estimatePending;
+  const states = [candidateState, updateState, completeState, cancelState, createState, moveState, estimateState]; const feedback = states.find((state) => state.message)?.message;
+  const pending = updatePending || completePending || cancelPending || createPending || movePending || estimatePending;
   return <main className="work-shell planning-room">
     <div className="work-top-row"><img className="work-top-logo" src="/assets/lifehacker/lifehacker-logo.png" alt="Lifehacker" /><nav className="work-view-tabs" aria-label="Work 보기">{(["today","week","month"] as const).map((item) => <button className={view === item ? "active" : ""} type="button" onClick={() => setView(item)} key={item}>{item === "today" ? "Today" : item === "week" ? "Week" : "Month"}</button>)}</nav></div>
     {!data.configured ? <section className="work-empty"><strong>Work & Calendar를 연결할 수 없습니다.</strong><p>{data.error}</p></section> : <>
       {view === "today" && <Wins title="THIS WEEK WINS" wins={data.weeklyWins} selected={selectedGoalId} onSelect={setSelectedGoalId} />}
       {view === "week" && <PeriodGoalManagement level="WEEKLY" goals={data.weeklyWins} parents={data.monthlyGoalOptions} start={data.week[0]?.date ?? data.today} end={data.week[6]?.date ?? data.today} selected={selectedGoalId} onSelect={setSelectedGoalId} />}
-      {view === "week" && <WeekView data={data} selectedGoalId={selectedGoalId} updateAction={updateAction} estimateAction={estimateAction} completeAction={completeAction} moveAction={moveAction} pending={pending} />}
-      {view === "today" && <TodayView data={data} selectedGoalId={selectedGoalId} updateAction={updateAction} estimateAction={estimateAction} completeAction={completeAction} pending={pending} />}
+      {view === "week" && <WeekView data={data} selectedGoalId={selectedGoalId} updateAction={updateAction} estimateAction={estimateAction} completeAction={completeAction} cancelAction={cancelAction} moveAction={moveAction} pending={pending} />}
+      {view === "today" && <TodayView data={data} selectedGoalId={selectedGoalId} updateAction={updateAction} estimateAction={estimateAction} completeAction={completeAction} cancelAction={cancelAction} pending={pending} />}
       {view === "month" && <MonthView data={data} selectedGoalId={selectedGoalId} setSelectedGoalId={setSelectedGoalId} />}
-      <section className="planning-utility"><details><summary>Task 빠른 추가</summary><form action={createAction}><input name="title" required maxLength={300} placeholder="새 Task" /><input name="targetDeadline" type="datetime-local" /><button disabled={createPending}>추가</button></form></details>
+      <section className="planning-utility"><details><summary>Task 빠른 추가</summary><form action={createAction}><label>Task<input name="title" required maxLength={300} placeholder="새 Task" /></label><label>프로젝트 / Context<ContextSelect contexts={data.contexts} defaultValue={null} /></label><label>Deadline<input name="targetDeadline" type="datetime-local" /></label><label>Estimated minutes<input name="estimatedMinutes" type="number" min="1" /></label><button disabled={createPending}>추가</button></form></details>
         {data.candidates.length > 0 && <details><summary>확인 필요한 Task 후보 · {data.candidates.length}</summary><div>{data.candidates.map((candidate) => <form action={candidateAction} className="planning-candidate" key={candidate.id}><input type="hidden" name="candidateId" value={candidate.id} /><input name="title" defaultValue={candidate.title} /><input name="estimatedMinutes" type="number" min="1" defaultValue={candidate.estimatedMinutes ?? ""} /><ContextSelect contexts={data.contexts} defaultValue={candidate.workContextId} /><button name="decision" value="dismiss" disabled={candidatePending}>제외</button><button name="decision" value="confirm" disabled={candidatePending}>추가</button></form>)}</div></details>}
       </section>
     </>}
