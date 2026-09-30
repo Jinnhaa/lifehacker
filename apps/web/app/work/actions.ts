@@ -86,11 +86,32 @@ export const completeWorkTaskAction = async (_previous: WorkActionState, formDat
   }
 };
 
+export const cancelWorkTaskAction = async (_previous: WorkActionState, formData: FormData): Promise<WorkActionState> => {
+  try {
+    const sql = getWebSql();
+    const userId = getWebUserId();
+    await createWebTaskService(sql).cancelTask({
+      userId,
+      taskId: String(formData.get("taskId") ?? "") as TaskId,
+      reason: "user_deleted_from_work_board",
+      source: "work_board"
+    });
+    await createWebReplanService(sql).processLatestTrigger(userId, await profileTimeZone(), new Date());
+    revalidatePath("/work");
+    revalidatePath("/");
+    return { status: "success", message: "할 일을 삭제했습니다." };
+  } catch (error) {
+    return failure(error, "할 일 삭제에 실패했습니다.");
+  }
+};
+
 export const createWorkTaskAction = async (_previous: WorkActionState, formData: FormData): Promise<WorkActionState> => {
   try {
+    const contextValue = String(formData.get("workContextId") ?? "");
     await createWebTaskService(getWebSql()).createTask({
       userId: getWebUserId(), title: String(formData.get("title") ?? "").trim(),
       internalDeadline: await deadline(formData.get("targetDeadline")), executionMode: "standard",
+      estimatedMinutes: minutes(formData.get("estimatedMinutes")), workContextId: contextValue || null,
       importance: 3, source: "work_board", idempotencyKey: `work-board:create:${randomUUID()}`
     });
     revalidatePath("/work");

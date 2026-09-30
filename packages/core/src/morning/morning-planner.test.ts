@@ -90,6 +90,15 @@ describe("createMorningPlan", () => {
     expect(plan.items).toEqual([]);
   });
 
+  it("does not include cancelled Tasks as planning candidates", () => {
+    const plan = createMorningPlan({
+      observation: observation({ constraints: [], planningBufferMinutes: 0, tasks: [task({ status: "CANCELLED", estimatedMinutes: 60 })], recurringActivities: [] }),
+      now: new Date("2026-09-04T00:00:00.000Z"), workUntil: new Date("2026-09-04T02:00:00.000Z"),
+      privateIntervals: [], localWeekday: 5
+    });
+    expect(plan.items).toEqual([]);
+  });
+
   it("leaves overload unscheduled instead of extending beyond the default soft horizon", () => {
     const now = new Date("2026-09-04T00:00:00.000Z");
     const capacity = calculateDailyCapacity({
