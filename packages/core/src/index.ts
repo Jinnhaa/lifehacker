@@ -98,3 +98,5 @@ export * from "./workstyle/workstyle.js";
 export * from "./workstyle/supabase-workstyle-profile-reader.js";
 export * from "./work-planning/planned-day.js";
 export * from "./future-capacity/future-capacity.js";
+export * from "./world-model/world-model.js";
+export * from "./world-model/world-model-builder.js";
