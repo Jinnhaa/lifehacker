@@ -1,6 +1,7 @@
 import "server-only";
 
 import { ContextManagementService, SupabaseContextManagementRepository, LearningUnitService, SupabaseLearningUnitRepository, summarizeLearningUnits } from "@amber/core";
+import type { UserId } from "@amber/shared";
 import type { Sql } from "postgres";
 import { getWebSql, getWebUserId } from "./web-runtime";
 import type { LearningContextsViewModel, ProjectContextsViewModel } from "./context-management-types";
@@ -10,10 +11,8 @@ export const createWebContextManagementService = (sql: Sql) => new ContextManage
 );
 export const createWebLearningUnitService = (sql: Sql) => new LearningUnitService(new SupabaseLearningUnitRepository(sql));
 
-export const loadLearningContexts = async (): Promise<LearningContextsViewModel> => {
+export const readLearningContexts = async (sql: Sql, userId: UserId): Promise<LearningContextsViewModel> => {
   try {
-    const sql = getWebSql();
-    const userId = getWebUserId();
     const [[courses, certifications], allUnits] = await Promise.all([
       createWebContextManagementService(sql).listLearning(userId), createWebLearningUnitService(sql).list(userId)
     ]);
@@ -26,6 +25,9 @@ export const loadLearningContexts = async (): Promise<LearningContextsViewModel>
     return { configured: false, error: error instanceof Error ? error.message : "학습 Context를 불러오지 못했습니다.", courses: [], certifications: [], learningUnits: {} };
   }
 };
+
+export const loadLearningContexts = (): Promise<LearningContextsViewModel> =>
+  readLearningContexts(getWebSql(), getWebUserId());
 
 export const loadProjectContexts = async (): Promise<ProjectContextsViewModel> => {
   try {

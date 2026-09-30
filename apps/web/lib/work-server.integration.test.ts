@@ -147,4 +147,24 @@ describe("Work Board V1", () => {
     const dismissedTasks = await sql<{ count: number }[]>`select count(*)::int count from public.tasks where user_id=${userId} and title='확인할 후보'`;
     expect(dismissedTasks[0]?.count).toBe(0);
   });
+  it("reconciles the next Learning action before reading Work Board Tasks", async () => {
+    const stageId = randomUUID(); const materialId = randomUUID(); const policyId = randomUUID();
+    await sql`insert into public.learning_stages(id,user_id,work_context_id,title,position,status)
+      values(${stageId},${userId},${courseContextId},'Current',1,'ACTIVE')`;
+    await sql`insert into public.learning_materials(id,user_id,work_context_id,stage_id,title,material_type,unit_type,total_units,status)
+      values(${materialId},${userId},${courseContextId},${stageId},'Course reader','slides','LESSON',1,'ACTIVE')`;
+    await sql`insert into public.learning_units(user_id,work_context_id,title,position,stage_id,material_id,sequence_no,unit_type)
+      values(${userId},${courseContextId},'Reader 1',1,${stageId},${materialId},1,'LESSON')`;
+    await sql`insert into public.learning_allocation_policies(id,user_id,work_context_id,stage_id,name,profile_type,priority,active)
+      values(${policyId},${userId},${courseContextId},${stageId},'Next reader','normal',1,true)`;
+    await sql`insert into public.learning_allocation_items(user_id,allocation_policy_id,material_id,target_units,estimated_minutes_min,estimated_minutes_max,position,active)
+      values(${userId},${policyId},${materialId},1,25,25,1,true)`;
+
+    const board = await readWorkBoard(sql, userId, "Asia/Seoul", new Date("2026-09-13T01:00:00.000Z"));
+    const learningTask = board.week.flatMap((day) => day.tasks).find((task) => task.title === "Course reader 1강");
+    expect(learningTask).toMatchObject({ contextTitle: "Work Board Course", contextKind: "course", estimatedMinutes: 25 });
+    const target = await sql<{ count: number }[]>`select count(*)::int count from public.task_learning_targets x
+      join public.tasks t on t.id=x.task_id and t.user_id=x.user_id where x.user_id=${userId} and t.title='Course reader 1강'`;
+    expect(target[0]?.count).toBe(1);
+  });
 });

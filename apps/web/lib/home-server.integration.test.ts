@@ -48,4 +48,27 @@ describe("Home canonical Chief adapter",()=>{
     const after=await sql<{id:string;status:string;task_id:string}[]>`select id,status,task_id from public.focus_sessions where user_id=${owner} and status='active'`;
     expect(after).toEqual(before);expect(fetchSpy).not.toHaveBeenCalled();
   });
+  it("reconciles Learning before refreshing canonical Chief Task reality",async()=>{
+    const stageId=randomUUID();const materialId=randomUUID();const policyId=randomUUID();
+    await sql`insert into public.learning_stages(id,user_id,work_context_id,title,position,status)
+      values(${stageId},${owner},${contextId},'Current',1,'ACTIVE')`;
+    await sql`insert into public.learning_materials(id,user_id,work_context_id,stage_id,title,material_type,unit_type,total_units,status)
+      values(${materialId},${owner},${contextId},${stageId},'DB 교안','slides','LESSON',1,'ACTIVE')`;
+    await sql`insert into public.learning_units(user_id,work_context_id,title,position,stage_id,material_id,sequence_no,unit_type)
+      values(${owner},${contextId},'DB 1',1,${stageId},${materialId},1,'LESSON')`;
+    await sql`insert into public.learning_allocation_policies(id,user_id,work_context_id,stage_id,name,profile_type,priority,active)
+      values(${policyId},${owner},${contextId},${stageId},'Next lesson','normal',1,true)`;
+    await sql`insert into public.learning_allocation_items(user_id,allocation_policy_id,material_id,target_units,estimated_minutes_min,estimated_minutes_max,position,active)
+      values(${owner},${policyId},${materialId},1,30,30,1,true)`;
+
+    const home=await loadHomeViewModel();
+    const generated=await sql<{id:string;execution_mode:string}[]>`select id,execution_mode from public.tasks
+      where user_id=${owner} and work_context_id=${contextId} and title='DB 교안 1강'`;
+    expect(generated).toHaveLength(1);
+    expect(generated[0]?.execution_mode).toBe("learning_required");
+    expect(home.outcomePriority?.judgment.eligibleTaskIds).toContain(generated[0]!.id);
+    expect(home.learningSpecialist?.activeTaskIds).toContain(generated[0]!.id);
+    expect(home.outcomePriority?.judgment.eligibleTaskIds.some((id)=>id.startsWith("learning:"))).toBe(false);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
 });
