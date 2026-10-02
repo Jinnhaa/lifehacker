@@ -18,6 +18,7 @@ import {
 import { DeterministicTestInterpreter, InputService, SupabaseInputRepository } from "@amber/input";
 import { SystemClock, zonedDateTimeToUtc, type UserId } from "@amber/shared";
 import type { Sql } from "postgres";
+import { reconcileLearningTasksForToday } from "./learning-task-reconciliation";
 import { getWebSql, getWebUserId } from "./web-runtime";
 import { mapCanonicalWorkTodayQuests } from "./work-chief-presentation";
 import type { WorkBoardViewModel, WorkCalendarEvent, WorkMonthDay, WorkTaskItem } from "./work-types";
@@ -98,6 +99,7 @@ const readEvents = async (sql: Sql, userId: UserId, start: Date, end: Date, time
 
 export const readWorkBoard = async (sql: Sql, userId: UserId, timeZone: string, now = new Date()): Promise<WorkBoardViewModel> => {
   const today = localDate(now, timeZone); const weekStart = mondayFor(today); const weekDates = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
+  await reconcileLearningTasksForToday({ sql, userId, today, occurredAt: now });
   const monthDates = monthGridDates(today); const rangeStart = zonedDateTimeToUtc(`${monthDates[0]}T00:00:00`, timeZone);
   const rangeEnd = zonedDateTimeToUtc(`${addDays(monthDates[41]!, 1)}T00:00:00`, timeZone);
   const inputRepository = new SupabaseInputRepository(sql);

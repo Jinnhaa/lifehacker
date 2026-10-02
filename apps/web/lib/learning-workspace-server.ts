@@ -14,8 +14,9 @@ import type {
   LearningStage,
   LearningTaskProposal
 } from "@amber/core";
-import type { JSONValue } from "postgres";
-import { loadLearningContexts } from "./context-management-server";
+import type { UserId } from "@amber/shared";
+import type { JSONValue, Sql } from "postgres";
+import { readLearningContexts } from "./context-management-server";
 import type {
   LearningWorkspaceAction,
   LearningWorkspaceContext,
@@ -94,12 +95,18 @@ function activityView(row: ActivityRow) {
   return { id: row.id, label: "학습 기록", detail: row.title.replaceAll("_", " "), occurredAt };
 }
 
-export async function loadLearningWorkspace(): Promise<LearningWorkspaceModel> {
-  const today = seoulDate();
+export interface LearningWorkspaceDependencies {
+  readonly sql: Sql;
+  readonly userId: UserId;
+  readonly today: string;
+}
+
+export async function loadLearningWorkspace(dependencies?: LearningWorkspaceDependencies): Promise<LearningWorkspaceModel> {
+  const today = dependencies?.today ?? seoulDate();
   try {
-    const sql = getWebSql();
-    const userId = getWebUserId();
-    const base = await loadLearningContexts();
+    const sql = dependencies?.sql ?? getWebSql();
+    const userId = dependencies?.userId ?? getWebUserId();
+    const base = await readLearningContexts(sql, userId);
     const [stages, materials, units, policies, items, assessments, tasks, resolvedTargets, activities] = await Promise.all([
       sql<LearningStage[]>`select id,user_id "userId",work_context_id "workContextId",title,position,status,
         completion_mode "completionMode",transition_mode "transitionMode",target_start_date "targetStartDate",

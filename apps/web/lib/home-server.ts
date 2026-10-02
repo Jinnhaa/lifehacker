@@ -29,7 +29,8 @@ import { SystemClock, zonedDateTimeToUtc, type UserId } from "@amber/shared";
 import type { Sql } from "postgres";
 import type { HomeProposalChange, HomeTimelineItem, HomeViewModel, HomeWeekDay } from "./home-types";
 import { mapHomeChief } from "./home-chief-presentation";
-import { loadChiefLearningCandidates } from "./learning-chief-provider";
+import { loadLearningSpecialistSummary } from "./learning-chief-provider";
+import { reconcileLearningTasksForToday } from "./learning-task-reconciliation";
 import { getWebSql, getWebUserId } from "./web-runtime";
 export { getWebSql, getWebUserId } from "./web-runtime";
 
@@ -264,9 +265,12 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
     if (!profiles[0]) throw new Error("AMBER_USER_ID에 해당하는 profile을 찾지 못했습니다.");
     const timeZone = profiles[0].timezone;
     const date = localDate(now, timeZone);
-    const observation = await new SupabaseMorningRepository(sql).loadObservation(userId,date,timeZone);
-    const learning = await loadChiefLearningCandidates();
-    const outcomePriority = await getHomeOutcome(sql,userId,date,observation,now,learning.candidates);
+    await reconcileLearningTasksForToday({ sql, userId, today: date, occurredAt: now });
+    const [observation, learningSpecialist] = await Promise.all([
+      new SupabaseMorningRepository(sql).loadObservation(userId,date,timeZone),
+      loadLearningSpecialistSummary({ sql, userId, today: date })
+    ]);
+    const outcomePriority = await getHomeOutcome(sql,userId,date,observation,now);
     const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     const judgmentIds = [...outcomePriority.judgment.todayPriority, ...(outcomePriority.judgment.futureRelief ? [outcomePriority.judgment.futureRelief] : []), ...outcomePriority.judgment.notToday]
       .map(item => item.taskId).filter(id => uuidPattern.test(id));
@@ -403,7 +407,7 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
       configured: true, error: null, date, timeZone,
       outcomePriority,
       currentStatus: outcomePriority.currentStatus,
-      learningSpecialist: learning.specialist,
+      learningSpecialist,
       missionProgress,
       ...chief,
       approvedPlan: approved ? { id: approved.id, revisionNo: approved.revision_no } : null,
