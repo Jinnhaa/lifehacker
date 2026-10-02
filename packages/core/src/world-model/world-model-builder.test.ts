@@ -152,6 +152,7 @@ describe("WorldModelBuilder", () => {
       contextTitle: "Lifehacker",
       taskType: "project",
       status: "IN_PROGRESS",
+      importance: 3,
       deadlineSource: "internal",
       estimatedMinutes: 800,
       actualMinutes: 20,

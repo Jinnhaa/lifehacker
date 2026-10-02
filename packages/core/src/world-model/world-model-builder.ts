@@ -199,6 +199,7 @@ export class WorldModelBuilder {
         contextTitle: context?.title ?? null,
         taskType: context?.type === "project" ? "project" : context?.type === "course" || context?.type === "certification" ? "learning" : "user",
         status: task.status,
+        importance: task.importance,
         ...deadlineFor(task),
         estimatedMinutes,
         actualMinutes: task.actualMinutes,
