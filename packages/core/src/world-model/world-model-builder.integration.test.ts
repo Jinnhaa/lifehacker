@@ -61,7 +61,7 @@ describe("SupabaseWorldModelSource", () => {
     const snapshot = await buildWorldModelSnapshot(sql, userId, "Asia/Seoul", now);
 
     expect(snapshot.tasks).toEqual([
-      expect.objectContaining({ id: activeTaskId, contextType: "project", remainingMinutes: 90 })
+      expect.objectContaining({ id: activeTaskId, contextType: "project", importance: 5, remainingMinutes: 90 })
     ]);
     expect(snapshot.contexts.projects[0]).toMatchObject({ id: projectId, activeTaskIds: [activeTaskId] });
     expect(snapshot.contexts.learning).toEqual(expect.arrayContaining([

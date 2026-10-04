@@ -10,6 +10,7 @@ export interface WorldTask {
   readonly contextTitle: string | null;
   readonly taskType: "user" | "project" | "learning";
   readonly status: TaskStatus;
+  readonly importance: number;
   readonly deadline: Date | null;
   readonly deadlineSource: "internal" | "official" | null;
   readonly estimatedMinutes: number | null;

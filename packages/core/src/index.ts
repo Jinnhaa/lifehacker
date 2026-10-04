@@ -100,3 +100,5 @@ export * from "./work-planning/planned-day.js";
 export * from "./future-capacity/future-capacity.js";
 export * from "./world-model/world-model.js";
 export * from "./world-model/world-model-builder.js";
+export * from "./candidates/action-candidate.js";
+export * from "./candidates/action-candidate-builder.js";
