@@ -11,6 +11,11 @@ const isExecutable = (status: TaskStatus): status is ActionCandidateStatus =>
 export const buildActionCandidates = (snapshot: WorldModelSnapshot): readonly ActionCandidate[] =>
   snapshot.tasks.flatMap((task) => {
     if (!isExecutable(task.status)) return [];
+    const context = task.contextId === null
+      ? undefined
+      : task.contextType === "project"
+        ? snapshot.contexts.projects.find((item) => item.id === task.contextId)
+        : snapshot.contexts.learning.find((item) => item.id === task.contextId && item.type === task.contextType);
     return [{
       taskId: task.id,
       title: task.title,
@@ -26,6 +31,10 @@ export const buildActionCandidates = (snapshot: WorldModelSnapshot): readonly Ac
       remainingMinutes: task.remainingMinutes,
       plannedDate: task.plannedDate,
       completionCriteria: task.completionCriteria,
+      contextEvidence: {
+        commitmentLevel: context?.commitmentLevel ?? null,
+        strategicImportance: context?.strategicImportance ?? null
+      },
       feasibility: {
         canFitToday: task.remainingMinutes === null
           ? null

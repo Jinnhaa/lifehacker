@@ -44,18 +44,28 @@ const snapshot = (tasks: readonly WorldTask[], risks: WorldModelSnapshot["risks"
 
 describe("buildActionCandidates", () => {
   it("projects Project, User, Course, and Certification Tasks through one contract", () => {
-    const candidates = buildActionCandidates(snapshot([
+    const base = snapshot([
       task({ id: "user", title: "Standalone", status: "INBOX" }),
       task({ id: "project", title: "Project", taskType: "project", contextId: "p", contextType: "project", contextTitle: "Launch", status: "PLANNED" }),
       task({ id: "course", title: "Course", taskType: "learning", contextId: "c", contextType: "course", contextTitle: "Database", status: "IN_PROGRESS" }),
       task({ id: "certification", title: "Certification", taskType: "learning", contextId: "x", contextType: "certification", contextTitle: "JLPT N2", plannedDate: "2026-12-01" })
-    ]));
+    ]);
+    const candidates = buildActionCandidates({
+      ...base,
+      contexts: {
+        projects: [{ id: "p", title: "Launch", commitmentLevel: "REQUIRED", strategicImportance: 5, activeTaskIds: ["project"], deadlines: [], remainingWorkloadMinutes: 0, unknownEffortTaskIds: [] }],
+        learning: [
+          { id: "c", type: "course", title: "Database", commitmentLevel: "IMPORTANT", strategicImportance: 4, target: null, targetDate: null, activeTaskIds: ["course"], remainingWorkloadMinutes: 0, unknownEffortTaskIds: [] },
+          { id: "x", type: "certification", title: "JLPT N2", commitmentLevel: "OPTIONAL", strategicImportance: null, target: null, targetDate: null, activeTaskIds: ["certification"], remainingWorkloadMinutes: 0, unknownEffortTaskIds: [] }
+        ]
+      }
+    });
 
     expect(candidates).toEqual([
-      expect.objectContaining({ taskId: "user", taskType: "user", contextType: null, status: "INBOX" }),
-      expect.objectContaining({ taskId: "project", taskType: "project", contextType: "project", status: "PLANNED" }),
-      expect.objectContaining({ taskId: "course", taskType: "learning", contextType: "course", status: "IN_PROGRESS" }),
-      expect.objectContaining({ taskId: "certification", taskType: "learning", contextType: "certification", plannedDate: "2026-12-01" })
+      expect.objectContaining({ taskId: "user", taskType: "user", contextType: null, status: "INBOX", contextEvidence: { commitmentLevel: null, strategicImportance: null } }),
+      expect.objectContaining({ taskId: "project", taskType: "project", contextType: "project", status: "PLANNED", contextEvidence: { commitmentLevel: "REQUIRED", strategicImportance: 5 } }),
+      expect.objectContaining({ taskId: "course", taskType: "learning", contextType: "course", status: "IN_PROGRESS", contextEvidence: { commitmentLevel: "IMPORTANT", strategicImportance: 4 } }),
+      expect.objectContaining({ taskId: "certification", taskType: "learning", contextType: "certification", plannedDate: "2026-12-01", contextEvidence: { commitmentLevel: "OPTIONAL", strategicImportance: null } })
     ]);
   });
 

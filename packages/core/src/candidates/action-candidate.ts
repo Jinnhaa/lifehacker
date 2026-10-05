@@ -1,3 +1,4 @@
+import type { CommitmentLevel } from "../context-management/context-management.js";
 import type { WorldContextType, WorldRisk } from "../world-model/world-model.js";
 
 export type ActionCandidateStatus = "INBOX" | "PLANNED" | "IN_PROGRESS";
@@ -18,6 +19,10 @@ export interface ActionCandidate {
   readonly remainingMinutes: number | null;
   readonly plannedDate: string | null;
   readonly completionCriteria: string | null;
+  readonly contextEvidence: {
+    readonly commitmentLevel: CommitmentLevel | null;
+    readonly strategicImportance: number | null;
+  };
   readonly feasibility: {
     readonly canFitToday: boolean | null;
   };

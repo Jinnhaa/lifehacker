@@ -1,3 +1,4 @@
+import type { CommitmentLevel } from "../context-management/context-management.js";
 import type { TaskStatus } from "../task/task.js";
 
 export type WorldContextType = "project" | "course" | "certification";
@@ -23,6 +24,8 @@ export interface WorldTask {
 export interface WorldProjectContext {
   readonly id: string;
   readonly title: string;
+  readonly commitmentLevel: CommitmentLevel | null;
+  readonly strategicImportance: number | null;
   readonly activeTaskIds: readonly string[];
   readonly deadlines: readonly Date[];
   readonly remainingWorkloadMinutes: number;
@@ -33,6 +36,8 @@ export interface WorldLearningContext {
   readonly id: string;
   readonly type: "course" | "certification";
   readonly title: string;
+  readonly commitmentLevel: CommitmentLevel | null;
+  readonly strategicImportance: number | null;
   readonly target: string | null;
   readonly targetDate: string | null;
   readonly activeTaskIds: readonly string[];
