@@ -1,4 +1,4 @@
-import type { ChiefCurrentStatus, OutcomeJudgment, ProjectRuntimeSummary } from "@amber/core";
+import type { ChiefCurrentStatus, ChiefPriorityDecision, OutcomeJudgment, ProjectRuntimeSummary } from "@amber/core";
 
 export type HomeTimelineItem = {
   readonly id: string;
@@ -56,7 +56,7 @@ export type HomeChiefQuest = {
   readonly taskId: string;
   readonly title: string;
   readonly context: string | null;
-  readonly minutes: number;
+  readonly minutes: number | null;
   readonly whyNow: string;
   readonly candidateSource: "task" | "learning_proposal";
   readonly contextId: string | null;
@@ -75,6 +75,7 @@ export type HomeReassurance = {
 
 export type HomeViewModel = {
   readonly outcomePriority?: { readonly judgment: OutcomeJudgment; readonly decisionId: string } | null;
+  readonly chiefPriority: ChiefPriorityDecision | null;
   readonly currentStatus: ChiefCurrentStatus | null;
   readonly nextQuests: readonly HomeChiefQuest[];
   readonly reassurance: readonly HomeReassurance[];

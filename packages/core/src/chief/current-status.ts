@@ -1,5 +1,7 @@
 import { getDaysUntilDeadline } from "../rules/deadline.js";
 import type { MorningObservation, MorningRecurringActivity, MorningStrategicDirective } from "../morning/morning.js";
+import type { ActionCandidate } from "../candidates/action-candidate.js";
+import type { ChiefPriorityChoice, ChiefPriorityDecision } from "../chief-priority/chief-priority.js";
 import { judgeOutcomes, outcomeInputFromObservation, type OutcomeJudgment } from "./outcome-priority.js";
 
 export type AssessmentReadiness = "NOT_STARTED" | "IN_PROGRESS" | "READY" | "UNKNOWN";
@@ -150,6 +152,8 @@ export function deriveCurrentStatus(input: {
   readonly planDate: string;
   readonly remainingCapacityMinutes: number | null;
   readonly priorityJudgment?: OutcomeJudgment;
+  readonly priorityDecision?: ChiefPriorityDecision;
+  readonly candidates?: readonly ActionCandidate[];
 }): ChiefCurrentStatus {
   const { observation, now, planDate } = input;
   const activeFocusTaskId = observation.outcomeEvidence?.activeFocusTaskId ?? null;
@@ -241,17 +245,45 @@ export function deriveCurrentStatus(input: {
     || Number(overrideTaskIds.has(right.taskId ?? "")) - Number(overrideTaskIds.has(left.taskId ?? ""))
     || left.title.localeCompare(right.title, "ko-KR"));
 
-  const judgment = input.priorityJudgment ?? judgeOutcomes({ ...outcomeInputFromObservation(observation, now), currentCapacityMinutes: input.remainingCapacityMinutes });
-  const canonical = [...judgment.todayPriority, ...(judgment.futureRelief ? [judgment.futureRelief] : []), ...judgment.notToday]
-    .filter(choice => judgment.eligibleTaskIds.includes(choice.taskId)).map(choice => {
-      const task = observation.tasks.find(task => task.id === choice.taskId)!;
-      const band: CurrentStatusPriorityBand = choice.reasonCodes.some(code => ["OVERDUE","DUE_TODAY"].includes(code)) ? "P0"
-        : choice.reasonCodes.some(code => ["FUTURE_CAPACITY_DEFICIT","CUMULATIVE_PROTECTION"].includes(code)) ? "P1"
-        : choice.reasonCodes.some(code => ["INTERNAL_DEADLINE","REQUIRED_COMMITMENT","COMMITMENT"].includes(code)) ? "P2"
-        : choice.reasonCodes.some(code => ["GOAL","IMPORTANT","WEEKLY_FOCUS","MONTHLY_FOCUS"].includes(code)) ? "P3" : "P4";
-      return { id:choice.taskId,kind:"task" as const,band,title:choice.outcome,whyNow:choice.rationale,minutes:choice.minutes,taskId:choice.taskId,
-        recurringActivityId:null,occurrenceId:null,workContextId:task.workContextId };
-    });
+  const candidateById = new Map((input.candidates ?? []).map((candidate) => [candidate.taskId, candidate]));
+  const priorityBand = (choice: ChiefPriorityChoice): CurrentStatusPriorityBand =>
+    ["OVERDUE", "DUE_TODAY"].includes(choice.evidence.deadlineState) ? "P0"
+      : choice.evidence.deadlineState === "FUTURE_CAPACITY_DEFICIT" ? "P1"
+        : choice.evidence.mustDo || choice.evidence.commitmentLevel === "REQUIRED" ? "P2"
+          : choice.evidence.commitmentLevel === "IMPORTANT" || choice.evidence.strategicImportance !== null ? "P3" : "P4";
+  const decisionChoices = input.priorityDecision
+    ? [...(input.priorityDecision.mainQuest ? [input.priorityDecision.mainQuest] : []), ...input.priorityDecision.upNext]
+    : null;
+  const decisionPriorities: CurrentStatusPriority[] | null = decisionChoices?.flatMap((choice) => {
+    const candidate = candidateById.get(choice.taskId);
+    if (!candidate) return [];
+    return [{
+      id: choice.taskId,
+      kind: "task" as const,
+      band: priorityBand(choice),
+      title: choice.title,
+      whyNow: choice.whyNow,
+      minutes: candidate.remainingMinutes ?? candidate.estimatedMinutes ?? 0,
+      taskId: choice.taskId,
+      recurringActivityId: null,
+      occurrenceId: null,
+      workContextId: candidate.contextId
+    }];
+  }) ?? null;
+  let canonical: CurrentStatusPriority[] = decisionPriorities ?? [];
+  if (decisionPriorities === null) {
+    const judgment = input.priorityJudgment ?? judgeOutcomes({ ...outcomeInputFromObservation(observation, now), currentCapacityMinutes: input.remainingCapacityMinutes });
+    canonical = [...judgment.todayPriority, ...(judgment.futureRelief ? [judgment.futureRelief] : []), ...judgment.notToday]
+      .filter(choice => judgment.eligibleTaskIds.includes(choice.taskId)).map(choice => {
+        const task = observation.tasks.find(task => task.id === choice.taskId)!;
+        const band: CurrentStatusPriorityBand = choice.reasonCodes.some(code => ["OVERDUE","DUE_TODAY"].includes(code)) ? "P0"
+          : choice.reasonCodes.some(code => ["FUTURE_CAPACITY_DEFICIT","CUMULATIVE_PROTECTION"].includes(code)) ? "P1"
+          : choice.reasonCodes.some(code => ["INTERNAL_DEADLINE","REQUIRED_COMMITMENT","COMMITMENT"].includes(code)) ? "P2"
+          : choice.reasonCodes.some(code => ["GOAL","IMPORTANT","WEEKLY_FOCUS","MONTHLY_FOCUS"].includes(code)) ? "P3" : "P4";
+        return { id:choice.taskId,kind:"task" as const,band,title:choice.outcome,whyNow:choice.rationale,minutes:choice.minutes,taskId:choice.taskId,
+          recurringActivityId:null,occurrenceId:null,workContextId:task.workContextId };
+      });
+  }
 
   return {
     version: "chief-current-status-v1",
@@ -275,7 +307,7 @@ export function deriveCurrentStatus(input: {
     approvedPlan: observation.outcomeEvidence?.approvedPlan ?? null,
     approvedActionTitle: observation.outcomeEvidence?.approvedAction?.title ?? null,
     overrides,
-    // Legacy recurring-activity presentation remains only when no Task outcome exists.
-    priorities: canonical.length ? canonical : priorities.filter(priority => priority.kind === "course_study")
+    // Legacy recurring-activity presentation remains only for legacy callers without a new Chief decision.
+    priorities: decisionPriorities !== null ? canonical : canonical.length ? canonical : priorities.filter(priority => priority.kind === "course_study")
   };
 }

@@ -181,15 +181,13 @@ function FocusDurationSelector({ duration, setDuration, customDuration, setCusto
 }
 
 function TodaySummary({ data }: { data: HomeViewModel }) {
-  const judgment = data.outcomePriority?.judgment;
   const available = data.availableMinutes;
   const fixed = data.nextFixedSchedule;
   return <section className="capacity-panel today-summary" aria-labelledby="today-summary-title"><header><small>TODAY</small><h2 id="today-summary-title">오늘</h2></header><div className="capacity-values">
     <span><small>다음 일정</small><b>{fixed ? `${localTime(fixed.startsAt, data.timeZone)} ${fixed.title}` : "예정 없음"}</b></span>
     <span><small>가용 시간</small><b>{capacityLabel(available)}</b></span>
     <span className={data.currentStatus?.officialDueToday.length ? "risk" : ""}><small>오늘 마감</small><b>{data.currentStatus?.officialDueToday.length ?? 0}개</b></span>
-  </div>{Boolean(judgment?.capacityConflicts.length) && <p className="today-risk">확인된 마감 용량 충돌 {judgment!.capacityConflicts.length}개</p>}
-  </section>;
+  </div></section>;
 }
 
 function ReassuranceBoard({ data }: { data: HomeViewModel }) {
@@ -301,12 +299,12 @@ export function HomeCommandCenter({ initialData }: { initialData: HomeViewModel 
   const calendarCount = initialData.calendar.fixedCommitmentCount;
   const feedback = decisionState.message || actionState.message;
   const feedbackStatus = decisionState.message ? decisionState.status : actionState.status;
-  const judgment = initialData.outcomePriority?.judgment;
   const ownerWorking = initialData.focus?.step === "active";
-  const chiefRisk = Boolean(judgment?.capacityConflicts.length || judgment?.risks.some((item) => item.reasonCodes.some((code) => ["OVERDUE","DUE_TODAY","DEADLINE_RISK","FUTURE_CAPACITY_DEFICIT","LEARNING_SCHEDULE_RISK"].includes(code))));
+  const priorityChoices = [...(initialData.chiefPriority?.mainQuest ? [initialData.chiefPriority.mainQuest] : []), ...(initialData.chiefPriority?.upNext ?? [])];
+  const chiefRisk = priorityChoices.some((choice) => ["OVERDUE", "DUE_TODAY", "FUTURE_CAPACITY_DEFICIT"].includes(choice.evidence.deadlineState));
   const chiefNeedsReview = !chiefRisk && (initialData.reassurance.some((item) => item.status === "uncertain")
     || Boolean(initialData.currentAction?.reasonCodes?.some((code) => ["UNKNOWN_EFFORT","FUTURE_CAPACITY_UNKNOWN","CAPACITY_UNKNOWN"].includes(code)))
-    || (!initialData.currentAction && ((initialData.learningSpecialist?.needsReviewCount ?? 0) > 0 || judgment?.capacityKnown === false)));
+    || (!initialData.currentAction && (initialData.learningSpecialist?.needsReviewCount ?? 0) > 0));
   const chiefState = pending ? "RECALCULATING" : chiefRisk ? "RISK" : chiefNeedsReview ? "NEEDS_REVIEW" : initialData.currentAction ? "STABLE" : "IDLE";
   const learningCurrent = initialData.learningSpecialist?.currentRecommendation;
   const learningActive = Boolean(initialData.currentAction && (initialData.currentAction.candidateSource === "learning_proposal"

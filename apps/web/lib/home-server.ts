@@ -4,13 +4,17 @@ import {
   AiTaskExecutionService,
   ArtifactReviewService,
   BacklogApprovalService,
+  buildActionCandidates,
+  buildWorldModelSnapshot,
+  decideChiefPriority,
+  deriveCurrentStatus,
   deriveCurrentAction,
-  getHomeOutcome,
   DynamicReplanningService,
   FocusWorkflowService,
   MorningWorkflowService,
   ProjectLeadershipService,
   ProjectRuntimeService,
+  readStatusOverride,
   SupabaseAiTaskExecutionRepository,
   SupabaseArtifactReviewRepository,
   SupabaseBacklogApprovalRepository,
@@ -28,7 +32,7 @@ import { OpenAIAiTaskExecutor, OpenAIProjectAnalysisProvider, SupabaseAIExecutio
 import { SystemClock, zonedDateTimeToUtc, type UserId } from "@amber/shared";
 import type { Sql } from "postgres";
 import type { HomeProposalChange, HomeTimelineItem, HomeViewModel, HomeWeekDay } from "./home-types";
-import { mapHomeChief } from "./home-chief-presentation";
+import { mapHomeChiefPriority } from "./home-chief-presentation";
 import { loadLearningSpecialistSummary } from "./learning-chief-provider";
 import { reconcileLearningTasksForToday } from "./learning-task-reconciliation";
 import { getWebSql, getWebUserId } from "./web-runtime";
@@ -266,23 +270,37 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
     const timeZone = profiles[0].timezone;
     const date = localDate(now, timeZone);
     await reconcileLearningTasksForToday({ sql, userId, today: date, occurredAt: now });
-    const [observation, learningSpecialist] = await Promise.all([
+    const [world, observation, learningSpecialist] = await Promise.all([
+      buildWorldModelSnapshot(sql, userId, timeZone, now),
       new SupabaseMorningRepository(sql).loadObservation(userId,date,timeZone),
       loadLearningSpecialistSummary({ sql, userId, today: date })
     ]);
-    const outcomePriority = await getHomeOutcome(sql,userId,date,observation,now);
+    const candidates = buildActionCandidates(world);
+    const candidateIds = new Set(candidates.map((candidate) => candidate.taskId));
+    const mustDoTaskIds = [...new Set(observation.strategicDirectives
+      .flatMap((directive) => readStatusOverride(directive)?.priorityTaskIds ?? [])
+      .filter((taskId) => candidateIds.has(taskId)))];
+    const chiefPriority = decideChiefPriority({ snapshot: world, candidates, mustDoTaskIds });
+    const currentStatus = deriveCurrentStatus({
+      observation,
+      now,
+      planDate: date,
+      remainingCapacityMinutes: world.constraints.todayCapacity.availableMinutes,
+      priorityDecision: chiefPriority,
+      candidates
+    });
     const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    const judgmentIds = [...outcomePriority.judgment.todayPriority, ...(outcomePriority.judgment.futureRelief ? [outcomePriority.judgment.futureRelief] : []), ...outcomePriority.judgment.notToday]
-      .map(item => item.taskId).filter(id => uuidPattern.test(id));
-    const detailIds = [...new Set([...observation.tasks.map(task => String(task.id)), ...judgmentIds])];
+    const detailIds = [...new Set(candidates.map((candidate) => candidate.taskId).filter((id) => uuidPattern.test(id)))];
     const taskDetails = detailIds.length ? await sql<{ id:string;title:string;context:string|null;completion_criteria:string|null;scope_exclusions:string|null }[]>`
       select t.id,t.title,coalesce(w.title,g.title) context,t.completion_criteria,t.scope_exclusions
       from public.tasks t left join public.objectives o on o.id=t.objective_id and o.user_id=t.user_id
       left join public.work_contexts w on w.id=coalesce(t.work_context_id,o.work_context_id) and w.user_id=t.user_id
       left join public.goals g on g.id=o.goal_id and g.user_id=o.user_id
       where t.user_id=${userId} and t.id=any(${detailIds}::uuid[])` : [];
-    const missionIds = [...new Set([...outcomePriority.judgment.todayPriority.map((item) => item.taskId),
-      ...(outcomePriority.judgment.futureRelief ? [outcomePriority.judgment.futureRelief.taskId] : [])])];
+    const missionIds = [...new Set([
+      ...(chiefPriority.mainQuest ? [chiefPriority.mainQuest.taskId] : []),
+      ...chiefPriority.upNext.map((choice) => choice.taskId)
+    ])];
     const canonicalMissionIds = missionIds.filter(id => uuidPattern.test(id));
     const missionSteps = canonicalMissionIds.length ? await sql<{ task_id: string; total: number; completed: number }[]>`
       select task_id,count(*)::int total,count(*) filter (where status='completed')::int completed
@@ -330,7 +348,7 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
       approved ? readItems(sql, userId, approved.id) : [],
       pendingPlan ? readItems(sql, userId, pendingPlan.id) : []
     ]);
-    const chief = mapHomeChief(outcomePriority.judgment,taskDetails.map(task=>{
+    const chief = mapHomeChiefPriority(chiefPriority,candidates,taskDetails.map(task=>{
       const item = approvedItems.find(item=>item.task_id===task.id);
       return {id:task.id,title:task.title,context:task.context,completionCriteria:task.completion_criteria,scopeExclusions:task.scope_exclusions,
         stepId:item?.step_id ?? null,planItemId:item?.id ?? null};
@@ -405,13 +423,14 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
       .sort((left, right) => right.getTime() - left.getTime())[0] ?? null;
     return {
       configured: true, error: null, date, timeZone,
-      outcomePriority,
-      currentStatus: outcomePriority.currentStatus,
+      outcomePriority: null,
+      chiefPriority,
+      currentStatus,
       learningSpecialist,
       missionProgress,
       ...chief,
       approvedPlan: approved ? { id: approved.id, revisionNo: approved.revision_no } : null,
-      availableMinutes: outcomePriority.currentStatus.remainingCapacityMinutes,
+      availableMinutes: world.constraints.todayCapacity.availableMinutes,
       planReview: reviewPlan ? {
         planId: reviewPlan.id, revisionNo: reviewPlan.revision_no,
         status: reviewPlan.status === "pending_approval" ? "pending_approval" : "approved",
@@ -470,7 +489,7 @@ export const loadHomeViewModel = async (): Promise<HomeViewModel> => {
   } catch (error) {
     return {
       configured: false, error: error instanceof Error ? error.message : "Home 데이터를 불러오지 못했습니다.",
-      date: localDate(now, "Asia/Seoul"), timeZone: "Asia/Seoul", outcomePriority: null, currentStatus: null, learningSpecialist: null, missionProgress: {}, currentAction: null, nextQuests:[],reassurance:[],approvedPlan: null, availableMinutes: null, planReview: null,
+      date: localDate(now, "Asia/Seoul"), timeZone: "Asia/Seoul", outcomePriority: null, chiefPriority: null, currentStatus: null, learningSpecialist: null, missionProgress: {}, currentAction: null, nextQuests:[],reassurance:[],approvedPlan: null, availableMinutes: null, planReview: null,
       planState: { status: "no_plan", revisionNo: null, message: null },
       calendar: { activeProviders: [], lastSyncedAt: null, fixedCommitmentCount: 0 }, nextFixedSchedule: null, focus: null, reviewArtifacts: [],
       timeline: [], week: weekDates(localDate(now, "Asia/Seoul")).map((date) => ({ date, items: [] })), goals: [], agents: [], decisionCount: 0, proposal: null,
