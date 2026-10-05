@@ -169,12 +169,14 @@ describe("WorldModelBuilder", () => {
 
     expect(snapshot.contexts.projects[0]).toMatchObject({
       id: projectId,
+      commitmentLevel: "REQUIRED",
+      strategicImportance: 5,
       activeTaskIds: ["00000000-0000-4000-8000-000000000101"],
       remainingWorkloadMinutes: 780
     });
     expect(snapshot.contexts.learning).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: courseId, type: "course", title: "Database", target: "A" }),
-      expect.objectContaining({ id: certificationId, type: "certification", title: "JLPT N2", target: "Pass", targetDate: "2026-12-06" })
+      expect.objectContaining({ id: courseId, type: "course", title: "Database", commitmentLevel: "IMPORTANT", strategicImportance: null, target: "A" }),
+      expect.objectContaining({ id: certificationId, type: "certification", title: "JLPT N2", commitmentLevel: "IMPORTANT", strategicImportance: null, target: "Pass", targetDate: "2026-12-06" })
     ]));
   });
 

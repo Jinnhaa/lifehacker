@@ -214,6 +214,8 @@ export class WorldModelBuilder {
       return {
         id: context.id,
         title: context.title,
+        commitmentLevel: context.commitmentLevel,
+        strategicImportance: context.strategicImportance,
         ...summarizeWork(contextTasks),
         deadlines: contextTasks.flatMap((task) => task.deadline ? [task.deadline] : []).sort((left, right) => left.getTime() - right.getTime())
       };
@@ -223,6 +225,8 @@ export class WorldModelBuilder {
         id: context.id,
         type: "course",
         title: context.title,
+        commitmentLevel: context.commitmentLevel,
+        strategicImportance: context.strategicImportance,
         target: context.targetGrade,
         targetDate: context.endDate,
         ...summarizeWork(tasksByContext(context.id))
@@ -231,6 +235,8 @@ export class WorldModelBuilder {
         id: context.id,
         type: "certification",
         title: context.title,
+        commitmentLevel: context.commitmentLevel,
+        strategicImportance: context.strategicImportance,
         target: context.targetOutcome,
         targetDate: context.examDate,
         ...summarizeWork(tasksByContext(context.id))
