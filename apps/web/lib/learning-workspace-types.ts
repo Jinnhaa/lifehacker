@@ -10,6 +10,31 @@ export interface LearningWorkspaceAssessment {
   readonly sortAt: string | null;
 }
 
+export interface UniversityCourseReality {
+  readonly workContextId: string;
+  readonly snowboardCourseId: string | null;
+  readonly title: string;
+  readonly term: string | null;
+  readonly schoolProgress: {
+    readonly completedLectureCount: number;
+    readonly remainingLectureCount: number;
+    readonly remainingLectureMinutes: number;
+    readonly observedAt: string;
+  } | null;
+  readonly selfStudy: {
+    readonly state: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETE";
+    readonly completedUnits: number;
+    readonly totalUnits: number | null;
+    readonly progressPercent: number | null;
+  };
+  readonly understanding: { readonly unknown: number; readonly weak: number; readonly ok: number; readonly strong: number };
+  readonly validation: { readonly notTested: number; readonly failed: number; readonly passed: number };
+  readonly gap: { readonly status: "caught_up" | "behind" | "unknown"; readonly unitsBehind: number | null };
+  readonly nextAssessment: LearningWorkspaceAssessment | null;
+  readonly nextLearningTask: { readonly taskId: string; readonly title: string } | null;
+  readonly diagnostics: { readonly unlinked: boolean; readonly hiddenLegacyContextIds: readonly string[] };
+}
+
 export interface LearningWorkspaceStage {
   readonly id: string;
   readonly title: string;
@@ -64,6 +89,7 @@ export interface LearningWorkspacePolicy {
 export interface LearningWorkspaceContext {
   readonly id: string;
   readonly kind: "course" | "certification";
+  readonly universityReality: UniversityCourseReality | null;
   readonly title: string;
   readonly strategicImportance: number | null;
   readonly commitmentLevel: string | null;
@@ -102,6 +128,8 @@ export interface LearningWorkspaceModel {
   readonly riskTitles: readonly string[];
   readonly unknownTitles: readonly string[];
   readonly courses: readonly LearningWorkspaceContext[];
+  readonly universityCourses: readonly LearningWorkspaceContext[];
+  readonly courseDiagnostics: readonly { readonly workContextId: string; readonly reason: "unlinked" | "displayed_under_linked_course" }[];
   readonly certifications: readonly LearningWorkspaceContext[];
 }
 

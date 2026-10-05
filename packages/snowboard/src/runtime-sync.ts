@@ -4,6 +4,8 @@ import type {
   SnowboardAssignmentClient,
   SnowboardCollectorConfig,
   SnowboardCourseClient,
+  SnowboardCourseProgress,
+  SnowboardCourseProgressClient,
   SnowboardWorkItemProcessor
 } from "./contracts.js";
 import {
@@ -15,16 +17,21 @@ import { PythonSnowboardClient } from "./python-client.js";
 import { SnowboardSyncService, type SnowboardSyncResult } from "./snowboard-sync-service.js";
 import type { AcademicScheduleSyncResult } from "./supabase-academic-schedule-repository.js";
 
-type SnowboardRuntimeClient = SnowboardCourseClient & SnowboardAssignmentClient & SnowboardAcademicScheduleClient;
+type SnowboardRuntimeClient = SnowboardCourseClient & SnowboardAssignmentClient & SnowboardAcademicScheduleClient & SnowboardCourseProgressClient;
 
 interface SnowboardAcademicScheduleRepository {
   applySchedules(userId: UserId, schedules: Awaited<ReturnType<SnowboardAcademicScheduleClient["listAcademicSchedules"]>>): Promise<AcademicScheduleSyncResult>;
+}
+
+interface SnowboardCourseProgressRepository {
+  applyProgress(userId: UserId, progress: readonly SnowboardCourseProgress[]): Promise<number>;
 }
 
 export interface SnowboardRuntimeSyncResult {
   readonly courses: CourseContextBootstrapResult;
   readonly assignments: SnowboardSyncResult;
   readonly schedules: AcademicScheduleSyncResult;
+  readonly courseProgress: number;
 }
 
 /** Runs the canonical Snowboard runtime order so course mappings exist before item or schedule reconciliation. */
@@ -35,6 +42,7 @@ export async function syncSnowboardRuntime(input: {
   readonly processor: SnowboardWorkItemProcessor;
   readonly courseContextRepository: CourseContextBootstrapRepository;
   readonly academicScheduleRepository: SnowboardAcademicScheduleRepository;
+  readonly courseProgressRepository: SnowboardCourseProgressRepository;
   readonly observedAt?: Date;
 }): Promise<SnowboardRuntimeSyncResult> {
   const courses = await new CourseContextBootstrapService(input.client, input.courseContextRepository)
@@ -42,7 +50,9 @@ export async function syncSnowboardRuntime(input: {
   const assignments = await new SnowboardSyncService(input.client, input.processor).sync(input.userId, input.config);
   const schedules = await input.client.listAcademicSchedules(input.config);
   const scheduleResult = await input.academicScheduleRepository.applySchedules(input.userId, schedules);
-  return { courses, assignments, schedules: scheduleResult };
+  const progress = await input.client.listCourseProgress(input.config);
+  const courseProgress = await input.courseProgressRepository.applyProgress(input.userId, progress);
+  return { courses, assignments, schedules: scheduleResult, courseProgress };
 }
 
 export async function syncSnowboardForUser(input: {

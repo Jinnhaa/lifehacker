@@ -43,10 +43,19 @@ function Brief({ model }: { model: LearningWorkspaceModel }) {
 }
 
 function ContextCard({ context, today, onOpen }: { context: LearningWorkspaceContext; today: string; onOpen: () => void }) {
+  const reality = context.universityReality;
+  const school = reality?.schoolProgress;
   return <button type="button" className={`learning-context-card ${context.state}`} onClick={onOpen}>
     <span className="learning-card-kind">{context.kind === "course" ? "UNIVERSITY" : "CERTIFICATION"}</span>
     <h3>{context.title}</h3>
     <div className="learning-card-event"><strong>{context.nextAssessment?.title ?? "다음 일정"}</strong><span>{assessmentLabel(today, context.nextAssessment)}</span></div>
+    {reality ? <div className="learning-card-reality">
+      {school ? <p>수업 {school.completedLectureCount}/{school.completedLectureCount + school.remainingLectureCount} · 남은 영상 {school.remainingLectureMinutes}분</p> : null}
+      <p>내 공부 {reality.selfStudy.totalUnits === null
+        ? `${reality.selfStudy.completedUnits}단위 · 전체 미정`
+        : `${reality.selfStudy.completedUnits}/${reality.selfStudy.totalUnits}단위`}</p>
+      {reality.nextLearningTask ? <p>다음: {reality.nextLearningTask.title}</p> : null}
+    </div> : null}
     {context.activeStage ? <span className="learning-card-stage">{context.activeStage.title}</span> : null}
     <p>{context.statusLine}</p><b className="learning-state"><i />{context.stateLabel}</b>
   </button>;
@@ -137,7 +146,7 @@ export function LearningWorkspace({ model }: { model: LearningWorkspaceModel }) 
   const [selectedId, setSelectedId] = useState<string | null>(null); const [creating, setCreating] = useState(false);
   const selected = [...model.courses, ...model.certifications].find((context) => context.id === selectedId) ?? null;
   return <main className="learning-shell"><header className="learning-top"><div><img src="/assets/lifehacker/lifehacker-logo.png" alt="Lifehacker" /><div><small>LEARNING ROOM</small><h1>Learning</h1></div></div><button onClick={() => setCreating(true)}>+ 추가</button></header>
-    {!model.configured ? <section className="learning-error"><strong>Learning workspace를 연결할 수 없습니다.</strong><p>{model.error}</p></section> : <><Brief model={model} /><ContextSection title="University" eyebrow="COURSES" contexts={model.courses} today={model.today} onOpen={(context) => setSelectedId(context.id)} /><ContextSection title="Certifications" eyebrow="CERTIFICATES" contexts={model.certifications} today={model.today} onOpen={(context) => setSelectedId(context.id)} /></>}
+    {!model.configured ? <section className="learning-error"><strong>Learning workspace를 연결할 수 없습니다.</strong><p>{model.error}</p></section> : <><Brief model={model} /><ContextSection title="University" eyebrow="COURSES" contexts={model.universityCourses} today={model.today} onOpen={(context) => setSelectedId(context.id)} /><ContextSection title="Certifications" eyebrow="CERTIFICATES" contexts={model.certifications} today={model.today} onOpen={(context) => setSelectedId(context.id)} /></>}
     {selected ? <ContextModal context={selected} today={model.today} onClose={() => setSelectedId(null)} /> : null}{creating ? <CreateContextModal onClose={() => setCreating(false)} /> : null}
   </main>;
 }

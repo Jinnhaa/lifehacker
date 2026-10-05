@@ -244,6 +244,8 @@ Unique: `(recurring_activity_id, period_key, sequence_no)`
 
 ### CourseProfile
 
+Snowboard의 최신 강의 완료/잔여 개수와 잔여 시간은 `snowboard_course_progress`에 외부 관찰로 보관한다. `(user_id, course_id)`가 한 현재 snapshot을 식별하며 Course WorkContext 연결은 Snowboard course `ExternalReference`를 따른다. 학교 강의 완료와 사용자 학습 Exposure/Understanding/Validation은 별개다.
+
 - `work_context_id`
 - `target_grade?`
 - `self_reported_understanding?`
