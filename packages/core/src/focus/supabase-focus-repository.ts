@@ -346,12 +346,12 @@ export class SupabaseFocusRepository implements FocusRepository {
             routine_title: occurrence[0].title, actual_minutes: minutes, actual_seconds: seconds }
         });
         const planned = session.planned_minutes;
-        if (planned !== null && minutes !== planned) await event(tx, {
+        if (planned !== null && minutes > planned) await event(tx, {
           userId, eventType: "replan_triggered", aggregateType: session.plan_item_id ? "plan_item" : "activity_occurrence",
           aggregateId: session.plan_item_id ?? session.activity_occurrence_id, occurredAt: now,
           correlationId: workflow.correlationId, workflowRunId: workflow.id,
           idempotencyKey: `focus-complete-replan:${messageId}`,
-          payload: { reason: minutes > planned ? "task_overrun" : "task_completed_early", delta_minutes: minutes - planned, replan_executed: false }
+          payload: { reason: "task_overrun", delta_minutes: minutes - planned, replan_executed: false }
         });
         return { kind: "routine_completed", taskTitle: occurrence[0].title,
           nextAction: await deriveCurrentAction(tx, userId, planDate, timeZone, now) };
@@ -422,13 +422,13 @@ export class SupabaseFocusRepository implements FocusRepository {
       const estimate = task.estimated_user_minutes ?? task.estimated_minutes;
       if (estimate !== null) {
         const delta = task.actual_minutes + minutes - estimate;
-        if (delta !== 0) {
+        if (delta > 0) {
           await event(tx, {
             userId, eventType: "replan_triggered", aggregateType: session.plan_item_id ? "plan_item" : "task",
             aggregateId: session.plan_item_id ?? task.id, occurredAt: now, correlationId: workflow.correlationId,
             workflowRunId: workflow.id, idempotencyKey: `focus-complete-replan:${messageId}`,
             payload: {
-              reason: delta > 0 ? "task_overrun" : "task_completed_early",
+              reason: "task_overrun",
               delta_minutes: delta,
               replan_executed: false
             }

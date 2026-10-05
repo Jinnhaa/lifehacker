@@ -87,12 +87,18 @@ describe("DynamicReplanningService", () => {
   });
 
   it.each<[ReplanTrigger["reason"], number]>([
-    ["task_overrun", 20], ["task_completed_early", -20], ["task_blocked", 0], ["task_switched", 0], ["manual_replan", 0]
+    ["task_overrun", 20], ["task_blocked", 0], ["task_switched", 0], ["manual_replan", 0]
   ])("creates a revision for %s", async (reason, delta) => {
     vi.mocked(repository.findLatestPendingTrigger).mockResolvedValue(trigger(reason, delta));
     const reply = await service().processLatestTrigger(userId, "Asia/Seoul", now);
     expect(reply).toContain("일정 조금 조정했어");
     expect(repository.createRevision).toHaveBeenCalledOnce();
+  });
+
+  it("ignores a historical early-completion trigger", async () => {
+    vi.mocked(repository.findLatestPendingTrigger).mockResolvedValue(trigger("task_completed_early", -20));
+    await expect(service().processLatestTrigger(userId, "Asia/Seoul", now)).resolves.toBeNull();
+    expect(repository.createRevision).not.toHaveBeenCalled();
   });
 
   it("does not create another revision for the same trigger", async () => {
