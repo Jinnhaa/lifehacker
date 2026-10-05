@@ -64,7 +64,7 @@ const deadlineEvidence = (
   const { snapshot } = input;
   const today = localDate(snapshot.now, snapshot.timeZone);
   const deadlineDate = localDate(candidate.deadline, snapshot.timeZone);
-  if (deadlineDate < today) {
+  if (candidate.deadline < snapshot.now) {
     return { deadlineState: "OVERDUE", deadlineDate, capacitySlackMinutes: null };
   }
 
