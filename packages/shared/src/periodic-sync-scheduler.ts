@@ -8,6 +8,11 @@ export interface PeriodicSyncRunResult {
   readonly status: "synced" | "no_active_account" | "failed";
 }
 
+const redactSensitiveErrorDetail = (detail: string): string => detail.replace(
+  /(\b(?:[a-z0-9_]*?(?:password|username|token|secret|api[_-]?key|cookie))\s*(?:=|:)\s*|--(?:password|username|token|secret|api[_-]?key|cookie)\s+)([^\s,;]+)/gi,
+  "$1[REDACTED]"
+);
+
 export class PeriodicSyncScheduler {
   private timer: ReturnType<typeof setInterval> | null = null;
   private running = false;
@@ -34,9 +39,12 @@ export class PeriodicSyncScheduler {
       try {
         const result = await task.sync();
         results.push({ provider: task.provider, status: result === null ? "no_active_account" : "synced" });
-      } catch {
+      } catch (error) {
         results.push({ provider: task.provider, status: "failed" });
-        console.error(`Periodic sync iteration failed: provider=${task.provider}`);
+        const detail = error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : String(error);
+        console.error(`Periodic sync iteration failed: provider=${task.provider}; error=${redactSensitiveErrorDetail(detail)}`);
       }
     }
     return results;

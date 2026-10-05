@@ -3,7 +3,13 @@ import { InputService, SupabaseInputRepository } from "@amber/input";
 import { SupabaseTaskRepository, TaskService } from "@amber/core";
 import { syncGoogleCalendarForUser } from "@amber/google-calendar";
 import { syncICloudCalendarForUser } from "@amber/icloud-calendar";
-import { loadSnowboardConfig, PythonSnowboardClient, SnowboardSyncService, SupabaseAcademicScheduleRepository } from "@amber/snowboard";
+import {
+  loadSnowboardConfig,
+  PythonSnowboardClient,
+  SupabaseAcademicScheduleRepository,
+  SupabaseCourseContextBootstrapRepository,
+  syncSnowboardRuntime
+} from "@amber/snowboard";
 import { PeriodicSyncScheduler, SystemClock, type UserId } from "@amber/shared";
 import { loadSyncWorkerConfig } from "./config.js";
 
@@ -44,10 +50,14 @@ const snowboardSyncScheduler = new PeriodicSyncScheduler(snowboardSyncEnabled ? 
       new TaskService(taskRepository, clock)
     );
     const client = new PythonSnowboardClient();
-    const result = await new SnowboardSyncService(client, processor).sync(snowboard.userId as UserId, snowboard.collector);
-    const schedules = await client.listAcademicSchedules(snowboard.collector);
-    const scheduleResult = await new SupabaseAcademicScheduleRepository(sql).applySchedules(snowboard.userId as UserId, schedules);
-    return { ...result, schedules: scheduleResult };
+    return syncSnowboardRuntime({
+      userId: snowboard.userId as UserId,
+      config: snowboard.collector,
+      client,
+      processor,
+      courseContextRepository: new SupabaseCourseContextBootstrapRepository(sql),
+      academicScheduleRepository: new SupabaseAcademicScheduleRepository(sql)
+    });
   }
 }] : [], config.snowboardSyncIntervalMs);
 

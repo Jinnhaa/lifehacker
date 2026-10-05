@@ -27,7 +27,24 @@ describe("PeriodicSyncScheduler", () => {
       { provider: "icloud_calendar", status: "synced" }
     ]);
     expect(second).toHaveBeenCalledOnce();
-    expect(error).toHaveBeenCalledWith("Periodic sync iteration failed: provider=snowboard");
+    expect(error).toHaveBeenCalledWith(
+      "Periodic sync iteration failed: provider=snowboard; error=Error: provider unavailable"
+    );
+    error.mockRestore();
+  });
+
+  it("logs error detail without exposing credential-like values", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const scheduler = new PeriodicSyncScheduler([{
+      provider: "snowboard",
+      sync: async () => { throw new Error("collector failed: SNOWBOARD_USERNAME=student SNOWBOARD_PASSWORD=secret"); }
+    }], 900_000);
+
+    await scheduler.runOnce();
+
+    expect(error).toHaveBeenCalledWith(
+      "Periodic sync iteration failed: provider=snowboard; error=Error: collector failed: SNOWBOARD_USERNAME=[REDACTED] SNOWBOARD_PASSWORD=[REDACTED]"
+    );
     error.mockRestore();
   });
 
