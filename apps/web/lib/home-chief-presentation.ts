@@ -1,4 +1,4 @@
-import type { OutcomeJudgment } from "@amber/core";
+import type { ActionCandidate, ChiefPriorityDecision, OutcomeJudgment } from "@amber/core";
 import type { HomeChiefQuest, HomeReassurance, HomeViewModel } from "./home-types";
 
 type Choice = OutcomeJudgment["todayPriority"][number];
@@ -11,6 +11,55 @@ export interface HomeTaskDetails {
   readonly stepId?: string | null;
   readonly planItemId?: string | null;
 }
+
+export function mapHomeChiefPriority(
+  decision: ChiefPriorityDecision,
+  candidates: readonly ActionCandidate[],
+  tasks: readonly HomeTaskDetails[]
+): {
+  currentAction: HomeViewModel["currentAction"];
+  nextQuests: readonly HomeChiefQuest[];
+  reassurance: readonly HomeReassurance[];
+} {
+  const candidatesById = new Map(candidates.map((candidate) => [candidate.taskId, candidate]));
+  const detailsById = new Map(tasks.map((task) => [task.id, task]));
+  const mainCandidate = decision.mainQuest ? candidatesById.get(decision.mainQuest.taskId) : null;
+  const mainDetails = decision.mainQuest ? detailsById.get(decision.mainQuest.taskId) : null;
+  const currentAction: HomeViewModel["currentAction"] = decision.mainQuest && mainCandidate ? {
+    kind: "task",
+    taskId: decision.mainQuest.taskId,
+    stepId: mainDetails?.stepId ?? null,
+    occurrenceId: null,
+    planItemId: mainDetails?.planItemId ?? null,
+    title: decision.mainQuest.title,
+    minutes: mainCandidate.remainingMinutes ?? mainCandidate.estimatedMinutes,
+    context: mainCandidate.contextTitle,
+    source: "chief_priority",
+    whyNow: decision.mainQuest.whyNow,
+    completionCriteria: mainCandidate.completionCriteria,
+    scopeExclusions: mainDetails?.scopeExclusions ?? null,
+    candidateSource: "task",
+    reasonCodes: decision.mainQuest.reasonCodes,
+    relevantDeadline: decision.mainQuest.evidence.deadlineDate,
+    selectedPolicyName: null
+  } : null;
+  const nextQuests = decision.upNext.slice(0, 2).flatMap((choice): HomeChiefQuest[] => {
+    const candidate = candidatesById.get(choice.taskId);
+    if (!candidate) return [];
+    return [{
+      taskId: choice.taskId,
+      title: choice.title,
+      context: candidate.contextTitle,
+      minutes: candidate.remainingMinutes ?? candidate.estimatedMinutes,
+      whyNow: choice.whyNow,
+      candidateSource: "task",
+      contextId: candidate.contextId,
+      completionCriteria: candidate.completionCriteria
+    }];
+  });
+  return { currentAction, nextQuests, reassurance: [] };
+}
+
 const reasonLabels: Partial<Record<Choice["reasonCodes"][number], string>> = {
   OVERDUE:"마감이 지났어요",DUE_TODAY:"오늘 공식 마감",INTERNAL_DEADLINE:"내부 목표일이 가까워요",
   UNBLOCKS:"팀 작업을 먼저 넘겨야 해요",FUTURE_CAPACITY_DEFICIT:"나중에 할 시간이 부족해요",FUTURE_CAPACITY_UNKNOWN:"이후 가용시간은 확인이 필요해요",

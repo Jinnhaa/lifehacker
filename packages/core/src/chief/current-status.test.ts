@@ -2,6 +2,8 @@ import type { TaskId, UserId } from "@amber/shared";
 import { describe, expect, it } from "vitest";
 import type { MorningObservation } from "../morning/morning.js";
 import type { Task } from "../task/task.js";
+import type { ActionCandidate } from "../candidates/action-candidate.js";
+import type { ChiefPriorityDecision } from "../chief-priority/chief-priority.js";
 import { deriveCurrentStatus } from "./current-status.js";
 
 const userId = "10000000-0000-4000-8000-000000000001" as UserId;
@@ -89,5 +91,42 @@ describe("Chief Current Status V1", () => {
     });
     expect(status.activeFocus).toEqual({ taskId: null, occurrenceId: "50000000-0000-4000-8000-000000000005", title: "DB 교안 학습" });
     expect(status.priorities[0]).toMatchObject({ taskId: String(prerequisite.id), band: "P4" });
+  });
+
+  it("uses the supplied Chief decision order without invoking legacy reranking", () => {
+    const first = task("10000000-0000-4000-8000-000000000031", { title: "First" });
+    const second = task("10000000-0000-4000-8000-000000000032", { title: "Second" });
+    const toCandidate = (value: Task): ActionCandidate => ({
+      taskId: String(value.id), title: value.title, taskType: "user", contextId: null, contextType: null,
+      contextTitle: null, status: "PLANNED", importance: value.importance, deadline: null, deadlineSource: null,
+      estimatedMinutes: value.estimatedMinutes, remainingMinutes: value.estimatedMinutes, plannedDate: null,
+      completionCriteria: null, contextEvidence: { commitmentLevel: null, strategicImportance: null },
+      feasibility: { canFitToday: true }, evidence: { overdue: false, worldRiskTypes: [] }
+    });
+    const candidates = [toCandidate(first), toCandidate(second)];
+    const priorityDecision: ChiefPriorityDecision = {
+      mainQuest: {
+        taskId: String(second.id), title: second.title, reasonCodes: ["FUTURE_CAPACITY_DEFICIT"],
+        whyNow: "새 Chief가 두 번째 Task를 먼저 선택했습니다.",
+        evidence: { mustDo: false, deadlineState: "FUTURE_CAPACITY_DEFICIT", deadlineDate: "2026-09-23",
+          capacitySlackMinutes: -30, commitmentLevel: null, strategicImportance: null, canFitToday: true, importance: 3 }
+      },
+      upNext: [{
+        taskId: String(first.id), title: first.title, reasonCodes: ["USER_MUST_DO"],
+        whyNow: "Chief 순서의 다음 Task입니다.",
+        evidence: { mustDo: true, deadlineState: "NONE", deadlineDate: null, capacitySlackMinutes: null,
+          commitmentLevel: null, strategicImportance: null, canFitToday: true, importance: 3 }
+      }]
+    };
+
+    const status = deriveCurrentStatus({
+      observation: observation([first, second]), now, planDate: "2026-09-21", remainingCapacityMinutes: 190,
+      priorityDecision, candidates
+    });
+
+    expect(status.priorities.map((item) => [item.taskId, item.band, item.whyNow])).toEqual([
+      [String(second.id), "P1", "새 Chief가 두 번째 Task를 먼저 선택했습니다."],
+      [String(first.id), "P2", "Chief 순서의 다음 Task입니다."]
+    ]);
   });
 });

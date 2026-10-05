@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { outcomeJudgmentSchema, judgeOutcomes, projectFutureCapacity } from "@amber/core";
-import type { Task } from "@amber/core";
-import { canStartHomeQuest, homeChiefReason, homeFocusMatchesRecommendation, mapHomeChief, type HomeTaskDetails } from "./home-chief-presentation";
+import type { ActionCandidate, ChiefPriorityDecision, Task } from "@amber/core";
+import { canStartHomeQuest, homeChiefReason, homeFocusMatchesRecommendation, mapHomeChief, mapHomeChiefPriority, type HomeTaskDetails } from "./home-chief-presentation";
 import type { HomeViewModel } from "./home-types";
 
 type Choice = NonNullable<HomeViewModel["outcomePriority"]>["judgment"]["todayPriority"][number];
@@ -14,7 +14,34 @@ const details=(id:string,extra:Partial<HomeTaskDetails>={}):HomeTaskDetails=>({i
 const execution = (currentAction:HomeViewModel["currentAction"],focus:HomeViewModel["focus"]=null) => ({configured:true,currentAction,focus});
 const activeFocus:NonNullable<HomeViewModel["focus"]>={step:"active",taskId:"main",occurrenceId:null,category:null,startedAt:"2026-09-26T00:00:00Z",durationMinutes:45,stepTitle:null,title:"Current Focus"};
 
+const actionCandidate = (taskId: string, overrides: Partial<ActionCandidate> = {}): ActionCandidate => ({
+  taskId, title: `Title ${taskId}`, taskType: "user", contextId: null, contextType: null, contextTitle: null,
+  status: "PLANNED", importance: 3, deadline: null, deadlineSource: null, estimatedMinutes: 30,
+  remainingMinutes: 30, plannedDate: null, completionCriteria: null,
+  contextEvidence: { commitmentLevel: null, strategicImportance: null }, feasibility: { canFitToday: true },
+  evidence: { overdue: false, worldRiskTypes: [] }, ...overrides
+});
+const priorityChoice = (taskId: string, whyNow = `${taskId} why now`): NonNullable<ChiefPriorityDecision["mainQuest"]> => ({
+  taskId, title: `Title ${taskId}`, reasonCodes: ["TASK_IMPORTANCE"], whyNow,
+  evidence: { mustDo: false, deadlineState: "NONE", deadlineDate: null, capacitySlackMinutes: null,
+    commitmentLevel: null, strategicImportance: null, canFitToday: true, importance: 3 }
+});
+
 describe("Home canonical Chief presentation",()=>{
+  it("maps new Chief Main Quest facts without the legacy judgment schema",()=>{
+    const model=mapHomeChiefPriority({mainQuest:priorityChoice("main","결정적 Why Now"),upNext:[]},[
+      actionCandidate("main",{contextId:"context",contextType:"project",contextTitle:"Project",remainingMinutes:25,completionCriteria:"Done"})
+    ],[details("main",{scopeExclusions:"No extras",stepId:"step",planItemId:"plan-item"})]);
+    expect(model.currentAction).toMatchObject({taskId:"main",title:"Title main",context:"Project",minutes:25,
+      whyNow:"결정적 Why Now",source:"chief_priority",candidateSource:"task",completionCriteria:"Done",
+      scopeExclusions:"No extras",stepId:"step",planItemId:"plan-item"});
+    expect(model.reassurance).toEqual([]);
+  });
+  it("preserves new Chief Up Next order and caps presentation at two",()=>{
+    const candidates=[actionCandidate("main"),actionCandidate("second"),actionCandidate("third"),actionCandidate("fourth")];
+    const model=mapHomeChiefPriority({mainQuest:priorityChoice("main"),upNext:[priorityChoice("second"),priorityChoice("third"),priorityChoice("fourth")]},candidates,[]);
+    expect(model.nextQuests.map(item=>item.taskId)).toEqual(["second","third"]);
+  });
   it("uses the canonical current mission rather than the first candidate",()=>{
     const model=mapHomeChief(result([choice("first"),choice("main")],[],"main"),[details("main"),details("first")]);
     expect(model.currentAction).toMatchObject({taskId:"main",title:"Title main",context:"Course"});
