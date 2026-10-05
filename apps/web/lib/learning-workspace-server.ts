@@ -28,13 +28,15 @@ import type {
 import {
   buildUniversityCourseReality,
   selectUniversityCourses,
+  summarizeUniversityCourses,
   type UniversityCourseLink,
+  type UniversityPositionConfirmation,
   type UniversitySchoolProgress
 } from "./university-course-reality";
 import { getWebSql, getWebUserId } from "./web-runtime";
 
 type UnitRow = {
-  id: string; workContextId: string; materialId: string | null; sequenceNo: number | null;
+  id: string; title: string; workContextId: string; materialId: string | null; sequenceNo: number | null; unitType: string | null;
   exposureState: "NOT_STARTED" | "PARTIAL" | "COMPLETE";
   understandingState: "UNKNOWN" | "WEAK" | "OK" | "STRONG";
   validationState: "NOT_TESTED" | "FAILED" | "PASSED";
@@ -47,6 +49,7 @@ type ActiveTaskRow = { taskId: string; targetId: string; workContextId: string; 
 type ActivityRow = { id: string; workContextId: string; kind: "focus" | "task" | "event"; title: string; minutes: number | null; occurredAt: string | Date };
 type ResolvedTargetRow = { materialId: string; materializationKey: string | null; executionStatus: "COMPLETED" | "PARTIAL" | "SKIPPED" | "CANCELLED";
   recoveryMode: "REDISTRIBUTE" | "RESET" | "CARRY_FORWARD" | "MANUAL" | null; assignedUnits: number; resolvedAt: string | Date; planDate: string };
+type PositionConfirmationRow = UniversityPositionConfirmation & { workContextId: string };
 
 const seoulDate = (): string => new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit"
@@ -99,6 +102,7 @@ function activityView(row: ActivityRow) {
   const occurredAt = isoTime(row.occurredAt)!;
   if (row.kind === "focus") return { id: row.id, label: "집중 세션", detail: `${row.minutes ?? 0}분`, occurredAt };
   if (row.kind === "task") return { id: row.id, label: "학습 완료", detail: row.title, occurredAt };
+  if (row.title === "learning_position_confirmed") return { id: row.id, label: "현재 공부 위치 확인", detail: "직접 입력", occurredAt };
   return { id: row.id, label: "학습 기록", detail: row.title.replaceAll("_", " "), occurredAt };
 }
 
@@ -114,7 +118,8 @@ export async function loadLearningWorkspace(dependencies?: LearningWorkspaceDepe
     const sql = dependencies?.sql ?? getWebSql();
     const userId = dependencies?.userId ?? getWebUserId();
     const base = await readLearningContexts(sql, userId);
-    const [stages, materials, units, policies, items, assessments, tasks, resolvedTargets, activities, courseLinks, schoolProgress] = await Promise.all([
+    const [stages, materials, units, policies, items, assessments, tasks, resolvedTargets, activities, courseLinks, schoolProgress,
+      positionConfirmations] = await Promise.all([
       sql<LearningStage[]>`select id,user_id "userId",work_context_id "workContextId",title,position,status,
         completion_mode "completionMode",transition_mode "transitionMode",target_start_date "targetStartDate",
         target_end_date "targetEndDate",config,created_at "createdAt",updated_at "updatedAt"
@@ -123,7 +128,7 @@ export async function loadLearningWorkspace(dependencies?: LearningWorkspaceDepe
         material_type "materialType",role,tracking_mode "trackingMode",unit_type "unitType",total_units::float8 "totalUnits",
         start_unit::float8 "startUnit",status,source_reference "sourceReference",config,created_at "createdAt",updated_at "updatedAt"
         from public.learning_materials where user_id=${userId} and status<>'ARCHIVED' order by work_context_id,created_at`,
-      sql<UnitRow[]>`select id,work_context_id "workContextId",material_id "materialId",sequence_no "sequenceNo",
+      sql<UnitRow[]>`select id,title,work_context_id "workContextId",material_id "materialId",sequence_no "sequenceNo",unit_type "unitType",
         exposure_state "exposureState",understanding_state "understandingState",validation_state "validationState"
         from public.learning_units where user_id=${userId} order by work_context_id,position`,
       sql<LearningAllocationPolicy[]>`select id,user_id "userId",work_context_id "workContextId",stage_id "stageId",name,
@@ -158,6 +163,9 @@ export async function loadLearningWorkspace(dependencies?: LearningWorkspaceDepe
         union all select e.id,w.id,'event',e.event_type,null,e.occurred_at from public.domain_events e
           join public.tasks t on t.id=e.aggregate_id and e.aggregate_type='task' join public.work_contexts w on w.id=t.work_context_id
           where e.user_id=${userId} and e.event_type like 'learning_%'
+        union all select e.id,w.id,'event',e.event_type,null,e.occurred_at from public.domain_events e
+          join public.work_contexts w on w.id=e.aggregate_id and e.aggregate_type='work_context' and w.user_id=e.user_id
+          where e.user_id=${userId} and e.event_type='learning_position_confirmed'
       ) activity order by "occurredAt" desc limit 100`,
       sql<UniversityCourseLink[]>`select external_id "courseId",internal_entity_id "workContextId"
         from public.external_references where user_id=${userId} and source='snowboard' and external_type='course'
@@ -169,7 +177,11 @@ export async function loadLearningWorkspace(dependencies?: LearningWorkspaceDepe
           on r.user_id=p.user_id and r.source='snowboard' and r.external_type='course'
           and r.external_id=p.course_id and r.internal_entity_type='work_context'
           and r.internal_entity_id=p.work_context_id and r.sync_status='active'
-        where p.user_id=${userId}`
+        where p.user_id=${userId}`,
+      sql<PositionConfirmationRow[]>`select distinct on (aggregate_id) aggregate_id "workContextId",
+        nullif(payload->>'material_id','') "materialId",coalesce((payload->>'through_sequence')::integer,0) "throughSequence"
+        from public.domain_events where user_id=${userId} and aggregate_type='work_context'
+          and event_type='learning_position_confirmed' order by aggregate_id,occurred_at desc,id desc`
     ]);
 
     const selectedCourses = selectUniversityCourses(base.courses, courseLinks);
@@ -232,7 +244,8 @@ export async function loadLearningWorkspace(dependencies?: LearningWorkspaceDepe
         materials: materialViews, units: units.filter((unit) => unit.workContextId === context.id),
         nextAssessment, actions: activeViews.filter((action) => activeTasks.some((task) => task.taskId === action.taskId
           && ['INBOX','PLANNED','IN_PROGRESS'].includes(task.status))),
-        hiddenLegacyContextIds: selectedCourses.hiddenLegacyIds.get(context.id) ?? []
+        hiddenLegacyContextIds: selectedCourses.hiddenLegacyIds.get(context.id) ?? [],
+        positionConfirmation: positionConfirmations.find((item) => item.workContextId === context.id) ?? null
       }) : null;
       const stageMaterials = materialViews.filter((material) => material.stageId === activeStage?.id);
       const materialForecasts = stageMaterials.map((material) => {
@@ -262,7 +275,9 @@ export async function loadLearningWorkspace(dependencies?: LearningWorkspaceDepe
       const stageViews: LearningWorkspaceStage[] = contextStages.map((stage) => ({ id: stage.id, title: stage.title,
         position: stage.position, status: stage.status, completionMode: stage.completionMode }));
       return {
-        id: context.id, kind: context.kind, universityReality, title: context.title, strategicImportance: context.strategicImportance,
+        id: context.id, kind: context.kind, universityReality,
+        title: context.kind === "course" ? selectedCourses.displayTitles.get(context.id) ?? context.title : context.title,
+        strategicImportance: context.strategicImportance,
         commitmentLevel: context.commitmentLevel, term: "term" in context ? context.term : null,
         target: context.kind === "course" ? context.targetGrade : context.targetOutcome,
         instructor: context.kind === "course" ? context.instructor : null,
@@ -286,16 +301,20 @@ export async function loadLearningWorkspace(dependencies?: LearningWorkspaceDepe
     const nearest = nearestItem ? { contextTitle: nearestItem.context.title, eventTitle: nearestItem.assessment.title,
       dateLabel: nearestItem.assessment.sortAt!.slice(5, 10).replace("-", "/"),
       days: dayNumber(nearestItem.assessment.sortAt!.slice(0, 10)) - dayNumber(today) } : null;
+    const universityCourses = built.filter((context) => context.kind === "course" && displayCourseIds.has(context.id));
+    const universitySummary = summarizeUniversityCourses(universityCourses);
     return { configured: base.configured, error: base.error, today, nearest,
       riskTitles: built.filter((context) => context.state === "risk").map((context) => context.title),
       unknownTitles: built.filter((context) => context.state === "unknown").map((context) => context.title),
       courses: built.filter((context) => context.kind === "course"),
-      universityCourses: built.filter((context) => context.kind === "course" && displayCourseIds.has(context.id)),
+      universityCourses, universityTerm: selectedCourses.currentTerm,
+      universityRiskTitles: universitySummary.riskTitles,
       courseDiagnostics: selectedCourses.diagnostics,
       certifications: built.filter((context) => context.kind === "certification") };
   } catch (error) {
     return { configured: false, error: error instanceof Error ? error.message : "Learning workspace를 불러오지 못했습니다.",
-      today, nearest: null, riskTitles: [], unknownTitles: [], courses: [], universityCourses: [], courseDiagnostics: [], certifications: [] };
+      today, nearest: null, riskTitles: [], unknownTitles: [], courses: [], universityCourses: [], universityTerm: null,
+      universityRiskTitles: [], courseDiagnostics: [], certifications: [] };
   }
 }
 

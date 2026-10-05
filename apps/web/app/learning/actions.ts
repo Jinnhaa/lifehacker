@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { SupabaseLearningTaskExecutionRepository } from "@amber/core";
 import type { CertificationStudyMode, CommitmentLevel, ContextCommonInput, LearningTaskExecutionCommand } from "@amber/core";
 import { revalidatePath } from "next/cache";
@@ -7,6 +8,7 @@ import { z } from "zod";
 import { createWebContextManagementService } from "../../lib/context-management-server";
 import { findLearningProposal } from "../../lib/learning-workspace-server";
 import type { LearningWorkspaceActionState } from "../../lib/learning-workspace-types";
+import { planCurrentStudyPosition, type StudyPositionUnit } from "../../lib/university-study-position";
 import type { ContextActionState } from "../../lib/context-management-types";
 import { getWebSql, getWebUserId } from "../../lib/web-runtime";
 
@@ -100,6 +102,50 @@ export async function executeLearningAction(_state: LearningWorkspaceActionState
     return workspaceResult("success", command.outcome === "COMPLETED" ? "오늘 학습을 완료했습니다." : command.outcome === "PARTIAL" ? "학습한 범위까지 반영했습니다." : "오늘 학습을 건너뛰었습니다.");
   } catch (error) {
     return workspaceResult("error", error instanceof Error ? error.message : "학습 결과를 반영하지 못했습니다.");
+  }
+}
+
+export async function recordCurrentStudyPositionAction(
+  _state: LearningWorkspaceActionState,
+  form: FormData
+): Promise<LearningWorkspaceActionState> {
+  try {
+    const contextId = uuid.parse(form.get("contextId"));
+    const materialId = uuid.parse(form.get("materialId"));
+    const throughSequence = z.coerce.number().int().nonnegative().parse(form.get("throughSequence"));
+    const sql = getWebSql();
+    const userId = getWebUserId();
+    await sql.begin(async (tx) => {
+      const contexts = await tx<{ id: string }[]>`select w.id from public.work_contexts w
+        join public.external_references r on r.user_id=w.user_id and r.internal_entity_id=w.id
+          and r.source='snowboard' and r.external_type='course' and r.internal_entity_type='work_context' and r.sync_status='active'
+        where w.id=${contextId} and w.user_id=${userId} and w.kind='course' and w.status='active' and w.archived_at is null
+        for update of w`;
+      if (!contexts[0]) throw new Error("현재 Snowboard 과목을 찾지 못했습니다.");
+      const materials = await tx<{ id: string }[]>`select id from public.learning_materials
+        where user_id=${userId} and work_context_id=${contextId} and status<>'ARCHIVED' order by created_at for update`;
+      if (materials.length !== 1 || materials[0]?.id !== materialId) {
+        throw new Error("현재 위치를 연결할 단일 학습 범위가 아직 없습니다.");
+      }
+      const units = await tx<StudyPositionUnit[]>`select id,sequence_no "sequenceNo",exposure_state "exposureState",
+        understanding_state "understandingState",validation_state "validationState"
+        from public.learning_units where user_id=${userId} and work_context_id=${contextId} and material_id=${materialId}
+        order by sequence_no for update`;
+      const plan = planCurrentStudyPosition(units, throughSequence);
+      for (const unitId of plan.unitIdsToComplete) {
+        await tx`update public.learning_units set exposure_state='COMPLETE',updated_at=now()
+          where id=${unitId} and user_id=${userId} and work_context_id=${contextId} and material_id=${materialId}`;
+      }
+      await tx`insert into public.domain_events(user_id,event_type,aggregate_type,aggregate_id,actor_type,occurred_at,
+        correlation_id,payload_version,payload)
+        values(${userId},'learning_position_confirmed','work_context',${contextId},'user',now(),${randomUUID()},1,
+          ${tx.json({ source: "explicit_user", material_id: materialId, through_sequence: throughSequence,
+            affected_learning_unit_ids: plan.unitIdsToComplete })})`;
+    });
+    refresh();
+    return workspaceResult("success", throughSequence === 0 ? "공부 시작 전으로 확인했습니다." : "현재 공부 위치를 반영했습니다.");
+  } catch (error) {
+    return workspaceResult("error", error instanceof Error ? error.message : "현재 공부 위치를 반영하지 못했습니다.");
   }
 }
 

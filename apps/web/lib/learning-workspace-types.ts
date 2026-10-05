@@ -23,15 +23,21 @@ export interface UniversityCourseReality {
   } | null;
   readonly selfStudy: {
     readonly state: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETE";
+    readonly initialized: boolean;
+    readonly scopeStatus: "READY" | "NOT_READY";
     readonly completedUnits: number;
     readonly totalUnits: number | null;
     readonly progressPercent: number | null;
+    readonly currentPositionSequence: number | null;
+    readonly currentPositionLabel: string | null;
+    readonly positionOptions: readonly { readonly sequenceNo: number; readonly label: string }[];
+    readonly materialId: string | null;
   };
   readonly understanding: { readonly unknown: number; readonly weak: number; readonly ok: number; readonly strong: number };
   readonly validation: { readonly notTested: number; readonly failed: number; readonly passed: number };
   readonly gap: { readonly status: "caught_up" | "behind" | "unknown"; readonly unitsBehind: number | null };
   readonly nextAssessment: LearningWorkspaceAssessment | null;
-  readonly nextLearningTask: { readonly taskId: string; readonly title: string } | null;
+  readonly nextLearningTask: { readonly taskId: string; readonly title: string; readonly estimatedMinutes: number | null } | null;
   readonly diagnostics: { readonly unlinked: boolean; readonly hiddenLegacyContextIds: readonly string[] };
 }
 
@@ -129,7 +135,13 @@ export interface LearningWorkspaceModel {
   readonly unknownTitles: readonly string[];
   readonly courses: readonly LearningWorkspaceContext[];
   readonly universityCourses: readonly LearningWorkspaceContext[];
-  readonly courseDiagnostics: readonly { readonly workContextId: string; readonly reason: "unlinked" | "displayed_under_linked_course" }[];
+  readonly universityTerm: string | null;
+  readonly universityRiskTitles: readonly string[];
+  readonly courseDiagnostics: readonly {
+    readonly workContextId: string;
+    readonly title: string;
+    readonly reason: "legacy_duplicate" | "duplicate_snowboard_course" | "not_current_snowboard_course" | "unlinked";
+  }[];
   readonly certifications: readonly LearningWorkspaceContext[];
 }
 

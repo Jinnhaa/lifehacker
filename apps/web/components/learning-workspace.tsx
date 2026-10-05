@@ -5,6 +5,7 @@ import {
   createDefaultAllocationAction,
   executeLearningAction,
   materializeAdjustedLearningAction,
+  recordCurrentStudyPositionAction,
   saveLearningContextAction,
   saveLearningMaterialAction,
   saveLearningStageAction,
@@ -12,6 +13,7 @@ import {
   updateAllocationPolicyAction
 } from "../app/learning/actions";
 import type { LearningWorkspaceAction, LearningWorkspaceContext, LearningWorkspaceModel } from "../lib/learning-workspace-types";
+import { learningDetailExperience, universitySelfStudyLabel } from "../lib/university-course-reality";
 
 const initial = { status: "idle" as const, message: "" };
 const unitLabel = (value: string | null) => value === "LESSON" ? "강" : value === "CHAPTER" ? "챕터" : value ?? "단위";
@@ -37,27 +39,32 @@ function Feedback({ state }: { state: { readonly status: string; readonly messag
 function Brief({ model }: { model: LearningWorkspaceModel }) {
   return <section className="learning-brief" aria-label="Learning Brief">
     <article><small>가장 가까운 일정</small>{model.nearest ? <><strong>{model.nearest.contextTitle}</strong><p>{model.nearest.eventTitle}</p><b>{model.nearest.dateLabel} · {model.nearest.days === 0 ? "D-DAY" : `D-${model.nearest.days}`}</b></> : <p>예정된 일정이 없습니다.</p>}</article>
-    <article className="risk"><small>주의 필요</small><strong>{model.riskTitles.length}개</strong><p>{model.riskTitles.length ? model.riskTitles.slice(0, 3).join(" · ") : "현재 확인된 위험이 없습니다."}</p></article>
-    <article className="unknown"><small>확인 필요</small><strong>{model.unknownTitles.length}개</strong><p>{model.unknownTitles.length ? model.unknownTitles.slice(0, 3).join(" · ") : "판단에 필요한 정보가 갖춰졌습니다."}</p></article>
+    <article><small>현재 학기 과목</small><strong>{model.universityCourses.length}개</strong><p>{model.universityTerm ? `${model.universityTerm} Snowboard 기준` : "Snowboard 연결 기준"}</p></article>
+    <article className="risk"><small>확인된 학습 위험</small><strong>{model.universityRiskTitles.length}개</strong><p>{model.universityRiskTitles.length ? model.universityRiskTitles.slice(0, 3).join(" · ") : "현재 확인된 위험이 없습니다."}</p></article>
   </section>;
 }
 
-function ContextCard({ context, today, onOpen }: { context: LearningWorkspaceContext; today: string; onOpen: () => void }) {
-  const reality = context.universityReality;
-  const school = reality?.schoolProgress;
+function CertificationCard({ context, today, onOpen }: { context: LearningWorkspaceContext; today: string; onOpen: () => void }) {
   return <button type="button" className={`learning-context-card ${context.state}`} onClick={onOpen}>
-    <span className="learning-card-kind">{context.kind === "course" ? "UNIVERSITY" : "CERTIFICATION"}</span>
+    <span className="learning-card-kind">CERTIFICATION</span>
     <h3>{context.title}</h3>
     <div className="learning-card-event"><strong>{context.nextAssessment?.title ?? "다음 일정"}</strong><span>{assessmentLabel(today, context.nextAssessment)}</span></div>
-    {reality ? <div className="learning-card-reality">
-      {school ? <p>수업 {school.completedLectureCount}/{school.completedLectureCount + school.remainingLectureCount} · 남은 영상 {school.remainingLectureMinutes}분</p> : null}
-      <p>내 공부 {reality.selfStudy.totalUnits === null
-        ? `${reality.selfStudy.completedUnits}단위 · 전체 미정`
-        : `${reality.selfStudy.completedUnits}/${reality.selfStudy.totalUnits}단위`}</p>
-      {reality.nextLearningTask ? <p>다음: {reality.nextLearningTask.title}</p> : null}
-    </div> : null}
     {context.activeStage ? <span className="learning-card-stage">{context.activeStage.title}</span> : null}
     <p>{context.statusLine}</p><b className="learning-state"><i />{context.stateLabel}</b>
+  </button>;
+}
+
+function UniversityCard({ context, today, onOpen }: { context: LearningWorkspaceContext; today: string; onOpen: () => void }) {
+  const reality = context.universityReality!;
+  const school = reality.schoolProgress;
+  return <button type="button" className="learning-context-card learning-university-card" onClick={onOpen}>
+    <span className="learning-card-kind">UNIVERSITY</span><h3>{context.title}</h3>
+    <div className="learning-card-event"><strong>{context.nextAssessment?.title ?? "다음 일정 없음"}</strong><span>{assessmentLabel(today, context.nextAssessment)}</span></div>
+    <div className="university-card-facts">
+      <div><small>수업 현황</small>{school ? <><strong>{school.completedLectureCount} / {school.completedLectureCount + school.remainingLectureCount}</strong><span>남은 영상 {school.remainingLectureMinutes}분 · Snowboard 자동 확인</span></> : <span>Snowboard 진도 확인 전</span>}</div>
+      <div><small>내 공부</small><strong>{universitySelfStudyLabel(reality)}</strong>{reality.selfStudy.initialized && reality.selfStudy.totalUnits !== null ? <span>{reality.selfStudy.completedUnits} / {reality.selfStudy.totalUnits}</span> : null}</div>
+      <div className="next"><small>NEXT</small>{reality.nextLearningTask ? <><strong>{reality.nextLearningTask.title}</strong><span>{reality.nextLearningTask.estimatedMinutes ? `약 ${reality.nextLearningTask.estimatedMinutes}분` : "Lifehacker Task"}</span></> : <span>{reality.selfStudy.scopeStatus === "NOT_READY" ? "다음 학습 범위를 만들 정보가 아직 없습니다." : !reality.selfStudy.initialized ? "현재 공부 위치를 먼저 알려주세요." : "다음 Learning Task가 아직 없습니다."}</span>}</div>
+    </div>
   </button>;
 }
 
@@ -109,6 +116,54 @@ function Activity({ context }: { context: LearningWorkspaceContext }) {
   </section>;
 }
 
+function PositionCorrection({ context }: { context: LearningWorkspaceContext }) {
+  const reality = context.universityReality!;
+  const [state, action, pending] = useActionState(recordCurrentStudyPositionAction, initial);
+  if (reality.selfStudy.scopeStatus === "NOT_READY" || !reality.selfStudy.materialId) {
+    return <div className="university-position-empty"><strong>현재 위치 미설정</strong><p>현재 위치를 연결할 학습 범위가 아직 없습니다.</p></div>;
+  }
+  return <form action={action} className="university-position-form">
+    <input type="hidden" name="contextId" value={context.id} />
+    <input type="hidden" name="materialId" value={reality.selfStudy.materialId} />
+    <label>현재 실제 공부 위치<select name="throughSequence" defaultValue={reality.selfStudy.currentPositionSequence ?? 0}>
+      <option value="0">시작 전</option>{reality.selfStudy.positionOptions.map((option) => <option value={option.sequenceNo} key={option.sequenceNo}>{option.label}</option>)}
+    </select></label>
+    <button disabled={pending}>{reality.selfStudy.initialized ? "현재 위치 수정" : "이 위치까지 공부함"}</button>
+    <Feedback state={state} />
+  </form>;
+}
+
+function UniversityTaskAction({ context, item }: { context: LearningWorkspaceContext; item: LearningWorkspaceAction }) {
+  const [state, action, pending] = useActionState(executeLearningAction, initial);
+  const units = Array.from({ length: item.assignedUnits + 1 }, (_, index) => index);
+  return <div className="university-task-action"><strong>{item.title}</strong>
+    {item.estimatedMinutes ? <span>예상 {item.estimatedMinutes}분</span> : null}
+    <div><form action={action}><ActionHidden context={context} item={item} /><button name="outcome" value="COMPLETED" disabled={pending}>완료</button></form>
+      {item.startSequence !== null && item.assignedUnits > 1 ? <details><summary>일부만 함</summary><div className="learning-partial">{units.slice(1, -1).map((count) => <form action={action} key={count}><ActionHidden context={context} item={item} /><input type="hidden" name="assignedUnits" value={item.assignedUnits} /><input type="hidden" name="completedUnits" value={count} /><button name="outcome" value="PARTIAL" disabled={pending}>{item.startSequence! + count - 1}까지</button></form>)}</div></details> : null}
+    </div><Feedback state={state} />
+  </div>;
+}
+
+function UniversityCurrent({ context, today }: { context: LearningWorkspaceContext; today: string }) {
+  const reality = context.universityReality!;
+  const school = reality.schoolProgress;
+  const nextAction = context.actions.find((item) => item.kind === "task" && item.taskId === reality.nextLearningTask?.taskId) ?? null;
+  return <section className="university-current-view">
+    <article><header><small>SCHOOL</small><h3>수업 현황</h3><span>Snowboard에서 자동 확인</span></header>{school ? <><strong>{school.completedLectureCount} / {school.completedLectureCount + school.remainingLectureCount} 완료</strong><p>남은 영상 약 {school.remainingLectureMinutes}분</p></> : <p>아직 Snowboard 수업 진도를 확인하지 못했습니다.</p>}</article>
+    <article><header><small>MY STUDY</small><h3>내 공부</h3></header>{reality.selfStudy.initialized ? <><strong>{reality.selfStudy.currentPositionSequence === 0 ? "아직 시작 전" : `${universitySelfStudyLabel(reality)}까지 공부함`}</strong><PositionCorrection context={context} /></> : <><p>현재 공부 위치를 아직 알려주지 않았어요.</p><PositionCorrection context={context} /></>}</article>
+    <article><header><small>GAP</small><h3>격차</h3></header>{reality.gap.status === "behind" && reality.gap.unitsBehind !== null ? <strong>수업보다 {reality.gap.unitsBehind}개 범위 뒤처져 있어요.</strong> : reality.gap.status === "caught_up" ? <strong>현재 수업 범위를 따라가고 있어요.</strong> : <p>아직 수업 진도와 내 공부 범위를 직접 비교할 수 없어요.</p>}</article>
+    <article><header><small>NEXT</small><h3>다음 할 일</h3></header>{nextAction ? <UniversityTaskAction context={context} item={nextAction} /> : <p>{reality.selfStudy.scopeStatus === "NOT_READY" ? "다음 학습 범위를 만들 수 있는 정보가 아직 없습니다." : !reality.selfStudy.initialized ? "현재 공부 위치를 먼저 알려주세요." : "다음 Learning Task가 아직 없습니다."}</p>}</article>
+    <article><header><small>SCHEDULE</small><h3>다음 일정</h3></header>{context.nextAssessment ? <><strong>{context.nextAssessment.title}</strong><p>{assessmentLabel(today, context.nextAssessment)}</p></> : <p>예정된 평가 일정이 없습니다.</p>}</article>
+  </section>;
+}
+
+function CourseInfo({ context }: { context: LearningWorkspaceContext }) {
+  return <section className="learning-secondary-view university-course-info"><header><small>COURSE</small><h3>과목 정보</h3><p>학교 정보와 내 현재 공부 위치만 관리합니다.</p></header>
+    <dl><div><dt>과목</dt><dd>{context.title}</dd></div><div><dt>학기</dt><dd>{context.term ?? "미정"}</dd></div><div><dt>목표 성적</dt><dd>{context.target ?? "설정 안 함"}</dd></div><div><dt>학교 연결</dt><dd>{context.universityReality?.snowboardCourseId ? "Snowboard 자동 연결" : "연결 확인 필요"}</dd></div></dl>
+    <h4>현재 공부 위치</h4><PositionCorrection context={context} />
+  </section>;
+}
+
 function Settings({ context }: { context: LearningWorkspaceContext }) {
   const [contextState, contextAction, contextPending] = useActionState(saveLearningContextAction, initial);
   const [stageState, stageAction, stagePending] = useActionState(saveLearningStageAction, initial);
@@ -126,31 +181,45 @@ function Settings({ context }: { context: LearningWorkspaceContext }) {
   </section>;
 }
 
-function ContextModal({ context, today, onClose }: { context: LearningWorkspaceContext; today: string; onClose: () => void }) {
+function CertificationModal({ context, today, onClose }: { context: LearningWorkspaceContext; today: string; onClose: () => void }) {
   const [view, setView] = useState<"default" | "activity" | "settings">("default");
   useEffect(() => { const close = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [onClose]);
   return <div className="learning-modal-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}><section className="learning-modal" role="dialog" aria-modal="true" aria-labelledby="learning-modal-title">
-    <header><div><small>{context.kind === "course" ? "UNIVERSITY" : "CERTIFICATION"}</small><h2 id="learning-modal-title">{context.title}</h2></div><span>{context.activeStage?.title ?? "단계 확인 필요"}</span><b>{assessmentLabel(today, context.nextAssessment)}</b><button type="button" onClick={onClose} aria-label="닫기">×</button></header>
+    <header><div><small>CERTIFICATION</small><h2 id="learning-modal-title">{context.title}</h2></div><span>{context.activeStage?.title ?? "단계 확인 필요"}</span><b>{assessmentLabel(today, context.nextAssessment)}</b><button type="button" onClick={onClose} aria-label="닫기">×</button></header>
     <nav><button className={view === "default" ? "active" : ""} onClick={() => setView("default")}>오늘 학습</button><button className={view === "activity" ? "active" : ""} onClick={() => setView("activity")}>활동 기록</button><button className={view === "settings" ? "active" : ""} onClick={() => setView("settings")}>학습 설정</button></nav>
     <div className="learning-modal-scroll">{view === "default" ? <div className="learning-modal-grid"><main><small>ACTION</small><h3>오늘 학습</h3>{context.actions.length ? context.actions.map((item) => <ActionItem context={context} item={item} key={`${item.kind}:${item.materialId}`} />) : <div className="learning-no-action"><strong>오늘 실행할 학습을 확정할 수 없습니다.</strong><p>학습 단계, 자료 분량 또는 기본 학습량을 확인해 주세요.</p><button type="button" onClick={() => setView("settings")}>학습 설정 열기</button></div>}</main><StateColumn context={context} today={today} /></div> : view === "activity" ? <Activity context={context} /> : <Settings context={context} />}</div>
   </section></div>;
 }
 
+function UniversityModal({ context, today, onClose }: { context: LearningWorkspaceContext; today: string; onClose: () => void }) {
+  const [view, setView] = useState<"current" | "activity" | "info">("current");
+  useEffect(() => { const close = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); }; window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close); }, [onClose]);
+  return <div className="learning-modal-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}><section className="learning-modal university-modal" role="dialog" aria-modal="true" aria-labelledby="university-modal-title">
+    <header><div><small>UNIVERSITY</small><h2 id="university-modal-title">{context.title}</h2></div><span>{context.term ?? "현재 학기"}</span><b>{assessmentLabel(today, context.nextAssessment)}</b><button type="button" onClick={onClose} aria-label="닫기">×</button></header>
+    <nav><button className={view === "current" ? "active" : ""} onClick={() => setView("current")}>현재 상태</button><button className={view === "activity" ? "active" : ""} onClick={() => setView("activity")}>활동 기록</button><button className={view === "info" ? "active" : ""} onClick={() => setView("info")}>과목 정보</button></nav>
+    <div className="learning-modal-scroll">{view === "current" ? <UniversityCurrent context={context} today={today} /> : view === "activity" ? <Activity context={context} /> : <CourseInfo context={context} />}</div>
+  </section></div>;
+}
+
 function CreateContextModal({ onClose }: { onClose: () => void }) {
-  const [kind, setKind] = useState<"course" | "certification">("course");
   const [state, action, pending] = useActionState(saveLearningContextAction, initial);
-  return <div className="learning-modal-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}><section className="learning-create-modal" role="dialog" aria-modal="true"><header><div><small>NEW CONTEXT</small><h2>Learning 추가</h2></div><button onClick={onClose}>×</button></header><div className="learning-kind-switch"><button className={kind === "course" ? "active" : ""} onClick={() => setKind("course")}>Course</button><button className={kind === "certification" ? "active" : ""} onClick={() => setKind("certification")}>Certification</button></div><form action={action} className="learning-form"><input type="hidden" name="intent" value="create" /><input type="hidden" name="kind" value={kind} /><label>이름<input name="title" required autoFocus /></label>{kind === "course" ? <><label>학기 (선택)<input name="term" /></label><label>목표 성적 (선택)<input name="targetGrade" /></label><label>시작일 (선택)<input type="date" name="startDate" /></label><label>종료일 (선택)<input type="date" name="endDate" /></label></> : <><label>시험일 (선택)<input type="date" name="examDate" /></label><label>성공 목표 (선택)<input name="targetOutcome" /></label></>}<button disabled={pending}>추가</button></form><Feedback state={state} /></section></div>;
+  return <div className="learning-modal-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}><section className="learning-create-modal" role="dialog" aria-modal="true"><header><div><small>NEW CERTIFICATION</small><h2>자격증 추가</h2></div><button onClick={onClose}>×</button></header><form action={action} className="learning-form"><input type="hidden" name="intent" value="create" /><input type="hidden" name="kind" value="certification" /><label>이름<input name="title" required autoFocus /></label><label>시험일 (선택)<input type="date" name="examDate" /></label><label>성공 목표 (선택)<input name="targetOutcome" /></label><button disabled={pending}>추가</button></form><Feedback state={state} /></section></div>;
 }
 
 export function LearningWorkspace({ model }: { model: LearningWorkspaceModel }) {
   const [selectedId, setSelectedId] = useState<string | null>(null); const [creating, setCreating] = useState(false);
   const selected = [...model.courses, ...model.certifications].find((context) => context.id === selectedId) ?? null;
-  return <main className="learning-shell"><header className="learning-top"><div><img src="/assets/lifehacker/lifehacker-logo.png" alt="Lifehacker" /><div><small>LEARNING ROOM</small><h1>Learning</h1></div></div><button onClick={() => setCreating(true)}>+ 추가</button></header>
-    {!model.configured ? <section className="learning-error"><strong>Learning workspace를 연결할 수 없습니다.</strong><p>{model.error}</p></section> : <><Brief model={model} /><ContextSection title="University" eyebrow="COURSES" contexts={model.universityCourses} today={model.today} onOpen={(context) => setSelectedId(context.id)} /><ContextSection title="Certifications" eyebrow="CERTIFICATES" contexts={model.certifications} today={model.today} onOpen={(context) => setSelectedId(context.id)} /></>}
-    {selected ? <ContextModal context={selected} today={model.today} onClose={() => setSelectedId(null)} /> : null}{creating ? <CreateContextModal onClose={() => setCreating(false)} /> : null}
+  return <main className="learning-shell"><header className="learning-top"><div><img src="/assets/lifehacker/lifehacker-logo.png" alt="Lifehacker" /><div><small>LEARNING ROOM</small><h1>Learning</h1></div></div><button onClick={() => setCreating(true)}>+ 자격증</button></header>
+    {!model.configured ? <section className="learning-error"><strong>Learning workspace를 연결할 수 없습니다.</strong><p>{model.error}</p></section> : <><Brief model={model} /><ContextSection title={`University${model.universityTerm ? ` · ${model.universityTerm}` : ""}`} eyebrow="COURSES" contexts={model.universityCourses} today={model.today} onOpen={(context) => setSelectedId(context.id)} /><CourseDiagnostics model={model} /><ContextSection title="Certifications" eyebrow="CERTIFICATES" contexts={model.certifications} today={model.today} onOpen={(context) => setSelectedId(context.id)} /></>}
+    {selected ? learningDetailExperience(selected.kind) === "university_reality" ? <UniversityModal context={selected} today={model.today} onClose={() => setSelectedId(null)} /> : <CertificationModal context={selected} today={model.today} onClose={() => setSelectedId(null)} /> : null}{creating ? <CreateContextModal onClose={() => setCreating(false)} /> : null}
   </main>;
 }
 
 function ContextSection({ title, eyebrow, contexts, today, onOpen }: { title: string; eyebrow: string; contexts: readonly LearningWorkspaceContext[]; today: string; onOpen: (context: LearningWorkspaceContext) => void }) {
-  return <section className="learning-context-section"><header><div><small>{eyebrow}</small><h2>{title}</h2></div><span>{contexts.length}</span></header><div className="learning-context-grid">{contexts.map((context) => <ContextCard context={context} today={today} onOpen={() => onOpen(context)} key={context.id} />)}</div></section>;
+  return <section className="learning-context-section"><header><div><small>{eyebrow}</small><h2>{title}</h2></div><span>{contexts.length}</span></header><div className="learning-context-grid">{contexts.map((context) => context.kind === "course" ? <UniversityCard context={context} today={today} onOpen={() => onOpen(context)} key={context.id} /> : <CertificationCard context={context} today={today} onOpen={() => onOpen(context)} key={context.id} />)}</div></section>;
+}
+
+function CourseDiagnostics({ model }: { model: LearningWorkspaceModel }) {
+  if (!model.courseDiagnostics.length) return null;
+  return <details className="university-diagnostics"><summary>연결 확인 필요 {model.courseDiagnostics.length}</summary><ul>{model.courseDiagnostics.map((item) => <li key={item.workContextId}><strong>{item.title}</strong><span>{item.reason === "legacy_duplicate" ? "Snowboard 과목과 중복된 기존 기록" : item.reason === "duplicate_snowboard_course" ? "같은 현재 학기 과목의 다른 Snowboard 섹션" : item.reason === "not_current_snowboard_course" ? "이전 학기 Snowboard 과목" : "현재 학기 Snowboard 과목으로 연결되지 않음"}</span></li>)}</ul></details>;
 }
