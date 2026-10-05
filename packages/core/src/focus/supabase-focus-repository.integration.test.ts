@@ -65,7 +65,64 @@ const message = (text: string, id: string, userId = userA) => ({
   receivedAt: new Date("2026-09-04T00:00:00.000Z")
 });
 
+const completeFocusedTask = async (actualMinutes: number) => {
+  const userId = randomUUID() as UserId;
+  const taskId = randomUUID();
+  const nextTaskId = randomUUID();
+  const dailyPlanId = randomUUID();
+  const nextItemId = randomUUID();
+  const startedAt = new Date("2026-09-04T00:00:00.000Z");
+  const nextStart = new Date("2026-09-04T03:00:00.000Z");
+  try {
+    await sql`insert into auth.users(id,email,created_at,updated_at)
+      values(${userId},${`focus-outcome-${userId}@example.test`},now(),now())`;
+    await sql`insert into public.profiles(id,timezone) values(${userId},'Asia/Seoul')`;
+    await sql`insert into public.tasks(id,user_id,title,execution_mode,estimated_minutes,importance,status)
+      values
+        (${taskId},${userId},'Outcome Task','standard',60,5,'PLANNED'),
+        (${nextTaskId},${userId},'Later Task','standard',30,3,'PLANNED')`;
+    await sql`insert into public.daily_plans(id,user_id,plan_date,timezone,revision_no,status,input_snapshot,created_by)
+      values(${dailyPlanId},${userId},'2026-09-04','Asia/Seoul',1,'pending_approval','{}','test')`;
+    await sql`insert into public.plan_items(id,user_id,daily_plan_id,position,item_type,task_id,planned_start_at,planned_end_at,planned_minutes,status)
+      values
+        (${randomUUID()},${userId},${dailyPlanId},1,'task',${taskId},${startedAt},${new Date(startedAt.getTime() + 60 * 60_000)},60,'planned'),
+        (${nextItemId},${userId},${dailyPlanId},2,'task',${nextTaskId},${nextStart},${new Date(nextStart.getTime() + 30 * 60_000)},30,'planned')`;
+    await sql`update public.daily_plans set status='approved',approved_at=${startedAt} where id=${dailyPlanId}`;
+
+    const outcomeRepository = new SupabaseFocusRepository(sql);
+    const started = await outcomeRepository.start(
+      userId, "2026-09-04", startedAt, `outcome-start:${actualMinutes}`, 60, "Asia/Seoul", { kind: "task", id: taskId }
+    );
+    expect(started.context?.taskId).toBe(taskId);
+    await outcomeRepository.complete(
+      userId, "2026-09-04", new Date(startedAt.getTime() + actualMinutes * 60_000), `outcome-complete:${actualMinutes}`, "Asia/Seoul"
+    );
+
+    const [task] = await sql<{ status: string; actual_minutes: number }[]>`
+      select status,actual_minutes from public.tasks where id=${taskId} and user_id=${userId}`;
+    const [nextItem] = await sql<{ status: string; planned_start_at: Date }[]>`
+      select status,planned_start_at from public.plan_items where id=${nextItemId} and user_id=${userId}`;
+    const triggers = await sql<{ reason: string; delta_minutes: number }[]>`
+      select payload->>'reason' reason,(payload->>'delta_minutes')::int delta_minutes
+      from public.domain_events where user_id=${userId} and event_type='replan_triggered' order by occurred_at`;
+    return { task, nextItem, nextStart, triggers };
+  } finally {
+    await sql`delete from auth.users where id=${userId}`;
+  }
+};
+
 describe("Focus Workflow local Supabase", () => {
+  it.each([
+    { actualMinutes: 43, expectedTriggers: [] },
+    { actualMinutes: 60, expectedTriggers: [] },
+    { actualMinutes: 61, expectedTriggers: [{ reason: "task_overrun", delta_minutes: 1 }] }
+  ])("completes a 60-minute Task in $actualMinutes minutes with only valid replan triggers", async ({ actualMinutes, expectedTriggers }) => {
+    const result = await completeFocusedTask(actualMinutes);
+    expect(result.task).toEqual({ status: "DONE", actual_minutes: actualMinutes });
+    expect(result.triggers).toEqual(expectedTriggers);
+    expect(result.nextItem).toEqual({ status: "planned", planned_start_at: result.nextStart });
+  });
+
   it("focuses a 45-minute routine, stores exact actual time, then advances past manual completion", async () => {
     const routineUser = randomUUID() as UserId;
     const routineId = randomUUID();
@@ -89,9 +146,10 @@ describe("Focus Workflow local Supabase", () => {
           (${occurrences[1]},${routineUser},${routineId},${routineUser},2,${planDate},'planned')`;
       await sql`insert into public.daily_plans(id,user_id,plan_date,timezone,revision_no,status,input_snapshot,created_by,approved_at)
         values(${routinePlan},${routineUser},${planDate},'Asia/Seoul',1,'pending_approval','{}','test',null)`;
-      await sql`insert into public.plan_items(user_id,daily_plan_id,position,item_type,activity_occurrence_id,planned_minutes,status)
-        values(${routineUser},${routinePlan},1,'routine',${occurrences[0]},45,'planned'),
-          (${routineUser},${routinePlan},2,'routine',${occurrences[1]},45,'planned')`;
+      const laterRoutineStart = new Date(focusStart.getTime() + 3 * 60 * 60_000);
+      await sql`insert into public.plan_items(user_id,daily_plan_id,position,item_type,activity_occurrence_id,planned_start_at,planned_end_at,planned_minutes,status)
+        values(${routineUser},${routinePlan},1,'routine',${occurrences[0]},${focusStart},${new Date(focusStart.getTime() + 45 * 60_000)},45,'planned'),
+          (${routineUser},${routinePlan},2,'routine',${occurrences[1]},${laterRoutineStart},${new Date(laterRoutineStart.getTime() + 45 * 60_000)},45,'planned')`;
       await sql`update public.daily_plans set status='approved',approved_at=now() where id=${routinePlan}`;
 
       const started = await routineService.handleFocusMessage(routineMessage("시작:45", "start"));
@@ -115,6 +173,12 @@ describe("Focus Workflow local Supabase", () => {
       const finished = await sql<{ status: string; planned_minutes: number; actual_minutes: number; actual_seconds: number }[]>`
         select status,planned_minutes,actual_minutes,actual_seconds from public.focus_sessions where id=${active[0]!.id}`;
       expect(finished[0]).toEqual({ status: "completed", planned_minutes: 60, actual_minutes: 42, actual_seconds: 2535 });
+      const earlyTriggers = await sql<{ count: number }[]>`select count(*)::int count from public.domain_events
+        where user_id=${routineUser} and event_type='replan_triggered' and payload->>'reason'='task_completed_early'`;
+      const laterRoutineItem = await sql<{ status: string; planned_start_at: Date }[]>`select status,planned_start_at
+        from public.plan_items where user_id=${routineUser} and activity_occurrence_id=${occurrences[1]}`;
+      expect(earlyTriggers[0]?.count).toBe(0);
+      expect(laterRoutineItem[0]).toEqual({ status: "planned", planned_start_at: laterRoutineStart });
       const next = await deriveCurrentAction(sql, routineUser, planDate, "Asia/Seoul", routineClock.now());
       expect(next?.kind).toBe("routine");
       if (next?.kind === "routine") expect(next.activityOccurrenceId).toBe(occurrences[1]);

@@ -95,18 +95,12 @@ const completeParentTask = async (
   await sql`update public.tasks set completion_source='manual' where id=${taskId} and user_id=${userId}`;
   await appendCompletionEvidence(sql, { userId, taskId, ...(stepId && { stepId }), now, officialSubmission });
 
-  const items = await sql<{ id: string; planned_minutes: number }[]>`
+  await sql`
     update public.plan_items i set status='completed',updated_at=${now}
     from public.daily_plans p where i.daily_plan_id=p.id and i.user_id=${userId} and i.task_id=${taskId}
       and p.user_id=${userId} and p.status='approved'
       and p.plan_date=(now() at time zone (select timezone from public.profiles where id=${userId}))::date
-      and i.status not in ('completed','cancelled') returning i.id,i.planned_minutes`;
-  if (items.length) {
-    await sql`insert into public.domain_events(user_id,event_type,aggregate_type,aggregate_id,actor_type,occurred_at,correlation_id,idempotency_key,payload_version,payload)
-      values(${userId},'replan_triggered','plan_item',${items[0]!.id},'manual',${now},${randomUUID()},${`manual-complete-replan:${taskId}`},1,
-        ${sql.json({ reason: "task_completed_early", delta_minutes: -items.reduce((sum, item) => sum + item.planned_minutes, 0), replan_executed: false, source: "manual" })})
-      on conflict(user_id,idempotency_key) do nothing`;
-  }
+      and i.status not in ('completed','cancelled')`;
   return { kind: "task", duplicate: false, officialSubmission };
 };
 
@@ -189,20 +183,15 @@ export async function completeManualRoutine(
     }
     await tx`update public.activity_occurrences set status='completed',ended_at=${now}
       where id=${occurrenceId} and user_id=${userId}`;
-    const items = await tx<{ id: string; planned_minutes: number }[]>`
+    await tx`
       update public.plan_items i set status='completed',updated_at=${now}
       from public.daily_plans p where i.daily_plan_id=p.id and i.user_id=${userId} and i.activity_occurrence_id=${occurrenceId}
         and p.user_id=${userId} and p.status='approved'
         and p.plan_date=(now() at time zone (select timezone from public.profiles where id=${userId}))::date
-        and i.status not in ('completed','cancelled')
-      returning i.id,i.planned_minutes`;
+        and i.status not in ('completed','cancelled')`;
     await tx`insert into public.domain_events(user_id,event_type,aggregate_type,aggregate_id,actor_type,occurred_at,correlation_id,idempotency_key,payload_version,payload)
       values(${userId},'activity_occurrence_completed','activity_occurrence',${occurrenceId},'manual',${now},${randomUUID()},${`manual-routine:${occurrenceId}`},1,
         ${tx.json({ source: "manual", authority: "user", actual_minutes: null })})
-      on conflict(user_id,idempotency_key) do nothing`;
-    if (items.length) await tx`insert into public.domain_events(user_id,event_type,aggregate_type,aggregate_id,actor_type,occurred_at,correlation_id,idempotency_key,payload_version,payload)
-      values(${userId},'replan_triggered','plan_item',${items[0]!.id},'manual',${now},${randomUUID()},${`manual-routine-replan:${occurrenceId}`},1,
-        ${tx.json({ reason: "task_completed_early", delta_minutes: -items.reduce((sum, item) => sum + item.planned_minutes, 0), replan_executed: false, source: "manual" })})
       on conflict(user_id,idempotency_key) do nothing`;
     return { duplicate: false };
   });

@@ -61,7 +61,28 @@ describe("manual quest completion", () => {
       expect(result).toMatchObject({ kind: "task", duplicate: false });
       expect(transition).toHaveBeenCalledOnce();
       expect(queries.some((query) => query.includes("manual_completion_recorded"))).toBe(true);
-      expect(queries.some((query) => query.includes("replan_triggered"))).toBe(true);
+      expect(queries.some((query) => query.includes("update public.plan_items"))).toBe(true);
+      expect(queries.some((query) => query.includes("replan_triggered"))).toBe(false);
+    } finally {
+      getTask.mockRestore();
+      transition.mockRestore();
+    }
+  });
+
+  it("completes a Task without a DailyPlan and does not require replanning", async () => {
+    const { sql, queries } = sqlDouble((query) => query.includes("select status from public.tasks")
+      ? [{ status: "PLANNED" }]
+      : []);
+    const task = { id: taskId, status: "PLANNED" };
+    const getTask = vi.spyOn(SupabaseTaskRepository.prototype, "getTaskById").mockResolvedValue(task as never);
+    const transition = vi.spyOn(SupabaseTaskRepository.prototype, "transitionTask")
+      .mockResolvedValue({ kind: "updated", task: { ...task, status: "DONE" } } as never);
+    try {
+      await expect(completeManualQuest(sql, userId, taskId)).resolves.toMatchObject({
+        kind: "task", duplicate: false
+      });
+      expect(transition).toHaveBeenCalledOnce();
+      expect(queries.some((query) => query.includes("replan_triggered"))).toBe(false);
     } finally {
       getTask.mockRestore();
       transition.mockRestore();
@@ -109,7 +130,7 @@ describe("manual quest completion", () => {
     });
     await expect(completeManualRoutine(sql, userId, "occurrence")).resolves.toEqual({ duplicate: false });
     expect(queries.some((query) => query.includes("activity_occurrence_completed"))).toBe(true);
-    expect(queries.some((query) => query.includes("replan_triggered"))).toBe(true);
+    expect(queries.some((query) => query.includes("replan_triggered"))).toBe(false);
     expect(queries.join(" ")).not.toContain("set actual_minutes");
   });
 

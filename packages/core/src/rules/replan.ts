@@ -26,11 +26,12 @@ export type ReplanTriggerReason = (typeof replanTriggerReasons)[number];
 
 export const shouldReplanForTrigger = (reason: ReplanTriggerReason, deltaMinutes = 0): boolean => {
   if (reason === "manual_replan") return true;
+  if (reason === "task_completed_early") return false;
   return shouldReplan({
     overCapacity: reason === "task_overrun" && deltaMinutes > 0,
     taskDurationOverrunMinutes: reason === "task_overrun" ? Math.max(deltaMinutes, 0) : 0,
     durationOverrunThresholdMinutes: 0,
-    releasedCapacityMinutes: reason === "task_completed_early" ? Math.max(-deltaMinutes, 0) : 0,
+    releasedCapacityMinutes: 0,
     importantDeadlineConflict: false,
     activePlanItemUnavailable: reason === "task_blocked" || reason === "task_switched"
   });
