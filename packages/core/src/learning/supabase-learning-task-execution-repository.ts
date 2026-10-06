@@ -3,7 +3,7 @@ import type { CorrelationId, TaskId, UserId } from "@amber/shared";
 import type { JSONValue, Sql, TransactionSql } from "postgres";
 import { deriveLearningRecovery, type LearningRecoveryProposal } from "./learning-recovery.js";
 import type { LearningTaskExecutionCommand, LearningTaskProposal } from "./learning-task-execution.js";
-import type { LearningRecoveryMode } from "./learning-v2.js";
+import type { LearningRecoveryMode, LearningTargetRole } from "./learning-v2.js";
 import { canTransitionTask } from "../task/task-state-machine.js";
 import type { TaskStatus } from "../task/task.js";
 
@@ -11,6 +11,7 @@ interface MaterializedRow { task_id: string; target_id: string; status: string }
 interface TargetRow {
   id: string;
   task_id: string;
+  target_role: LearningTargetRole;
   material_id: string;
   start_sequence: number | null;
   end_sequence: number | null;
@@ -76,18 +77,21 @@ export class SupabaseLearningTaskExecutionRepository {
       const existing = await tx<MaterializedRow[]>`
         select x.task_id,x.id target_id,t.status from public.task_learning_targets x
         join public.tasks t on t.id=x.task_id and t.user_id=x.user_id
-        where x.user_id=${userId} and x.materialization_key=${proposal.materializationKey} limit 1`;
+        where x.user_id=${userId} and x.target_role='EXECUTION_TARGET'
+          and x.materialization_key=${proposal.materializationKey} limit 1`;
       if (existing[0]) return { kind: "existing", taskId: existing[0].task_id, targetId: existing[0].target_id };
       const overlap = proposal.startSequence === null
         ? await tx<MaterializedRow[]>`
           select x.task_id,x.id target_id,t.status from public.task_learning_targets x
           join public.tasks t on t.id=x.task_id and t.user_id=x.user_id
-          where x.user_id=${userId} and x.material_id=${proposal.materialId} and x.execution_status='PENDING'
+          where x.user_id=${userId} and x.target_role='EXECUTION_TARGET'
+            and x.material_id=${proposal.materialId} and x.execution_status='PENDING'
             and t.status not in ('DONE','CLOSED_PARTIAL','SKIPPED','CANCELLED') limit 1 for update of x,t`
         : await tx<MaterializedRow[]>`
           select x.task_id,x.id target_id,t.status from public.task_learning_targets x
           join public.tasks t on t.id=x.task_id and t.user_id=x.user_id
-          where x.user_id=${userId} and x.material_id=${proposal.materialId} and x.execution_status='PENDING'
+          where x.user_id=${userId} and x.target_role='EXECUTION_TARGET'
+            and x.material_id=${proposal.materialId} and x.execution_status='PENDING'
             and (x.start_sequence is null or x.end_sequence is null
               or (x.start_sequence<=${proposal.endSequence} and x.end_sequence>=${proposal.startSequence}))
             and t.status not in ('DONE','CLOSED_PARTIAL','SKIPPED','CANCELLED') limit 1 for update of x,t`;
@@ -111,9 +115,9 @@ export class SupabaseLearningTaskExecutionRepository {
         returning id`;
       const taskId = tasks[0]!.id;
       const targets = await tx<{ id: string }[]>`
-        insert into public.task_learning_targets(user_id,task_id,material_id,start_sequence,end_sequence,allocation_policy_id,
+        insert into public.task_learning_targets(user_id,task_id,target_role,material_id,start_sequence,end_sequence,allocation_policy_id,
           assigned_units,completed_units,execution_status,recovery_mode,materialization_key)
-        values(${userId},${taskId},${proposal.materialId},${proposal.startSequence},${proposal.endSequence},${proposal.allocationPolicyId},
+        values(${userId},${taskId},'EXECUTION_TARGET',${proposal.materialId},${proposal.startSequence},${proposal.endSequence},${proposal.allocationPolicyId},
           ${proposal.assignedUnits},0,'PENDING',${proposal.recoveryMode},${proposal.materializationKey}) returning id`;
       await this.event(tx, userId, taskId, "task_created", occurredAt, correlationId,
         `${proposal.materializationKey}:task-created`, { previous_status: null, next_status: "PLANNED",
@@ -142,6 +146,7 @@ export class SupabaseLearningTaskExecutionRepository {
         select x.*,t.status task_status from public.task_learning_targets x
         join public.tasks t on t.id=x.task_id and t.user_id=x.user_id
         where x.id=${input.targetId} and x.task_id=${input.taskId} and x.user_id=${input.userId}
+          and x.target_role='EXECUTION_TARGET'
         for update of x,t`;
       const target = rows[0];
       if (!target || target.assigned_units === null) throw new Error("Learning Task target not found or lacks assigned quantity");

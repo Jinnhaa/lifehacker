@@ -1,6 +1,7 @@
 import type { UserId } from "@amber/shared";
 import type { JSONValue } from "postgres";
 import { z } from "zod";
+import type { AssessmentScopeConfig } from "./course-recipe.js";
 
 export const learningStageStatusSchema = z.enum(["NOT_STARTED", "ACTIVE", "COMPLETED", "ARCHIVED"]);
 export const learningStageCompletionModeSchema = z.enum(["MANUAL", "ALL_REQUIRED_MATERIALS", "ASSESSMENT_THRESHOLD"]);
@@ -9,6 +10,7 @@ export const learningMaterialStatusSchema = z.enum(["ACTIVE", "COMPLETED", "ARCH
 export const learningTrackingModeSchema = z.enum(["UNIT_COUNT", "LEARNING_STATE", "TIME", "UNTRACKED"]);
 export const learningRecoveryModeSchema = z.enum(["REDISTRIBUTE", "RESET", "CARRY_FORWARD", "MANUAL"]);
 export const learningTargetExecutionStatusSchema = z.enum(["PENDING", "COMPLETED", "PARTIAL", "SKIPPED", "CANCELLED"]);
+export const learningTargetRoleSchema = z.enum(["EXECUTION_TARGET", "RELATED_SCOPE", "RECOMMENDED_READINESS"]);
 export const learningAssessmentTypeSchema = z.enum([
   "quiz", "midterm", "final", "assignment", "project", "team_project", "exam", "mock_exam", "attendance", "other"
 ]);
@@ -19,6 +21,7 @@ export type LearningStageTransitionMode = z.infer<typeof learningStageTransition
 export type LearningTrackingMode = z.infer<typeof learningTrackingModeSchema>;
 export type LearningRecoveryMode = z.infer<typeof learningRecoveryModeSchema>;
 export type LearningTargetExecutionStatus = z.infer<typeof learningTargetExecutionStatusSchema>;
+export type LearningTargetRole = z.infer<typeof learningTargetRoleSchema>;
 export type LearningAssessmentType = z.infer<typeof learningAssessmentTypeSchema>;
 
 interface LearningRecord {
@@ -94,6 +97,7 @@ export interface TaskLearningTarget {
   readonly id: string;
   readonly userId: UserId;
   readonly taskId: string;
+  readonly targetRole: LearningTargetRole;
   readonly materialId: string | null;
   readonly learningUnitId: string | null;
   readonly startSequence: number | null;
@@ -125,4 +129,6 @@ export interface LearningAssessment extends LearningRecord {
   readonly submissionStatus: string | null;
   readonly provenance: string;
   readonly observedAt: string;
+  /** Runtime-validated structured scope; null means unknown, never inferred. */
+  readonly scopeConfig: AssessmentScopeConfig | null;
 }

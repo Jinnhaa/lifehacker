@@ -159,7 +159,8 @@ export const runFocusAction = async (_previous: RuntimeActionState, formData: Fo
     const learningTarget = command === "완료" ? await sql<{ task_id: string; target_id: string }[]>`
       select f.task_id,x.id target_id from public.focus_sessions f
       join public.task_learning_targets x on x.task_id=f.task_id and x.user_id=f.user_id
-      where f.user_id=${userId} and f.status='active' and x.execution_status='PENDING'
+      where f.user_id=${userId} and f.status='active' and x.target_role='EXECUTION_TARGET'
+        and x.execution_status='PENDING'
       order by f.started_at desc limit 1` : [];
     if (learningTarget[0]) {
       const paused = await createWebFocusService(sql).handleFocusMessage({
@@ -199,7 +200,8 @@ export const completeHomeQuestAction = async (_previous: RuntimeActionState, for
     const userId = getWebUserId();
     const learningTarget = taskId ? await sql<{ target_id: string }[]>`
       select id target_id from public.task_learning_targets
-      where user_id=${userId} and task_id=${taskId} and execution_status='PENDING' limit 1` : [];
+      where user_id=${userId} and task_id=${taskId} and target_role='EXECUTION_TARGET'
+        and execution_status='PENDING' limit 1` : [];
     const result = occurrenceId ? { kind: "routine" as const, ...(await completeManualRoutine(sql, userId, occurrenceId)) }
       : learningTarget[0]
         ? { kind: "task" as const, duplicate: false, officialSubmission: { state: "not_linked" as const, sources: [], statuses: [] },

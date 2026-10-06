@@ -1,3 +1,4 @@
+import type { CourseRecipeProjectionResult } from "@amber/core";
 import type {
   LearningWorkspaceAction,
   LearningWorkspaceAssessment,
@@ -123,28 +124,47 @@ export function buildUniversityCourseReality(input: {
   readonly actions: readonly LearningWorkspaceAction[];
   readonly hiddenLegacyContextIds: readonly string[];
   readonly positionConfirmation: UniversityPositionConfirmation | null;
+  readonly recipeProjection?: CourseRecipeProjectionResult | null;
 }): UniversityCourseReality {
   const singleMaterial = input.materials.length === 1 ? input.materials[0]! : null;
   const scopedUnits = singleMaterial ? input.units.filter((unit) => unit.materialId === singleMaterial.id) : [];
-  const completedUnits = singleMaterial && scopedUnits.length === input.units.length
-    ? singleMaterial.completedUnits : input.units.filter((unit) => unit.exposureState === "COMPLETE").length;
-  const totalUnits = singleMaterial && scopedUnits.length === input.units.length
-    && singleMaterial.totalScopedUnits !== null && singleMaterial.totalScopedUnits > 0
-    && completedUnits <= singleMaterial.totalScopedUnits
-    ? singleMaterial.totalScopedUnits : null;
   const orderedUnits = singleMaterial && scopedUnits.length === input.units.length
     ? [...scopedUnits].filter((unit) => unit.sequenceNo !== null)
       .sort((left, right) => left.sequenceNo! - right.sequenceNo!) : [];
-  const scopeReady = Boolean(singleMaterial && orderedUnits.length > 0 && orderedUnits.length === input.units.length
+  const legacyScopeReady = Boolean(singleMaterial && orderedUnits.length > 0 && orderedUnits.length === input.units.length
     && new Set(orderedUnits.map((unit) => unit.sequenceNo)).size === orderedUnits.length);
+  const recipeScopes = input.recipeProjection?.status === "PROJECTED" ? input.recipeProjection.scopes : null;
+  const scopeReady = recipeScopes !== null
+    ? recipeScopes.length > 0 && recipeScopes.every((scope) => scope.baseState !== "UNKNOWN")
+    : legacyScopeReady;
+  const recipeBaseCells = recipeScopes?.flatMap((scope) => scope.actions
+    .filter((action) => action.phase === "BASE" && action.requiredForBaseCompletion)) ?? null;
   const exposedUnits = input.units.filter((unit) => unit.exposureState !== "NOT_STARTED");
-  const selfStudyState = input.units.length > 0 && input.units.every((unit) => unit.exposureState === "COMPLETE") ? "COMPLETE" as const
-    : exposedUnits.length > 0 ? "IN_PROGRESS" as const : "NOT_STARTED" as const;
+  const completedUnits = recipeBaseCells
+    ? recipeBaseCells.filter((cell) => cell.exposure === "COMPLETE").length
+    : singleMaterial && scopedUnits.length === input.units.length
+      ? singleMaterial.completedUnits : input.units.filter((unit) => unit.exposureState === "COMPLETE").length;
+  const totalUnits = recipeBaseCells
+    ? recipeBaseCells.length
+    : singleMaterial && scopedUnits.length === input.units.length
+      && singleMaterial.totalScopedUnits !== null && singleMaterial.totalScopedUnits > 0
+      && completedUnits <= singleMaterial.totalScopedUnits
+      ? singleMaterial.totalScopedUnits : null;
+  const selfStudyState = recipeScopes
+    ? recipeScopes.every((scope) => scope.baseState === "COMPLETE") ? "COMPLETE" as const
+      : recipeScopes.some((scope) => scope.baseState === "IN_PROGRESS" || scope.baseState === "COMPLETE") ? "IN_PROGRESS" as const
+        : "NOT_STARTED" as const
+    : input.units.length > 0 && input.units.every((unit) => unit.exposureState === "COMPLETE") ? "COMPLETE" as const
+      : exposedUnits.length > 0 ? "IN_PROGRESS" as const : "NOT_STARTED" as const;
   const furthest = [...exposedUnits].filter((unit) => unit.sequenceNo !== null)
     .sort((left, right) => right.sequenceNo! - left.sequenceNo!)[0] ?? null;
+  const furthestRecipeScope = recipeScopes ? [...recipeScopes]
+    .filter((scope) => scope.baseState === "IN_PROGRESS" || scope.baseState === "COMPLETE")
+    .sort((left, right) => right.sequence - left.sequence)[0] ?? null : null;
   const matchingConfirmation = input.positionConfirmation?.materialId === singleMaterial?.id ? input.positionConfirmation : null;
   const confirmedStart = matchingConfirmation?.throughSequence === 0;
-  const initialized = exposedUnits.length > 0 || matchingConfirmation !== null;
+  const initialized = recipeScopes ? recipeBaseCells!.some((cell) => cell.exposure !== "NOT_STARTED")
+    : exposedUnits.length > 0 || matchingConfirmation !== null;
   const count = <T extends string>(key: (unit: UniversityStudyUnit) => T, value: T): number =>
     input.units.filter((unit) => key(unit) === value).length;
   const next = input.actions.find((action) => action.kind === "task" && action.taskId !== null) ?? null;
@@ -161,10 +181,10 @@ export function buildUniversityCourseReality(input: {
     selfStudy: { state: selfStudyState, initialized,
       scopeStatus: scopeReady ? "READY" : "NOT_READY", completedUnits, totalUnits,
       progressPercent: !initialized || totalUnits === null ? null : Math.min(100, completedUnits / totalUnits * 100),
-      currentPositionSequence: confirmedStart ? 0 : furthest?.sequenceNo ?? null,
-      currentPositionLabel: confirmedStart ? "시작 전" : furthest?.title ?? null,
-      positionOptions: scopeReady ? orderedUnits.map((unit) => ({ sequenceNo: unit.sequenceNo!, label: unit.title })) : [],
-      materialId: scopeReady ? singleMaterial!.id : null },
+      currentPositionSequence: recipeScopes ? furthestRecipeScope?.sequence ?? null : confirmedStart ? 0 : furthest?.sequenceNo ?? null,
+      currentPositionLabel: recipeScopes ? furthestRecipeScope?.scopeLabel ?? null : confirmedStart ? "시작 전" : furthest?.title ?? null,
+      positionOptions: recipeScopes ? [] : scopeReady ? orderedUnits.map((unit) => ({ sequenceNo: unit.sequenceNo!, label: unit.title })) : [],
+      materialId: recipeScopes ? null : scopeReady ? singleMaterial!.id : null },
     understanding: {
       unknown: count((unit) => unit.understandingState, "UNKNOWN"), weak: count((unit) => unit.understandingState, "WEAK"),
       ok: count((unit) => unit.understandingState, "OK"), strong: count((unit) => unit.understandingState, "STRONG")
@@ -177,7 +197,8 @@ export function buildUniversityCourseReality(input: {
     gap: { status: "unknown", unitsBehind: null },
     nextAssessment: input.nextAssessment,
     nextLearningTask: next?.taskId ? { taskId: next.taskId, title: next.title, estimatedMinutes: next.estimatedMinutes } : null,
-    diagnostics: { unlinked: input.snowboardCourseId === null, hiddenLegacyContextIds: input.hiddenLegacyContextIds }
+    diagnostics: { unlinked: input.snowboardCourseId === null, hiddenLegacyContextIds: input.hiddenLegacyContextIds },
+    scopeActionProgress: input.recipeProjection ?? null
   };
 }
 

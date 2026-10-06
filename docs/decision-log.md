@@ -77,3 +77,15 @@
 12. GitHub/Google Analytics reporting, advanced autonomous Agent Platform, Wake/Day Close/Morning ritual 개선, 새 multi-agent architecture, Notion Task sync, broad personalization은 P0 non-goals다.
 
 수치 priority 가중치, 정량 warning threshold, 특성별 정량 보호량은 미확정이며 임의로 동결하지 않는다. 물리 schema 매핑은 후속 구현 검토 사항이다.
+
+## Learning P0 Wave 1 — Course Recipe Data Contract
+
+**확정일:** 2026-10-06
+
+1. University Recipe는 새 table 없이 `work_contexts.strategy_config.courseRecipe`에 versioned config로 저장한다.
+2. University progress는 `LearningMaterial(action) × LearningUnit(scope)` projection이며 별도 week-progress table을 만들지 않는다.
+3. `canonical_topic_key`가 scope identity를 소유하고 `sequence_no`는 ordering evidence로만 사용한다.
+4. 자동 University Learning Task는 required BASE cell을 scope-first/action-order로 선택하며 Course당 최대 하나만 유지한다.
+5. `EXECUTION_TARGET`만 Learning evidence를 변경한다. 관련 범위와 권장 readiness는 hard dependency나 completion target이 아니다.
+6. Assessment scope validation이 실패하면 추측하지 않고 unknown으로 처리한다.
+7. Snowboard aggregate progress와 Certification의 기존 Stage/Material/Allocation/Recovery/Forecast 동작은 이 Wave에서 변경하지 않는다.

@@ -136,4 +136,15 @@ describe("reconcileLearningTasksForToday", () => {
     `;
     expect(certificationCount[0]?.count).toBe(1);
   });
+
+  it("defaults legacy target inserts to EXECUTION_TARGET", async () => {
+    const legacyTaskId = randomUUID();
+    await sql`insert into public.tasks(id,user_id,work_context_id,title,execution_mode,importance,status)
+      values(${legacyTaskId},${userId},${certificationId},'Legacy Learning Task','learning_required',3,'PLANNED')`;
+    const rows = await sql<{ target_role: string }[]>`
+      insert into public.task_learning_targets(user_id,task_id,material_id,assigned_units)
+      values(${userId},${legacyTaskId},${certificationMaterialId},1)
+      returning target_role`;
+    expect(rows[0]?.target_role).toBe("EXECUTION_TARGET");
+  });
 });
