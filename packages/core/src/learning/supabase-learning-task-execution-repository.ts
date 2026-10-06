@@ -13,6 +13,7 @@ interface TargetRow {
   task_id: string;
   target_role: LearningTargetRole;
   material_id: string;
+  learning_unit_id: string | null;
   start_sequence: number | null;
   end_sequence: number | null;
   assigned_units: number | null;
@@ -73,6 +74,11 @@ export class SupabaseLearningTaskExecutionRepository {
     return this.sql.begin(async (tx) => {
       if (!Number.isInteger(proposal.assignedUnits) || proposal.assignedUnits <= 0) throw new Error("Assigned units must be a positive integer");
       if ((proposal.startSequence === null) !== (proposal.endSequence === null)) throw new Error("Bounded targets require both start and end sequences");
+      const exactLearningUnitId = proposal.learningUnitIds.length === 1 ? proposal.learningUnitIds[0]! : null;
+      if (exactLearningUnitId && (proposal.assignedUnits !== 1
+        || (proposal.startSequence !== null && proposal.startSequence !== proposal.endSequence))) {
+        throw new Error("Exact Learning Unit proposals must assign exactly one unit");
+      }
       await tx`select pg_advisory_xact_lock(hashtext(${`${userId}:learning-task:${proposal.materialId}`}))`;
       const existing = await tx<MaterializedRow[]>`
         select x.task_id,x.id target_id,t.status from public.task_learning_targets x
@@ -80,7 +86,39 @@ export class SupabaseLearningTaskExecutionRepository {
         where x.user_id=${userId} and x.target_role='EXECUTION_TARGET'
           and x.materialization_key=${proposal.materializationKey} limit 1`;
       if (existing[0]) return { kind: "existing", taskId: existing[0].task_id, targetId: existing[0].target_id };
-      const overlap = proposal.startSequence === null
+      if (exactLearningUnitId) {
+        const material = await tx<{ id: string }[]>`
+          select id from public.learning_materials where id=${proposal.materialId} and user_id=${userId}
+            and work_context_id=${proposal.workContextId} and (stage_id is null or stage_id=${proposal.stageId})`;
+        if (!material[0]) throw new Error("Learning material does not belong to the proposed Context/Stage");
+        const exactUnits = await tx<{ id: string }[]>`
+          select id from public.learning_units
+          where id=${exactLearningUnitId} and user_id=${userId} and work_context_id=${proposal.workContextId}
+            and material_id=${proposal.materialId} and (stage_id is null or stage_id=${proposal.stageId})
+            and exposure_state<>'COMPLETE' for update`;
+        if (!exactUnits[0]) throw new Error("Explicit Learning Unit is invalid, stale, or already complete");
+      }
+      const overlap = exactLearningUnitId
+        ? proposal.startSequence === null
+          ? await tx<MaterializedRow[]>`
+            select x.task_id,x.id target_id,t.status from public.task_learning_targets x
+            join public.tasks t on t.id=x.task_id and t.user_id=x.user_id
+            where x.user_id=${userId} and x.target_role='EXECUTION_TARGET'
+              and (x.learning_unit_id=${exactLearningUnitId}
+                or (x.learning_unit_id is null and x.material_id=${proposal.materialId}))
+              and x.execution_status='PENDING'
+              and t.status not in ('DONE','CLOSED_PARTIAL','SKIPPED','CANCELLED') limit 1 for update of x,t`
+          : await tx<MaterializedRow[]>`
+            select x.task_id,x.id target_id,t.status from public.task_learning_targets x
+            join public.tasks t on t.id=x.task_id and t.user_id=x.user_id
+            where x.user_id=${userId} and x.target_role='EXECUTION_TARGET'
+              and (x.learning_unit_id=${exactLearningUnitId}
+                or (x.learning_unit_id is null and x.material_id=${proposal.materialId}
+                  and (x.start_sequence is null or x.end_sequence is null
+                    or (x.start_sequence<=${proposal.endSequence} and x.end_sequence>=${proposal.startSequence}))))
+              and x.execution_status='PENDING'
+              and t.status not in ('DONE','CLOSED_PARTIAL','SKIPPED','CANCELLED') limit 1 for update of x,t`
+        : proposal.startSequence === null
         ? await tx<MaterializedRow[]>`
           select x.task_id,x.id target_id,t.status from public.task_learning_targets x
           join public.tasks t on t.id=x.task_id and t.user_id=x.user_id
@@ -96,11 +134,13 @@ export class SupabaseLearningTaskExecutionRepository {
               or (x.start_sequence<=${proposal.endSequence} and x.end_sequence>=${proposal.startSequence}))
             and t.status not in ('DONE','CLOSED_PARTIAL','SKIPPED','CANCELLED') limit 1 for update of x,t`;
       if (overlap[0]) return { kind: "overlap", taskId: overlap[0].task_id, targetId: overlap[0].target_id };
-      const material = await tx<{ id: string }[]>`
-        select id from public.learning_materials where id=${proposal.materialId} and user_id=${userId}
-          and work_context_id=${proposal.workContextId} and (stage_id is null or stage_id=${proposal.stageId})`;
-      if (!material[0]) throw new Error("Learning material does not belong to the proposed Context/Stage");
-      if (proposal.startSequence !== null) {
+      if (!exactLearningUnitId) {
+        const material = await tx<{ id: string }[]>`
+          select id from public.learning_materials where id=${proposal.materialId} and user_id=${userId}
+            and work_context_id=${proposal.workContextId} and (stage_id is null or stage_id=${proposal.stageId})`;
+        if (!material[0]) throw new Error("Learning material does not belong to the proposed Context/Stage");
+      }
+      if (!exactLearningUnitId && proposal.startSequence !== null) {
         const bounded = await tx<{ count: number }[]>`
           select count(*)::integer count from public.learning_units
           where user_id=${userId} and work_context_id=${proposal.workContextId}
@@ -115,9 +155,9 @@ export class SupabaseLearningTaskExecutionRepository {
         returning id`;
       const taskId = tasks[0]!.id;
       const targets = await tx<{ id: string }[]>`
-        insert into public.task_learning_targets(user_id,task_id,target_role,material_id,start_sequence,end_sequence,allocation_policy_id,
+        insert into public.task_learning_targets(user_id,task_id,target_role,material_id,learning_unit_id,start_sequence,end_sequence,allocation_policy_id,
           assigned_units,completed_units,execution_status,recovery_mode,materialization_key)
-        values(${userId},${taskId},'EXECUTION_TARGET',${proposal.materialId},${proposal.startSequence},${proposal.endSequence},${proposal.allocationPolicyId},
+        values(${userId},${taskId},'EXECUTION_TARGET',${proposal.materialId},${exactLearningUnitId},${proposal.startSequence},${proposal.endSequence},${proposal.allocationPolicyId},
           ${proposal.assignedUnits},0,'PENDING',${proposal.recoveryMode},${proposal.materializationKey}) returning id`;
       await this.event(tx, userId, taskId, "task_created", occurredAt, correlationId,
         `${proposal.materializationKey}:task-created`, { previous_status: null, next_status: "PLANNED",
@@ -125,7 +165,7 @@ export class SupabaseLearningTaskExecutionRepository {
       await this.event(tx, userId, taskId, "learning_task_generated", occurredAt, correlationId,
         `${proposal.materializationKey}:generated`, { source: proposal.source, material_id: proposal.materialId,
           allocation_policy_id: proposal.allocationPolicyId, allocation_policy_name: proposal.allocationPolicyName,
-          assigned_units: proposal.assignedUnits,
+          assigned_units: proposal.assignedUnits, learning_unit_id: exactLearningUnitId,
           start_sequence: proposal.startSequence, end_sequence: proposal.endSequence, reasons: proposal.reasons });
       return { kind: "created", taskId, targetId: targets[0]!.id };
     });
@@ -159,17 +199,37 @@ export class SupabaseLearningTaskExecutionRepository {
       if (terminalStatuses.includes(target.task_status as typeof terminalStatuses[number])) throw new Error("Task is terminal while Learning target is pending");
       const resolved = this.resolveExecution(target, input.command);
       if (!canTransitionTask(target.task_status, resolved.taskStatus)) throw new Error(`Invalid Learning Task transition: ${target.task_status}->${resolved.taskStatus}`);
-      const units = resolved.completedThroughSequence === null ? [] : await tx<UnitRow[]>`
-        select id,sequence_no,exposure_state,understanding_state,validation_state from public.learning_units
-        where user_id=${input.userId} and material_id=${target.material_id}
-          and sequence_no between ${target.start_sequence} and ${resolved.completedThroughSequence}
-        order by sequence_no for update`;
-      if (resolved.completedThroughSequence !== null && units.length !== resolved.completedUnits) {
+      if (target.learning_unit_id && resolved.completedUnits !== 0 && resolved.completedUnits !== 1) {
+        throw new Error("Exact Learning Unit execution must complete exactly one unit");
+      }
+      const units = resolved.completedUnits === 0
+        ? []
+        : target.learning_unit_id
+          ? await tx<UnitRow[]>`
+            select id,sequence_no,exposure_state,understanding_state,validation_state from public.learning_units
+            where id=${target.learning_unit_id} and user_id=${input.userId} and material_id=${target.material_id}
+            for update`
+          : resolved.completedThroughSequence === null
+            ? []
+            : await tx<UnitRow[]>`
+              select id,sequence_no,exposure_state,understanding_state,validation_state from public.learning_units
+              where user_id=${input.userId} and material_id=${target.material_id}
+                and sequence_no between ${target.start_sequence} and ${resolved.completedThroughSequence}
+              order by sequence_no for update`;
+      if (target.learning_unit_id && resolved.completedUnits !== 0 && units.length !== 1) {
+        throw new Error("Exact Learning Unit evidence not found");
+      }
+      if (!target.learning_unit_id && resolved.completedThroughSequence !== null && units.length !== resolved.completedUnits) {
         throw new Error("Bounded Learning Unit evidence does not match completed scope");
       }
-      if (units.length) await tx`update public.learning_units set exposure_state='COMPLETE',updated_at=${occurredAt}
-        where user_id=${input.userId} and material_id=${target.material_id}
-          and sequence_no between ${target.start_sequence} and ${resolved.completedThroughSequence}`;
+      if (units.length && target.learning_unit_id) {
+        await tx`update public.learning_units set exposure_state='COMPLETE',updated_at=${occurredAt}
+          where id=${target.learning_unit_id} and user_id=${input.userId} and material_id=${target.material_id}`;
+      } else if (units.length) {
+        await tx`update public.learning_units set exposure_state='COMPLETE',updated_at=${occurredAt}
+          where user_id=${input.userId} and material_id=${target.material_id}
+            and sequence_no between ${target.start_sequence} and ${resolved.completedThroughSequence}`;
+      }
       await tx`update public.task_learning_targets set completed_units=${resolved.completedUnits},
         completed_through_sequence=${resolved.completedThroughSequence},execution_status=${resolved.executionStatus},resolved_at=${occurredAt}
         where id=${target.id} and user_id=${input.userId}`;
@@ -235,10 +295,20 @@ export class SupabaseLearningTaskExecutionRepository {
     suppliedUnits: readonly UnitRow[] | null,
     recovery: LearningRecoveryProposal | null
   ): Promise<LearningTaskExecutionResult> {
-    const units = suppliedUnits ?? (target.completed_through_sequence === null ? [] : await tx<UnitRow[]>`
-      select id,sequence_no,exposure_state,understanding_state,validation_state from public.learning_units
-      where user_id=(select user_id from public.task_learning_targets where id=${target.id}) and material_id=${target.material_id}
-        and sequence_no between ${target.start_sequence} and ${target.completed_through_sequence} order by sequence_no`);
+    const units = suppliedUnits ?? (target.completed_units === 0
+      ? []
+      : target.learning_unit_id
+        ? await tx<UnitRow[]>`
+          select id,sequence_no,exposure_state,understanding_state,validation_state from public.learning_units
+          where id=${target.learning_unit_id}
+            and user_id=(select user_id from public.task_learning_targets where id=${target.id})
+            and material_id=${target.material_id}`
+        : target.completed_through_sequence === null
+          ? []
+          : await tx<UnitRow[]>`
+            select id,sequence_no,exposure_state,understanding_state,validation_state from public.learning_units
+            where user_id=(select user_id from public.task_learning_targets where id=${target.id}) and material_id=${target.material_id}
+              and sequence_no between ${target.start_sequence} and ${target.completed_through_sequence} order by sequence_no`);
     const next = await tx<{ sequence_no: number }[]>`
       select sequence_no from public.learning_units
       where user_id=(select user_id from public.task_learning_targets where id=${target.id}) and material_id=${target.material_id}
