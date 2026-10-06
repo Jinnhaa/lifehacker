@@ -18,6 +18,9 @@ const planItemId = randomUUID();
 const unrelatedPlanItemId = randomUUID();
 const assessmentId = randomUUID();
 const referenceId = randomUUID();
+const learningStageId = randomUUID();
+const learningMaterialId = randomUUID();
+const learningUnitId = randomUUID();
 const localDate = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit"
 }).format(new Date());
@@ -30,6 +33,13 @@ beforeAll(async () => {
   await sql`insert into public.profiles(id,timezone) values(${userId},'Asia/Seoul'),(${noPlanUserId},'Asia/Seoul')`;
   await sql`insert into public.work_contexts(id,user_id,kind,title,status,agent_mode)
     values(${courseId},${userId},'course','Database Systems','active','not_applicable')`;
+  await sql`insert into public.learning_stages(id,user_id,work_context_id,title,position,status)
+    values(${learningStageId},${userId},${courseId},'Base',1,'ACTIVE')`;
+  await sql`insert into public.learning_materials(id,user_id,work_context_id,stage_id,title,material_type,unit_type,total_units,status)
+    values(${learningMaterialId},${userId},${courseId},${learningStageId},'SQL problems','practice','WEEK',5,'ACTIVE')`;
+  await sql`insert into public.learning_units(id,user_id,work_context_id,title,position,stage_id,material_id,sequence_no,unit_type,
+    canonical_topic_key,exposure_state)
+    values(${learningUnitId},${userId},${courseId},'5주차',1,${learningStageId},${learningMaterialId},5,'WEEK','week:05','NOT_STARTED')`;
   await sql`insert into public.tasks(id,user_id,work_context_id,title,execution_mode,official_deadline,estimated_minutes,importance,status)
     values
       (${taskId},${userId},${courseId},'DB Assignment','standard',now()+interval '8 hours',30,5,'PLANNED'),
@@ -37,6 +47,9 @@ beforeAll(async () => {
       (${noPlanTaskId},${noPlanUserId},null,'No Plan Task','standard',null,15,2,'PLANNED')`;
   await sql`insert into public.task_steps(id,user_id,task_id,position,title,owner,status)
     values(${stepId},${userId},${taskId},1,'Submit assignment','user','pending')`;
+  await sql`insert into public.task_learning_targets(user_id,task_id,target_role,material_id,learning_unit_id,start_sequence,end_sequence,
+    assigned_units,completed_units,execution_status)
+    values(${userId},${taskId},'RELATED_SCOPE',${learningMaterialId},${learningUnitId},5,5,1,0,'PENDING')`;
   await sql`insert into public.daily_plans(id,user_id,plan_date,timezone,revision_no,status,input_snapshot,created_by,approved_at)
     values(${planId},${userId},${localDate},'Asia/Seoul',1,'pending_approval','{}','test',null)`;
   await sql`insert into public.plan_items(id,user_id,daily_plan_id,position,item_type,task_id,planned_start_at,planned_end_at,planned_minutes,status)
@@ -80,6 +93,9 @@ describe("manual completion Current Status evidence", () => {
     const evidence = await sql<{ payload: { authority: string; effect: string; official_submission: { state: string } } }[]>`
       select payload from public.domain_events
       where user_id=${userId} and aggregate_id=${taskId} and event_type='manual_completion_recorded'`;
+    const [learningUnit] = await sql<{ exposure_state: string; understanding_state: string; validation_state: string }[]>`
+      select exposure_state,understanding_state,validation_state from public.learning_units
+      where id=${learningUnitId} and user_id=${userId}`;
 
     expect(first).toMatchObject({
       kind: "task", duplicate: false,
@@ -99,6 +115,9 @@ describe("manual completion Current Status evidence", () => {
       authority: "user",
       effect: "current_status_completed",
       official_submission: { state: "pending_confirmation" }
+    });
+    expect(learningUnit).toEqual({
+      exposure_state: "NOT_STARTED", understanding_state: "UNKNOWN", validation_state: "NOT_TESTED"
     });
   });
 

@@ -1,18 +1,25 @@
 import "server-only";
 
 import {
+  buildCourseRecipeLearningTaskProposal,
   deriveMaterialProgress,
   deriveLearningRecovery,
+  parseAssessmentScopeConfig,
+  projectCourseRecipeScopes,
   projectMaterialCompletion,
   proposeLearningTasks,
+  readCourseRecipeFromStrategyConfig,
+  selectNextCourseRecipeCell,
   resolveLearningAllocation
 } from "@amber/core";
 import type {
+  CourseRecipeProjectionResult,
   LearningAllocationItem,
   LearningAllocationPolicy,
   LearningMaterial,
   LearningStage,
-  LearningTaskProposal
+  LearningTaskProposal,
+  LearningTaskProposalResult
 } from "@amber/core";
 import type { UserId } from "@amber/shared";
 import type { JSONValue, Sql } from "postgres";
@@ -25,21 +32,34 @@ import type {
   LearningWorkspacePolicy,
   LearningWorkspaceStage
 } from "./learning-workspace-types";
+import {
+  buildUniversityCourseReality,
+  selectUniversityCourses,
+  summarizeUniversityCourses,
+  type UniversityCourseLink,
+  type UniversityPositionConfirmation,
+  type UniversitySchoolProgress
+} from "./university-course-reality";
 import { getWebSql, getWebUserId } from "./web-runtime";
 
 type UnitRow = {
-  id: string; workContextId: string; materialId: string | null; sequenceNo: number | null;
+  id: string; title: string; workContextId: string; materialId: string | null; sequenceNo: number | null; unitType: string | null;
+  canonicalTopicKey: string | null;
   exposureState: "NOT_STARTED" | "PARTIAL" | "COMPLETE";
   understandingState: "UNKNOWN" | "WEAK" | "OK" | "STRONG";
   validationState: "NOT_TESTED" | "FAILED" | "PASSED";
 };
-type AssessmentRow = { id: string; workContextId: string; title: string; dueDate: string | Date | null; dueAt: string | Date | null };
+type AssessmentRow = { id: string; workContextId: string; title: string; dueDate: string | Date | null; dueAt: string | Date | null;
+  scopeConfig: unknown };
 type ActiveTaskRow = { taskId: string; targetId: string; workContextId: string; materialId: string; title: string;
+  status: string;
   assignedUnits: number; startSequence: number | null; endSequence: number | null; allocationPolicyId: string | null; policyName: string | null;
-  estimatedMinutes: number | null };
+  estimatedMinutes: number | null; materializationKey: string | null };
 type ActivityRow = { id: string; workContextId: string; kind: "focus" | "task" | "event"; title: string; minutes: number | null; occurredAt: string | Date };
 type ResolvedTargetRow = { materialId: string; materializationKey: string | null; executionStatus: "COMPLETED" | "PARTIAL" | "SKIPPED" | "CANCELLED";
   recoveryMode: "REDISTRIBUTE" | "RESET" | "CARRY_FORWARD" | "MANUAL" | null; assignedUnits: number; resolvedAt: string | Date; planDate: string };
+type PositionConfirmationRow = UniversityPositionConfirmation & { workContextId: string };
+type CourseRecipeContextRow = { workContextId: string; strategyConfig: unknown };
 
 const seoulDate = (): string => new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Seoul", year: "numeric", month: "2-digit", day: "2-digit"
@@ -92,6 +112,7 @@ function activityView(row: ActivityRow) {
   const occurredAt = isoTime(row.occurredAt)!;
   if (row.kind === "focus") return { id: row.id, label: "집중 세션", detail: `${row.minutes ?? 0}분`, occurredAt };
   if (row.kind === "task") return { id: row.id, label: "학습 완료", detail: row.title, occurredAt };
+  if (row.title === "learning_position_confirmed") return { id: row.id, label: "현재 공부 위치 확인", detail: "직접 입력", occurredAt };
   return { id: row.id, label: "학습 기록", detail: row.title.replaceAll("_", " "), occurredAt };
 }
 
@@ -107,7 +128,8 @@ export async function loadLearningWorkspace(dependencies?: LearningWorkspaceDepe
     const sql = dependencies?.sql ?? getWebSql();
     const userId = dependencies?.userId ?? getWebUserId();
     const base = await readLearningContexts(sql, userId);
-    const [stages, materials, units, policies, items, assessments, tasks, resolvedTargets, activities] = await Promise.all([
+    const [stages, materials, units, policies, items, assessments, tasks, resolvedTargets, activities, courseLinks, schoolProgress,
+      positionConfirmations, courseRecipeContexts] = await Promise.all([
       sql<LearningStage[]>`select id,user_id "userId",work_context_id "workContextId",title,position,status,
         completion_mode "completionMode",transition_mode "transitionMode",target_start_date "targetStartDate",
         target_end_date "targetEndDate",config,created_at "createdAt",updated_at "updatedAt"
@@ -116,7 +138,8 @@ export async function loadLearningWorkspace(dependencies?: LearningWorkspaceDepe
         material_type "materialType",role,tracking_mode "trackingMode",unit_type "unitType",total_units::float8 "totalUnits",
         start_unit::float8 "startUnit",status,source_reference "sourceReference",config,created_at "createdAt",updated_at "updatedAt"
         from public.learning_materials where user_id=${userId} and status<>'ARCHIVED' order by work_context_id,created_at`,
-      sql<UnitRow[]>`select id,work_context_id "workContextId",material_id "materialId",sequence_no "sequenceNo",
+      sql<UnitRow[]>`select id,title,work_context_id "workContextId",material_id "materialId",sequence_no "sequenceNo",unit_type "unitType",
+        canonical_topic_key "canonicalTopicKey",
         exposure_state "exposureState",understanding_state "understandingState",validation_state "validationState"
         from public.learning_units where user_id=${userId} order by work_context_id,position`,
       sql<LearningAllocationPolicy[]>`select id,user_id "userId",work_context_id "workContextId",stage_id "stageId",name,
@@ -126,20 +149,24 @@ export async function loadLearningWorkspace(dependencies?: LearningWorkspaceDepe
         target_units::float8 "targetUnits",minimum_units::float8 "minimumUnits",estimated_minutes_min "estimatedMinutesMin",
         estimated_minutes_max "estimatedMinutesMax",position,active,created_at "createdAt",updated_at "updatedAt"
         from public.learning_allocation_items where user_id=${userId} and active=true`,
-      sql<AssessmentRow[]>`select id,course_context_id "workContextId",title,due_date "dueDate",due_at "dueAt"
+      sql<AssessmentRow[]>`select id,course_context_id "workContextId",title,due_date "dueDate",due_at "dueAt",scope_config "scopeConfig"
         from public.course_assessments where user_id=${userId} and (due_date>=${today} or due_at>=now()) order by coalesce(due_at,due_date::timestamptz)`,
-      sql<ActiveTaskRow[]>`select t.id "taskId",x.id "targetId",t.work_context_id "workContextId",x.material_id "materialId",t.title,
+      sql<ActiveTaskRow[]>`select t.id "taskId",x.id "targetId",t.work_context_id "workContextId",x.material_id "materialId",t.title,t.status,
         x.assigned_units "assignedUnits",x.start_sequence "startSequence",x.end_sequence "endSequence",
-        x.allocation_policy_id "allocationPolicyId",p.name "policyName",t.estimated_minutes "estimatedMinutes"
+        x.allocation_policy_id "allocationPolicyId",p.name "policyName",t.estimated_minutes "estimatedMinutes",
+        x.materialization_key "materializationKey"
         from public.task_learning_targets x join public.tasks t on t.id=x.task_id and t.user_id=x.user_id
         left join public.learning_allocation_policies p on p.id=x.allocation_policy_id and p.user_id=x.user_id
-        where x.user_id=${userId} and x.execution_status='PENDING' and x.material_id is not null and x.assigned_units is not null
-          and t.status in ('INBOX','PLANNED','IN_PROGRESS','BLOCKED','WAITING_FOR_USER')`,
+        where x.user_id=${userId} and x.target_role='EXECUTION_TARGET' and x.execution_status='PENDING'
+          and x.material_id is not null and x.assigned_units is not null
+          and t.status in ('INBOX','PLANNED','IN_PROGRESS','BLOCKED','WAITING_FOR_USER')
+        order by t.created_at,t.id`,
       sql<ResolvedTargetRow[]>`select x.material_id "materialId",x.materialization_key "materializationKey",
         x.execution_status "executionStatus",x.recovery_mode "recoveryMode",x.assigned_units "assignedUnits",
         x.resolved_at "resolvedAt",t.planned_date::text "planDate"
         from public.task_learning_targets x join public.tasks t on t.id=x.task_id and t.user_id=x.user_id
-        where x.user_id=${userId} and x.execution_status<>'PENDING' and x.material_id is not null and x.assigned_units is not null
+        where x.user_id=${userId} and x.target_role='EXECUTION_TARGET' and x.execution_status<>'PENDING'
+          and x.material_id is not null and x.assigned_units is not null
         order by x.resolved_at desc`,
       sql<ActivityRow[]>`select * from (
         select f.id,t.work_context_id "workContextId",'focus'::text kind,t.title,f.actual_minutes minutes,f.ended_at "occurredAt"
@@ -150,9 +177,30 @@ export async function loadLearningWorkspace(dependencies?: LearningWorkspaceDepe
         union all select e.id,w.id,'event',e.event_type,null,e.occurred_at from public.domain_events e
           join public.tasks t on t.id=e.aggregate_id and e.aggregate_type='task' join public.work_contexts w on w.id=t.work_context_id
           where e.user_id=${userId} and e.event_type like 'learning_%'
-      ) activity order by "occurredAt" desc limit 100`
+        union all select e.id,w.id,'event',e.event_type,null,e.occurred_at from public.domain_events e
+          join public.work_contexts w on w.id=e.aggregate_id and e.aggregate_type='work_context' and w.user_id=e.user_id
+          where e.user_id=${userId} and e.event_type='learning_position_confirmed'
+      ) activity order by "occurredAt" desc limit 100`,
+      sql<UniversityCourseLink[]>`select external_id "courseId",internal_entity_id "workContextId"
+        from public.external_references where user_id=${userId} and source='snowboard' and external_type='course'
+          and internal_entity_type='work_context' and sync_status='active' order by external_id`,
+      sql<UniversitySchoolProgress[]>`select p.course_id "courseId",p.work_context_id "workContextId",
+        p.completed_lecture_count "completedLectureCount",p.remaining_lecture_count "remainingLectureCount",
+        p.remaining_lecture_minutes "remainingLectureMinutes",p.observed_at "observedAt"
+        from public.snowboard_course_progress p join public.external_references r
+          on r.user_id=p.user_id and r.source='snowboard' and r.external_type='course'
+          and r.external_id=p.course_id and r.internal_entity_type='work_context'
+          and r.internal_entity_id=p.work_context_id and r.sync_status='active'
+        where p.user_id=${userId}`,
+      sql<PositionConfirmationRow[]>`select distinct on (aggregate_id) aggregate_id "workContextId",
+        nullif(payload->>'material_id','') "materialId",coalesce((payload->>'through_sequence')::integer,0) "throughSequence"
+        from public.domain_events where user_id=${userId} and aggregate_type='work_context'
+          and event_type='learning_position_confirmed' order by aggregate_id,occurred_at desc,id desc`,
+      sql<CourseRecipeContextRow[]>`select id "workContextId",strategy_config "strategyConfig"
+        from public.work_contexts where user_id=${userId} and kind='course' and status='active' and archived_at is null`
     ]);
 
+    const selectedCourses = selectUniversityCourses(base.courses, courseLinks);
     const contexts = [...base.courses.map((value) => ({ ...value, kind: "course" as const })),
       ...base.certifications.map((value) => ({ ...value, kind: "certification" as const }))];
     const built: LearningWorkspaceContext[] = contexts.map((context) => {
@@ -167,17 +215,62 @@ export async function loadLearningWorkspace(dependencies?: LearningWorkspaceDepe
         materials: contextMaterials.map((material) => ({ materialId: material.id, key: keyOf(material.config), stageId: material.stageId, status: material.status })),
         policies: contextPolicies, items, capacity: null, todayOverride: null, fallbackItems: []
       });
-      const proposed = activeStage ? proposeLearningTasks({ workContextId: context.id, stageId: activeStage.id, planDate: today,
-        importance: context.strategicImportance ?? 3, materializationKeyPrefix: `learning:${today}:${context.id}`,
-        allocation, materials: contextMaterials.map((material) => ({ materialId: material.id, title: material.title,
-          unitType: material.unitType, sequenceMode: material.totalUnits === null ? "OPEN_ENDED" : "BOUNDED",
-          units: units.filter((unit) => unit.materialId === material.id && unit.sequenceNo !== null).map((unit) => ({
-            learningUnitId: unit.id, sequenceNo: unit.sequenceNo!, exposureState: unit.exposureState })) })) }) : null;
       const activeTasks = tasks.filter((task) => task.workContextId === context.id);
+      const recipeRead = context.kind === "course" ? readCourseRecipeFromStrategyConfig(
+        courseRecipeContexts.find((item) => item.workContextId === context.id)?.strategyConfig
+      ) : { status: "ABSENT" as const, recipe: null };
+      let recipeProjection: CourseRecipeProjectionResult | null = null;
+      let proposed: LearningTaskProposalResult | null = null;
+      if (activeStage && context.kind === "course" && recipeRead.status === "VALID") {
+        recipeProjection = projectCourseRecipeScopes({
+          recipe: recipeRead.recipe,
+          materials: contextMaterials.map((material) => ({ materialId: material.id, stageId: material.stageId, config: material.config })),
+          units: units.filter((unit) => unit.workContextId === context.id).map((unit) => ({
+            learningUnitId: unit.id, materialId: unit.materialId, canonicalTopicKey: unit.canonicalTopicKey,
+            sequenceNo: unit.sequenceNo, exposureState: unit.exposureState,
+            understandingState: unit.understandingState, validationState: unit.validationState
+          }))
+        });
+        const selection = selectNextCourseRecipeCell({
+          recipe: recipeRead.recipe,
+          projection: recipeProjection,
+          activeTasks: activeTasks.map((task) => ({ materializationKey: task.materializationKey }))
+        });
+        if (selection.status === "SELECTED") {
+          const allocationItem = allocation.status === "RESOLVED"
+            ? allocation.items.find((item) => item.materialId === selection.cell.materialId) ?? null : null;
+          const action = recipeRead.recipe.actions.find((item) => item.actionKey === selection.cell.actionKey)!;
+          const proposal = buildCourseRecipeLearningTaskProposal({
+            workContextId: context.id,
+            courseTitle: context.title,
+            stageId: activeStage.id,
+            planDate: today,
+            importance: context.strategicImportance ?? 3,
+            selection,
+            allocationPolicyId: allocationItem ? allocation.selectedPolicyId : null,
+            allocationPolicyName: allocationItem ? allocation.selectedPolicyName : null,
+            estimatedMinutes: allocationItem?.estimatedMinutesMax ?? action.defaultEstimatedMinutes,
+            recoveryMode: allocationItem?.recoveryMode ?? "MANUAL"
+          });
+          proposed = { status: "PROPOSED", proposals: [proposal], reasons: proposal.reasons };
+        } else {
+          proposed = { status: selection.status === "NONE" ? "SKIPPED" : "INSUFFICIENT_DATA", proposals: [],
+            reasons: [{ code: selection.reason, evidence: {} }] };
+        }
+      } else if (context.kind === "course" && recipeRead.status === "INVALID") {
+        proposed = { status: "INSUFFICIENT_DATA", proposals: [], reasons: [{ code: "INVALID_COURSE_RECIPE", evidence: {} }] };
+      } else if (activeStage) {
+        proposed = proposeLearningTasks({ workContextId: context.id, stageId: activeStage.id, planDate: today,
+          importance: context.strategicImportance ?? 3, materializationKeyPrefix: `learning:${today}:${context.id}`,
+          allocation, materials: contextMaterials.map((material) => ({ materialId: material.id, title: material.title,
+            unitType: material.unitType, sequenceMode: material.totalUnits === null ? "OPEN_ENDED" : "BOUNDED",
+            units: units.filter((unit) => unit.materialId === material.id && unit.sequenceNo !== null).map((unit) => ({
+              learningUnitId: unit.id, sequenceNo: unit.sequenceNo!, exposureState: unit.exposureState })) })) });
+      }
       const activeViews: LearningWorkspaceAction[] = activeTasks.map((task) => ({ kind: "task", taskId: task.taskId,
         targetId: task.targetId, materialId: task.materialId, allocationPolicyId: task.allocationPolicyId, title: task.title, assignedUnits: task.assignedUnits,
         startSequence: task.startSequence, endSequence: task.endSequence, policyName: task.policyName, source: "CANONICAL_TASK", reasons: [],
-        estimatedMinutes: task.estimatedMinutes, proposal: null }));
+        estimatedMinutes: task.estimatedMinutes, proposal: null, autoGenerated: task.materializationKey?.startsWith("learning:") ?? false }));
       let recoveryNeedsReview = false;
       const proposalViews: LearningWorkspaceAction[] = (proposed?.proposals ?? []).flatMap((proposal) => {
         if (activeTasks.some((task) => task.materialId === proposal.materialId)) return [];
@@ -192,18 +285,33 @@ export async function loadLearningWorkspace(dependencies?: LearningWorkspaceDepe
         return [{ kind: "proposal" as const, taskId: null, targetId: null,
           materialId: proposal.materialId, allocationPolicyId: proposal.allocationPolicyId, title: proposal.title, assignedUnits: proposal.assignedUnits,
           startSequence: proposal.startSequence, endSequence: proposal.endSequence, policyName: proposal.allocationPolicyName,
-          source: proposal.source, reasons: proposal.reasons, estimatedMinutes: proposal.estimatedMinutes ?? null, proposal }];
+          source: proposal.source, reasons: proposal.reasons, estimatedMinutes: proposal.estimatedMinutes ?? null, proposal,
+          autoGenerated: proposal.materializationKey.startsWith("learning:") }];
       });
       const actionViews: LearningWorkspaceAction[] = [...activeViews, ...proposalViews];
       const contextAssessments = assessments.filter((assessment) => assessment.workContextId === context.id).map((assessment) => ({
-        id: assessment.id, title: assessment.title, dueDate: isoDate(assessment.dueDate), dueAt: isoTime(assessment.dueAt), sortAt: assessmentSort(assessment)
+        id: assessment.id, title: assessment.title, dueDate: isoDate(assessment.dueDate), dueAt: isoTime(assessment.dueAt),
+        sortAt: assessmentSort(assessment), scopeConfig: parseAssessmentScopeConfig(assessment.scopeConfig)
       }));
       if (context.kind === "certification" && context.examDate && context.examDate >= today
         && !contextAssessments.some((assessment) => assessment.dueDate === context.examDate)) {
-        contextAssessments.push({ id: `certification-exam:${context.id}`, title: "시험", dueDate: context.examDate, dueAt: null, sortAt: context.examDate });
+        contextAssessments.push({ id: `certification-exam:${context.id}`, title: "시험", dueDate: context.examDate, dueAt: null,
+          sortAt: context.examDate, scopeConfig: null });
       }
       contextAssessments.sort((left, right) => (left.sortAt ?? "9999").localeCompare(right.sortAt ?? "9999"));
       const nextAssessment = contextAssessments[0] ?? null;
+      const universityReality = context.kind === "course" ? buildUniversityCourseReality({
+        workContextId: context.id, snowboardCourseId: selectedCourses.courseIds.get(context.id) ?? null,
+        title: context.title, term: context.term,
+        schoolProgress: schoolProgress.find((item) => item.workContextId === context.id
+          && item.courseId === selectedCourses.courseIds.get(context.id)) ?? null,
+        materials: materialViews, units: units.filter((unit) => unit.workContextId === context.id),
+        nextAssessment, actions: activeViews.filter((action) => activeTasks.some((task) => task.taskId === action.taskId
+          && ['INBOX','PLANNED','IN_PROGRESS'].includes(task.status))),
+        hiddenLegacyContextIds: selectedCourses.hiddenLegacyIds.get(context.id) ?? [],
+        positionConfirmation: positionConfirmations.find((item) => item.workContextId === context.id) ?? null,
+        recipeProjection
+      }) : null;
       const stageMaterials = materialViews.filter((material) => material.stageId === activeStage?.id);
       const materialForecasts = stageMaterials.map((material) => {
         const allocationItem = actionViews.find((item) => item.materialId === material.id);
@@ -232,7 +340,9 @@ export async function loadLearningWorkspace(dependencies?: LearningWorkspaceDepe
       const stageViews: LearningWorkspaceStage[] = contextStages.map((stage) => ({ id: stage.id, title: stage.title,
         position: stage.position, status: stage.status, completionMode: stage.completionMode }));
       return {
-        id: context.id, kind: context.kind, title: context.title, strategicImportance: context.strategicImportance,
+        id: context.id, kind: context.kind, universityReality,
+        title: context.kind === "course" ? selectedCourses.displayTitles.get(context.id) ?? context.title : context.title,
+        strategicImportance: context.strategicImportance,
         commitmentLevel: context.commitmentLevel, term: "term" in context ? context.term : null,
         target: context.kind === "course" ? context.targetGrade : context.targetOutcome,
         instructor: context.kind === "course" ? context.instructor : null,
@@ -252,16 +362,24 @@ export async function loadLearningWorkspace(dependencies?: LearningWorkspaceDepe
     const allUpcoming = built.flatMap((context) => context.assessments.map((assessment) => ({ context, assessment })))
       .filter((item) => item.assessment.sortAt).sort((left, right) => left.assessment.sortAt!.localeCompare(right.assessment.sortAt!));
     const nearestItem = allUpcoming[0];
+    const displayCourseIds = new Set(selectedCourses.courses.map((course) => course.id));
     const nearest = nearestItem ? { contextTitle: nearestItem.context.title, eventTitle: nearestItem.assessment.title,
       dateLabel: nearestItem.assessment.sortAt!.slice(5, 10).replace("-", "/"),
       days: dayNumber(nearestItem.assessment.sortAt!.slice(0, 10)) - dayNumber(today) } : null;
+    const universityCourses = built.filter((context) => context.kind === "course" && displayCourseIds.has(context.id));
+    const universitySummary = summarizeUniversityCourses(universityCourses);
     return { configured: base.configured, error: base.error, today, nearest,
       riskTitles: built.filter((context) => context.state === "risk").map((context) => context.title),
       unknownTitles: built.filter((context) => context.state === "unknown").map((context) => context.title),
-      courses: built.filter((context) => context.kind === "course"), certifications: built.filter((context) => context.kind === "certification") };
+      courses: built.filter((context) => context.kind === "course"),
+      universityCourses, universityTerm: selectedCourses.currentTerm,
+      universityRiskTitles: universitySummary.riskTitles,
+      courseDiagnostics: selectedCourses.diagnostics,
+      certifications: built.filter((context) => context.kind === "certification") };
   } catch (error) {
     return { configured: false, error: error instanceof Error ? error.message : "Learning workspace를 불러오지 못했습니다.",
-      today, nearest: null, riskTitles: [], unknownTitles: [], courses: [], certifications: [] };
+      today, nearest: null, riskTitles: [], unknownTitles: [], courses: [], universityCourses: [], universityTerm: null,
+      universityRiskTitles: [], courseDiagnostics: [], certifications: [] };
   }
 }
 

@@ -244,6 +244,8 @@ Unique: `(recurring_activity_id, period_key, sequence_no)`
 
 ### CourseProfile
 
+Snowboard의 최신 강의 완료/잔여 개수와 잔여 시간은 `snowboard_course_progress`에 외부 관찰로 보관한다. `(user_id, course_id)`가 한 현재 snapshot을 식별하며 Course WorkContext 연결은 Snowboard course `ExternalReference`를 따른다. 학교 강의 완료와 사용자 학습 Exposure/Understanding/Validation은 별개다.
+
 - `work_context_id`
 - `target_grade?`
 - `self_reported_understanding?`
@@ -1065,3 +1067,18 @@ scheduled/suppressed/sent/delivered/acknowledged/failed/cancelled lifecycle과 d
 
 ### Calendar identity
 FixedExternalEvent와 AmberManagedWorkBlock을 provenance로 구분해 capacity 이중 차감을 막는다.
+
+---
+
+## 19. University Course Recipe Contract
+
+University의 개인 학습 진도는 `Course × Scope × Recipe Action`으로 표현한다. 별도 주차 진도 row는 만들지 않는다.
+
+- Course Recipe는 `WorkContext.strategy_config.courseRecipe`의 versioned structured config다. 저장 시 다른 strategy key를 보존한다.
+- Recipe action은 내부 `LearningMaterial`에 `recipeActionKey`, `recipePhase`, `presetId`, `presetVersion`으로 연결한다.
+- scope identity는 `LearningUnit.canonical_topic_key`의 `week:01`, `module:<stable-id>`, `topic:<stable-key>` 형식을 사용한다. `sequence_no`는 정렬 근거이며 scope 유형을 뜻하지 않는다.
+- action cell evidence는 기존 LearningUnit의 Exposure / Understanding / Validation을 그대로 사용하며 세 상태를 서로 추론하지 않는다.
+- BASE scope 상태는 required BASE action cell에서 계산한다. REVIEW와 ASSESSMENT_PREP는 BASE 완료 의미를 바꾸지 않는다.
+- 자동 Learning Task는 scope sequence와 BASE action order에 따라 Course당 다음 cell 하나만 만든다. Certification의 기존 material/allocation 제안 경로는 유지한다.
+- `task_learning_targets.target_role=EXECUTION_TARGET`만 Task outcome으로 Learning evidence를 변경할 수 있다. `RELATED_SCOPE`와 `RECOMMENDED_READINESS`는 비차단 설명 관계다.
+- CourseAssessment의 선택적 `scope_config`는 runtime validation에 성공할 때만 사용하며, 잘못되거나 없는 범위는 unknown이다.

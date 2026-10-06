@@ -982,6 +982,8 @@ Notion Task DB와 Amber Task DB를 이중 Source of Truth로 만들지 않는다
 - new assignment/announcement signal 생성
 - 원문/reference 전달
 
+주기적 Snowboard 동기화는 Course WorkContext 연결, assignment/quiz, academic schedule, course lecture progress 순서로 실행한다. 최신 lecture progress는 `snowboard_course_progress`에 외부 관찰로 저장하고 `external_references`의 Snowboard course ID를 통해 Course WorkContext에 연결한다. 이 수치는 Learning Unit의 Exposure, Understanding, Validation을 변경하지 않는다.
+
 과제 요구사항 해석과 Task 생성은 Core/AI pipeline에서 처리한다.
 
 인증/접근 방법이 불안정하면 V1 core 개발을 막지 않도록 adapter 경계 밖에서 해결한다.
