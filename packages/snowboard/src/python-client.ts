@@ -50,8 +50,19 @@ const courseProgressSchema = z.object({
   completedLectureCount: z.number().int().nonnegative(),
   remainingLectureCount: z.number().int().nonnegative(),
   remainingLectureMinutes: z.number().int().nonnegative(),
+  lectures: z.array(z.object({
+    moduleId: z.string().trim().min(1),
+    position: z.number().int().positive(),
+    title: z.string().trim().min(1),
+    completed: z.boolean(),
+    estimatedMinutes: z.number().int().nonnegative()
+  }).strict()),
   observedAt: z.iso.datetime({ offset: true })
-}).strict();
+}).strict().superRefine((progress, context) => {
+  if (new Set(progress.lectures.map((lecture) => lecture.moduleId)).size !== progress.lectures.length) {
+    context.addIssue({ code: "custom", path: ["lectures"], message: "Lecture module IDs must be unique within a course" });
+  }
+});
 
 type PythonRunInput = {
   readonly binary: string;

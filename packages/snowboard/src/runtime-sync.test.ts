@@ -74,6 +74,7 @@ describe("syncSnowboardRuntime", () => {
         expect(mapped).toBe(true);
         return [{ courseId: course.courseId, courseTitle: course.title,
           completedLectureCount: 8, remainingLectureCount: 3, remainingLectureMinutes: 95,
+          lectures: [{ moduleId: "2043101", position: 1, title: "1강", completed: true, estimatedMinutes: 29 }],
           observedAt: new Date("2026-09-15T00:00:00Z") }];
       })
     };

@@ -7,6 +7,7 @@ from snowboard_http import (
     CourseIdentity,
     Link,
     SnowboardSession,
+    collect_course_progress,
     normalize_assignment,
     normalize_academic_schedule,
     normalize_quiz,
@@ -134,6 +135,33 @@ class SnowboardHttpTest(unittest.TestCase):
         '''
         progress = parse_lecture_progress(html)
         self.assertEqual([(item.module_id, item.completed, item.estimated_minutes) for item in progress], [("1", True, 29), ("2", False, 30)])
+
+    def test_course_progress_preserves_authoritative_lecture_module_identity_and_order(self):
+        class CoursePageSession:
+            base_url = "https://snowboard.sookmyung.ac.kr/"
+
+            def get_text(self, path):
+                if path == "":
+                    return ('''
+                      <div class="course course-type-R"><a href="/course/view.php?id=101">
+                      <h4 class="coursename">Database Systems</h4></a></div>
+                    ''', self.base_url)
+                return ('''
+                  <li id="module-2043101" class="activity xncommons modtype_xncommons">
+                    <span class="instancename">1강 28분18초</span>
+                    <span class="badge badge-completion-auto-y" title="완료함: 1강"></span>
+                  </li>
+                  <li id="module-2043102" class="activity xncommons modtype_xncommons">
+                    <span class="instancename">2강</span>
+                    <span class="badge badge-completion-auto-n" title="완료하지 못함: 2강"></span>
+                  </li>
+                ''', str(path))
+
+        result = collect_course_progress(CoursePageSession(), {"101"}, datetime(2026, 9, 15, tzinfo=timezone.utc))
+        self.assertEqual(result[0]["lectures"], [
+            {"moduleId": "2043101", "position": 1, "title": "1강 28분18초", "completed": True, "estimatedMinutes": 29},
+            {"moduleId": "2043102", "position": 2, "title": "2강", "completed": False, "estimatedMinutes": 30},
+        ])
 
 
 if __name__ == "__main__":

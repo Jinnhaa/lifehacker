@@ -707,6 +707,16 @@ def collect_course_progress(session: SnowboardSession, regular_course_ids: set[s
             "completedLectureCount": sum(1 for lecture in lectures if lecture.completed),
             "remainingLectureCount": len(remaining),
             "remainingLectureMinutes": sum(lecture.estimated_minutes for lecture in remaining),
+            "lectures": [
+                {
+                    "moduleId": lecture.module_id,
+                    "position": position,
+                    "title": lecture.title,
+                    "completed": lecture.completed,
+                    "estimatedMinutes": lecture.estimated_minutes,
+                }
+                for position, lecture in enumerate(lectures, start=1)
+            ],
             "observedAt": observed_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
         })
     return result
