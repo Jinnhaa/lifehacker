@@ -7,3 +7,4 @@ export * from "./snowboard-sync-service.js";
 export * from "./supabase-academic-schedule-repository.js";
 export * from "./supabase-course-context-bootstrap-repository.js";
 export * from "./supabase-course-progress-repository.js";
+export * from "./supabase-university-learning-bootstrap-service.js";

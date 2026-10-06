@@ -227,6 +227,7 @@ export async function loadLearningWorkspace(dependencies?: LearningWorkspaceDepe
           materials: contextMaterials.map((material) => ({ materialId: material.id, stageId: material.stageId, config: material.config })),
           units: units.filter((unit) => unit.workContextId === context.id).map((unit) => ({
             learningUnitId: unit.id, materialId: unit.materialId, canonicalTopicKey: unit.canonicalTopicKey,
+            scopeLabel: unit.title,
             sequenceNo: unit.sequenceNo, exposureState: unit.exposureState,
             understandingState: unit.understandingState, validationState: unit.validationState
           }))
