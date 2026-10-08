@@ -6,7 +6,7 @@ import type { CertificationStudyMode, CommitmentLevel, ContextCommonInput, Learn
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createWebContextManagementService } from "../../lib/context-management-server";
-import { findLearningProposal } from "../../lib/learning-workspace-server";
+import { findLearningProposal, findUniversityCourseRecipeProposal } from "../../lib/learning-workspace-server";
 import type { LearningWorkspaceActionState } from "../../lib/learning-workspace-types";
 import { planCurrentStudyPosition, type StudyPositionUnit } from "../../lib/university-study-position";
 import type { ContextActionState } from "../../lib/context-management-types";
@@ -102,6 +102,29 @@ export async function executeLearningAction(_state: LearningWorkspaceActionState
     return workspaceResult("success", command.outcome === "COMPLETED" ? "오늘 학습을 완료했습니다." : command.outcome === "PARTIAL" ? "학습한 범위까지 반영했습니다." : "오늘 학습을 건너뛰었습니다.");
   } catch (error) {
     return workspaceResult("error", error instanceof Error ? error.message : "학습 결과를 반영하지 못했습니다.");
+  }
+}
+
+export async function completeUniversityLearningUnitAction(
+  _state: LearningWorkspaceActionState,
+  form: FormData
+): Promise<LearningWorkspaceActionState> {
+  try {
+    const contextId = uuid.parse(form.get("contextId"));
+    const learningUnitId = uuid.parse(form.get("learningUnitId"));
+    const repository = new SupabaseLearningTaskExecutionRepository(getWebSql());
+    const proposal = await findUniversityCourseRecipeProposal(contextId, learningUnitId);
+    const created = await repository.materialize(getWebUserId(), proposal);
+    await repository.applyExecution({
+      userId: getWebUserId(),
+      taskId: created.taskId as Parameters<SupabaseLearningTaskExecutionRepository["applyExecution"]>[0]["taskId"],
+      targetId: created.targetId,
+      command: { outcome: "COMPLETED" }
+    });
+    refresh();
+    return workspaceResult("success", "개인 학습 action을 완료했습니다.");
+  } catch (error) {
+    return workspaceResult("error", error instanceof Error ? error.message : "개인 학습 action을 반영하지 못했습니다.");
   }
 }
 

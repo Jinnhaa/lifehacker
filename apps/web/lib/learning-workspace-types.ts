@@ -39,6 +39,16 @@ export interface UniversityCourseReality {
   readonly gap: { readonly status: "caught_up" | "behind" | "unknown"; readonly unitsBehind: number | null };
   readonly nextAssessment: LearningWorkspaceAssessment | null;
   readonly nextLearningTask: { readonly taskId: string; readonly title: string; readonly estimatedMinutes: number | null } | null;
+  readonly recommendedAction: {
+    readonly learningUnitId: string;
+    readonly title: string;
+    readonly estimatedMinutes: number | null;
+  } | null;
+  readonly recipeBaseActions: readonly {
+    readonly actionKey: string;
+    readonly label: string;
+    readonly order: number;
+  }[];
   readonly diagnostics: { readonly unlinked: boolean; readonly hiddenLegacyContextIds: readonly string[] };
   readonly scopeActionProgress: CourseRecipeProjectionResult | null;
 }
@@ -72,6 +82,7 @@ export interface LearningWorkspaceAction {
   readonly kind: "task" | "proposal";
   readonly taskId: string | null;
   readonly targetId: string | null;
+  readonly learningUnitId: string | null;
   readonly materialId: string;
   readonly allocationPolicyId: string | null;
   readonly title: string;

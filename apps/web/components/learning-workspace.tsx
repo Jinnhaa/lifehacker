@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useState } from "react";
 import {
+  completeUniversityLearningUnitAction,
   createDefaultAllocationAction,
   executeLearningAction,
   materializeAdjustedLearningAction,
@@ -63,7 +64,7 @@ function UniversityCard({ context, today, onOpen }: { context: LearningWorkspace
     <div className="university-card-facts">
       <div><small>수업 현황</small>{school ? <><strong>{school.completedLectureCount} / {school.completedLectureCount + school.remainingLectureCount}</strong><span>남은 영상 {school.remainingLectureMinutes}분 · Snowboard 자동 확인</span></> : <span>Snowboard 진도 확인 전</span>}</div>
       <div><small>내 공부</small><strong>{universitySelfStudyLabel(reality)}</strong>{reality.selfStudy.initialized && reality.selfStudy.totalUnits !== null ? <span>{reality.selfStudy.completedUnits} / {reality.selfStudy.totalUnits}</span> : null}</div>
-      <div className="next"><small>NEXT</small>{reality.nextLearningTask ? <><strong>{reality.nextLearningTask.title}</strong><span>{reality.nextLearningTask.estimatedMinutes ? `약 ${reality.nextLearningTask.estimatedMinutes}분` : "Lifehacker Task"}</span></> : <span>{reality.selfStudy.scopeStatus === "NOT_READY" ? "다음 학습 범위를 만들 정보가 아직 없습니다." : !reality.selfStudy.initialized ? "현재 공부 위치를 먼저 알려주세요." : "다음 Learning Task가 아직 없습니다."}</span>}</div>
+      <div className="next"><small>NEXT</small>{reality.recommendedAction ? <><strong>{reality.recommendedAction.title}</strong><span>{reality.recommendedAction.estimatedMinutes ? `약 ${reality.recommendedAction.estimatedMinutes}분` : "Lifehacker Task"}</span></> : <span>{reality.selfStudy.scopeStatus === "NOT_READY" ? "다음 학습 범위를 만들 정보가 아직 없습니다." : reality.selfStudy.state === "COMPLETE" ? "기본 개인 학습을 모두 완료했습니다." : "다음 Learning Task가 아직 없습니다."}</span>}</div>
     </div>
   </button>;
 }
@@ -144,15 +145,72 @@ function UniversityTaskAction({ context, item }: { context: LearningWorkspaceCon
   </div>;
 }
 
+function UniversityModuleCell({
+  context,
+  cell,
+  item,
+  recommended
+}: {
+  context: LearningWorkspaceContext;
+  cell: {
+    readonly learningUnitId: string;
+    readonly exposure: "NOT_STARTED" | "PARTIAL" | "COMPLETE";
+  };
+  item: LearningWorkspaceAction | null;
+  recommended: boolean;
+}) {
+  const [state, action, pending] = useActionState(
+    item ? executeLearningAction : completeUniversityLearningUnitAction,
+    initial
+  );
+  const label = cell.exposure === "COMPLETE" ? "완료" : cell.exposure === "PARTIAL" ? "학습 중" : "미완료";
+  return <div className={`university-module-cell ${cell.exposure.toLowerCase()}${recommended ? " recommended" : ""}`}>
+    <span>{label}{recommended ? " · 다음 추천" : ""}</span>
+    {cell.exposure !== "COMPLETE" ? <form action={action}>
+      {item ? <><ActionHidden context={context} item={item} /><input type="hidden" name="outcome" value="COMPLETED" /></> : <>
+        <input type="hidden" name="contextId" value={context.id} />
+        <input type="hidden" name="learningUnitId" value={cell.learningUnitId} />
+      </>}
+      <button disabled={pending}>{pending ? "반영 중…" : "완료"}</button>
+    </form> : null}
+    <Feedback state={state} />
+  </div>;
+}
+
+function UniversityModuleProgress({ context }: { context: LearningWorkspaceContext }) {
+  const reality = context.universityReality!;
+  const projection = reality.scopeActionProgress;
+  if (!projection) return <article className="university-module-progress"><header><small>MY STUDY</small><h3>MODULE 학습</h3></header><p>Course Recipe 학습 범위가 아직 없습니다.</p></article>;
+  if (projection.status === "UNKNOWN") return <article className="university-module-progress"><header><small>MY STUDY</small><h3>MODULE 학습</h3></header><p>MODULE별 개인 학습 상태를 확인할 수 없습니다. ({projection.reason})</p></article>;
+  const scopes = [...projection.scopes].filter((scope) => scope.scopeType === "MODULE")
+    .sort((left, right) => left.sequence - right.sequence || left.scopeKey.localeCompare(right.scopeKey));
+  if (!scopes.length || !reality.recipeBaseActions.length) return <article className="university-module-progress"><header><small>MY STUDY</small><h3>MODULE 학습</h3></header><p>표시할 MODULE × BASE Action이 아직 없습니다.</p></article>;
+  return <article className="university-module-progress"><header><small>MY STUDY</small><h3>MODULE × BASE Action</h3><span>개인 학습 기록</span></header>
+    <div className="university-module-table-wrap"><table className="university-module-table">
+      <thead><tr><th scope="col">MODULE</th>{reality.recipeBaseActions.map((action) => <th scope="col" key={action.actionKey}>{action.label}</th>)}</tr></thead>
+      <tbody>{scopes.map((scope) => <tr key={scope.scopeKey}><th scope="row"><strong>{scope.scopeLabel}</strong><small>{scope.baseState === "UNKNOWN" ? "상태 확인 불가" : scope.baseState === "COMPLETE" ? "기본 학습 완료" : scope.baseState === "IN_PROGRESS" ? "진행 중" : "시작 전"}</small></th>
+        {reality.recipeBaseActions.map((recipeAction) => {
+          const cell = scope.actions.find((candidate) => candidate.actionKey === recipeAction.actionKey);
+          if (!cell) return <td key={recipeAction.actionKey}><div className="university-module-cell unknown"><span>데이터 없음</span></div></td>;
+          const item = context.actions.find((candidate) => candidate.learningUnitId === cell.learningUnitId) ?? null;
+          return <td key={recipeAction.actionKey}><UniversityModuleCell context={context} cell={cell} item={item}
+            recommended={reality.recommendedAction?.learningUnitId === cell.learningUnitId} /></td>;
+        })}</tr>)}</tbody>
+    </table></div>
+  </article>;
+}
+
 function UniversityCurrent({ context, today }: { context: LearningWorkspaceContext; today: string }) {
   const reality = context.universityReality!;
   const school = reality.schoolProgress;
-  const nextAction = context.actions.find((item) => item.kind === "task" && item.taskId === reality.nextLearningTask?.taskId) ?? null;
+  const recipeProjected = reality.scopeActionProgress?.status === "PROJECTED";
+  const nextAction = context.actions.find((item) => item.learningUnitId === reality.recommendedAction?.learningUnitId) ?? null;
   return <section className="university-current-view">
     <article><header><small>SCHOOL</small><h3>수업 현황</h3><span>Snowboard에서 자동 확인</span></header>{school ? <><strong>{school.completedLectureCount} / {school.completedLectureCount + school.remainingLectureCount} 완료</strong><p>남은 영상 약 {school.remainingLectureMinutes}분</p></> : <p>아직 Snowboard 수업 진도를 확인하지 못했습니다.</p>}</article>
-    <article><header><small>MY STUDY</small><h3>내 공부</h3></header>{reality.selfStudy.initialized ? <><strong>{reality.selfStudy.currentPositionSequence === 0 ? "아직 시작 전" : `${universitySelfStudyLabel(reality)}까지 공부함`}</strong><PositionCorrection context={context} /></> : <><p>현재 공부 위치를 아직 알려주지 않았어요.</p><PositionCorrection context={context} /></>}</article>
+    <article><header><small>MY STUDY</small><h3>내 공부</h3></header>{recipeProjected ? <><strong>{reality.selfStudy.totalUnits === null ? "상태 확인 필요" : `${reality.selfStudy.completedUnits} / ${reality.selfStudy.totalUnits} action 완료`}</strong><p>Snowboard 수업 진도와 별개인 개인 학습 기록입니다.</p></> : reality.selfStudy.initialized ? <><strong>{reality.selfStudy.currentPositionSequence === 0 ? "아직 시작 전" : `${universitySelfStudyLabel(reality)}까지 공부함`}</strong><PositionCorrection context={context} /></> : <><p>현재 공부 위치를 아직 알려주지 않았어요.</p><PositionCorrection context={context} /></>}</article>
+    <UniversityModuleProgress context={context} />
     <article><header><small>GAP</small><h3>격차</h3></header>{reality.gap.status === "behind" && reality.gap.unitsBehind !== null ? <strong>수업보다 {reality.gap.unitsBehind}개 범위 뒤처져 있어요.</strong> : reality.gap.status === "caught_up" ? <strong>현재 수업 범위를 따라가고 있어요.</strong> : <p>아직 수업 진도와 내 공부 범위를 직접 비교할 수 없어요.</p>}</article>
-    <article><header><small>NEXT</small><h3>다음 할 일</h3></header>{nextAction ? <UniversityTaskAction context={context} item={nextAction} /> : <p>{reality.selfStudy.scopeStatus === "NOT_READY" ? "다음 학습 범위를 만들 수 있는 정보가 아직 없습니다." : !reality.selfStudy.initialized ? "현재 공부 위치를 먼저 알려주세요." : "다음 Learning Task가 아직 없습니다."}</p>}</article>
+    <article><header><small>NEXT</small><h3>다음 할 일</h3></header>{nextAction ? <UniversityTaskAction context={context} item={nextAction} /> : <p>{reality.selfStudy.scopeStatus === "NOT_READY" ? "다음 학습 범위를 만들 수 있는 정보가 아직 없습니다." : reality.selfStudy.state === "COMPLETE" ? "모든 기본 개인 학습 action을 완료했습니다." : "다음 Learning Task가 아직 없습니다."}</p>}</article>
     <article><header><small>SCHEDULE</small><h3>다음 일정</h3></header>{context.nextAssessment ? <><strong>{context.nextAssessment.title}</strong><p>{assessmentLabel(today, context.nextAssessment)}</p></> : <p>예정된 평가 일정이 없습니다.</p>}</article>
   </section>;
 }

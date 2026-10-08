@@ -125,6 +125,7 @@ export function buildUniversityCourseReality(input: {
   readonly hiddenLegacyContextIds: readonly string[];
   readonly positionConfirmation: UniversityPositionConfirmation | null;
   readonly recipeProjection?: CourseRecipeProjectionResult | null;
+  readonly recipeBaseActions?: readonly { readonly actionKey: string; readonly label: string; readonly order: number }[];
 }): UniversityCourseReality {
   const singleMaterial = input.materials.length === 1 ? input.materials[0]! : null;
   const scopedUnits = singleMaterial ? input.units.filter((unit) => unit.materialId === singleMaterial.id) : [];
@@ -168,6 +169,7 @@ export function buildUniversityCourseReality(input: {
   const count = <T extends string>(key: (unit: UniversityStudyUnit) => T, value: T): number =>
     input.units.filter((unit) => key(unit) === value).length;
   const next = input.actions.find((action) => action.kind === "task" && action.taskId !== null) ?? null;
+  const recommended = input.actions.find((action) => action.learningUnitId !== null) ?? null;
   const school = input.schoolProgress;
   return {
     workContextId: input.workContextId, snowboardCourseId: input.snowboardCourseId,
@@ -197,6 +199,10 @@ export function buildUniversityCourseReality(input: {
     gap: { status: "unknown", unitsBehind: null },
     nextAssessment: input.nextAssessment,
     nextLearningTask: next?.taskId ? { taskId: next.taskId, title: next.title, estimatedMinutes: next.estimatedMinutes } : null,
+    recommendedAction: recommended?.learningUnitId ? {
+      learningUnitId: recommended.learningUnitId, title: recommended.title, estimatedMinutes: recommended.estimatedMinutes
+    } : null,
+    recipeBaseActions: [...(input.recipeBaseActions ?? [])].sort((left, right) => left.order - right.order),
     diagnostics: { unlinked: input.snowboardCourseId === null, hiddenLegacyContextIds: input.hiddenLegacyContextIds },
     scopeActionProgress: input.recipeProjection ?? null
   };
