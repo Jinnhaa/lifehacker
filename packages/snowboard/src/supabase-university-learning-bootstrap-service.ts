@@ -132,10 +132,26 @@ export class SupabaseUniversityLearningBootstrapService {
         select id from public.learning_stages
         where user_id=${userId} and work_context_id=${context.id} and status='ACTIVE'
         order by position for update`;
-      if (stages.length !== 1) {
+      if (stages.length > 1) {
         return emptyResult(item, "NO_ACTIVE_STAGE", recipeStatus, context.id, recipe.presetId);
       }
-      const stageId = stages[0]!.id;
+      let stageId = stages[0]?.id ?? null;
+      if (!stageId) {
+        const existingStages = await tx<IdRow[]>`
+          select id from public.learning_stages
+          where user_id=${userId} and work_context_id=${context.id} and status<>'ARCHIVED'
+          order by position for update`;
+        if (existingStages.length) {
+          return emptyResult(item, "NO_ACTIVE_STAGE", recipeStatus, context.id, recipe.presetId);
+        }
+        stageId = (await tx<IdRow[]>`
+          insert into public.learning_stages(
+            user_id,work_context_id,title,position,status,completion_mode,transition_mode,config
+          ) values (
+            ${userId},${context.id},'현재 학기',1,'ACTIVE','MANUAL','SEQUENTIAL',
+            ${json(tx, { source: "snowboard_university_bootstrap" })}
+          ) returning id`)[0]!.id;
+      }
       const actions = recipe.actions.filter((action) => action.scopeType === "MODULE");
       if (!actions.length) {
         return emptyResult(item, "NO_MODULE_ACTIONS", recipeStatus, context.id, recipe.presetId);

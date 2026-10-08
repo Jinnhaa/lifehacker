@@ -126,6 +126,7 @@ export function buildUniversityCourseReality(input: {
   readonly positionConfirmation: UniversityPositionConfirmation | null;
   readonly recipeProjection?: CourseRecipeProjectionResult | null;
   readonly recipeBaseActions?: readonly { readonly actionKey: string; readonly label: string; readonly order: number }[];
+  readonly scopeActionUnavailableReason?: UniversityCourseReality["scopeActionUnavailableReason"];
 }): UniversityCourseReality {
   const singleMaterial = input.materials.length === 1 ? input.materials[0]! : null;
   const scopedUnits = singleMaterial ? input.units.filter((unit) => unit.materialId === singleMaterial.id) : [];
@@ -204,7 +205,8 @@ export function buildUniversityCourseReality(input: {
     } : null,
     recipeBaseActions: [...(input.recipeBaseActions ?? [])].sort((left, right) => left.order - right.order),
     diagnostics: { unlinked: input.snowboardCourseId === null, hiddenLegacyContextIds: input.hiddenLegacyContextIds },
-    scopeActionProgress: input.recipeProjection ?? null
+    scopeActionProgress: input.recipeProjection ?? null,
+    scopeActionUnavailableReason: input.scopeActionUnavailableReason ?? null
   };
 }
 

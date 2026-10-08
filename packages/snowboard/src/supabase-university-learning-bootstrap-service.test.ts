@@ -78,6 +78,10 @@ const mockSql = (state: MockState): Sql => {
     if (query.includes("select id from public.learning_stages")) {
       return state.activeStageIds.map((id) => ({ id }));
     }
+    if (query.startsWith("insert into public.learning_stages")) {
+      state.activeStageIds = ["stage-auto"];
+      return [{ id: "stage-auto" }];
+    }
     if (query.includes("select id,stage_id,config from public.learning_materials")) {
       const material = state.materials.get(String(values[4]));
       return material ? [{ id: material.id, stage_id: material.stageId, config: material.config }] : [];
@@ -229,7 +233,7 @@ describe("University Learning bootstrap from Snowboard MODULE reality", () => {
     expect(unknown.materials.size).toBe(0);
   });
 
-  it("never bootstraps a Certification context and fails closed without one active stage", async () => {
+  it("never bootstraps a Certification context and safely creates the first Course stage", async () => {
     const certification = createState({ kind: "certification" });
     const certificationResult = await new SupabaseUniversityLearningBootstrapService(mockSql(certification)).bootstrap(userId, [progress()]);
     expect(certificationResult.courses[0]?.status).toBe("COURSE_NOT_FOUND");
@@ -238,7 +242,8 @@ describe("University Learning bootstrap from Snowboard MODULE reality", () => {
 
     const noStage = createState({ activeStageIds: [] });
     const noStageResult = await new SupabaseUniversityLearningBootstrapService(mockSql(noStage)).bootstrap(userId, [progress()]);
-    expect(noStageResult.courses[0]).toMatchObject({ status: "NO_ACTIVE_STAGE", recipe: "BOOTSTRAPPED" });
-    expect(noStage.materials.size).toBe(0);
+    expect(noStageResult.courses[0]).toMatchObject({ status: "BOOTSTRAPPED", recipe: "BOOTSTRAPPED" });
+    expect(noStage.activeStageIds).toEqual(["stage-auto"]);
+    expect(noStage.materials.size).toBe(UNIVERSITY_COURSE_RECIPE_PRESETS.concept_sql.actions.length);
   });
 });

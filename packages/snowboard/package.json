@@ -11,6 +11,7 @@
     "typecheck": "tsc -b --pretty false",
     "test:python": "python3 -m unittest discover -s python -p 'test_*.py'",
     "bootstrap": "tsc -b && node --enable-source-maps dist/bootstrap-cli.js",
+    "bootstrap:university": "tsc -b && node --enable-source-maps dist/university-learning-bootstrap-cli.js",
     "sync": "tsc -b && node --enable-source-maps dist/sync-cli.js"
   },
   "dependencies": {

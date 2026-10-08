@@ -316,7 +316,10 @@ export async function loadLearningWorkspace(dependencies?: LearningWorkspaceDepe
         recipeProjection,
         recipeBaseActions: recipeRead.status === "VALID" ? recipeRead.recipe.actions
           .filter((action) => action.phase === "BASE" && action.requiredForBaseCompletion)
-          .map((action) => ({ actionKey: action.actionKey, label: action.label, order: action.order })) : []
+          .map((action) => ({ actionKey: action.actionKey, label: action.label, order: action.order })) : [],
+        scopeActionUnavailableReason: recipeRead.status === "INVALID" ? "INVALID_COURSE_RECIPE"
+          : recipeRead.status === "ABSENT" ? "COURSE_RECIPE_MISSING"
+            : !activeStage ? "ACTIVE_STAGE_MISSING" : null
       }) : null;
       const stageMaterials = materialViews.filter((material) => material.stageId === activeStage?.id);
       const materialForecasts = stageMaterials.map((material) => {

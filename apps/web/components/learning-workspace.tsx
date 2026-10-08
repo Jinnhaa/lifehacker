@@ -180,7 +180,16 @@ function UniversityModuleCell({
 function UniversityModuleProgress({ context }: { context: LearningWorkspaceContext }) {
   const reality = context.universityReality!;
   const projection = reality.scopeActionProgress;
-  if (!projection) return <article className="university-module-progress"><header><small>MY STUDY</small><h3>MODULE 학습</h3></header><p>Course Recipe 학습 범위가 아직 없습니다.</p></article>;
+  if (!projection) {
+    const message = reality.scopeActionUnavailableReason === "COURSE_RECIPE_MISSING"
+      ? "Snowboard MODULE 세부 진도 bootstrap이 아직 실행되지 않았습니다. University 학습 동기화를 다시 실행해 주세요."
+      : reality.scopeActionUnavailableReason === "ACTIVE_STAGE_MISSING"
+        ? "이 과목에 활성 학습 단계가 없어 MODULE action을 만들 수 없습니다. University 학습 동기화를 다시 실행해 주세요."
+        : reality.scopeActionUnavailableReason === "INVALID_COURSE_RECIPE"
+          ? "저장된 Course Recipe가 유효하지 않아 MODULE action을 표시할 수 없습니다."
+          : "Snowboard MODULE 세부 진도가 아직 저장되지 않았습니다. Snowboard 동기화 후 다시 확인해 주세요.";
+    return <article className="university-module-progress"><header><small>MY STUDY</small><h3>MODULE 학습</h3></header><p>{message}</p></article>;
+  }
   if (projection.status === "UNKNOWN") return <article className="university-module-progress"><header><small>MY STUDY</small><h3>MODULE 학습</h3></header><p>MODULE별 개인 학습 상태를 확인할 수 없습니다. ({projection.reason})</p></article>;
   const scopes = [...projection.scopes].filter((scope) => scope.scopeType === "MODULE")
     .sort((left, right) => left.sequence - right.sequence || left.scopeKey.localeCompare(right.scopeKey));

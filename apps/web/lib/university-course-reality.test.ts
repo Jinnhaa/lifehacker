@@ -41,9 +41,11 @@ describe("University Course reality", () => {
     const reality = buildUniversityCourseReality({
       workContextId: "linked", snowboardCourseId: "89632", title: "Database", term: null,
       schoolProgress: null, materials: [{ ...material, completedUnits: 1, totalScopedUnits: null, progressPercent: null }],
-      units: [units[0]!], nextAssessment: null, actions: [], hiddenLegacyContextIds: [], positionConfirmation: null
+      units: [units[0]!], nextAssessment: null, actions: [], hiddenLegacyContextIds: [], positionConfirmation: null,
+      scopeActionUnavailableReason: "COURSE_RECIPE_MISSING"
     });
     expect(reality.selfStudy).toMatchObject({ completedUnits: 1, totalUnits: null, progressPercent: null });
+    expect(reality.scopeActionUnavailableReason).toBe("COURSE_RECIPE_MISSING");
     expect(reality.understanding.unknown).toBe(1);
     expect(reality.validation.notTested).toBe(1);
   });

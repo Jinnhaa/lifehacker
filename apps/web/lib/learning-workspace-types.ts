@@ -51,6 +51,11 @@ export interface UniversityCourseReality {
   }[];
   readonly diagnostics: { readonly unlinked: boolean; readonly hiddenLegacyContextIds: readonly string[] };
   readonly scopeActionProgress: CourseRecipeProjectionResult | null;
+  readonly scopeActionUnavailableReason:
+    | "COURSE_RECIPE_MISSING"
+    | "INVALID_COURSE_RECIPE"
+    | "ACTIVE_STAGE_MISSING"
+    | null;
 }
 
 export interface LearningWorkspaceStage {
