@@ -54,7 +54,18 @@ export interface SnowboardCourseProgress {
   readonly completedLectureCount: number;
   readonly remainingLectureCount: number;
   readonly remainingLectureMinutes: number;
+  readonly lectures: readonly SnowboardLectureProgress[];
   readonly observedAt: Date;
+}
+
+export interface SnowboardLectureProgress {
+  /** Stable Snowboard/Moodle course-module identifier. */
+  readonly moduleId: string;
+  /** Course-page ordering evidence only; never semantic identity. */
+  readonly position: number;
+  readonly title: string;
+  readonly completed: boolean;
+  readonly estimatedMinutes: number;
 }
 
 export interface SnowboardCourseProgressClient {

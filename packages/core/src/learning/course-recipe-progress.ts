@@ -23,6 +23,8 @@ export interface CourseRecipeUnitEvidence {
   readonly learningUnitId: string;
   readonly materialId: string | null;
   readonly canonicalTopicKey: string | null;
+  /** Display evidence only; canonicalTopicKey remains scope identity. */
+  readonly scopeLabel?: string | null;
   readonly sequenceNo: number | null;
   readonly exposureState: CourseRecipeExposureState;
   readonly understandingState: CourseRecipeUnderstandingState;
@@ -83,6 +85,7 @@ export function projectCourseRecipeScopes(input: {
 
   const scopes = new Map<string, {
     identity: LearningScopeIdentity;
+    label: string;
     sequence: number;
     cells: CourseRecipeActionCell[];
     actionKeys: Set<string>;
@@ -97,7 +100,13 @@ export function projectCourseRecipeScopes(input: {
     }
     const existing = scopes.get(identity.key);
     if (existing && existing.sequence !== unit.sequenceNo) return unknownProjection("INCONSISTENT_SCOPE_SEQUENCE");
-    const scope = existing ?? { identity, sequence: unit.sequenceNo, cells: [], actionKeys: new Set<string>() };
+    const scope = existing ?? {
+      identity,
+      label: unit.scopeLabel?.trim() || identity.label,
+      sequence: unit.sequenceNo,
+      cells: [],
+      actionKeys: new Set<string>()
+    };
     if (scope.actionKeys.has(action.actionKey)) return unknownProjection("DUPLICATE_SCOPE_ACTION_CELL");
     scope.actionKeys.add(action.actionKey);
     scope.cells.push({
@@ -124,7 +133,7 @@ export function projectCourseRecipeScopes(input: {
             : "NOT_STARTED" as const;
       return {
         scopeKey: scope.identity.key,
-        scopeLabel: scope.identity.label,
+        scopeLabel: scope.label,
         scopeType: scope.identity.scopeType,
         sequence: scope.sequence,
         actions: [...scope.cells].sort((left, right) => left.order - right.order),

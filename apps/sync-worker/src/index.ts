@@ -9,6 +9,7 @@ import {
   SupabaseAcademicScheduleRepository,
   SupabaseCourseContextBootstrapRepository,
   SupabaseCourseProgressRepository,
+  SupabaseUniversityLearningBootstrapService,
   syncSnowboardRuntime
 } from "@amber/snowboard";
 import { PeriodicSyncScheduler, SystemClock, type UserId } from "@amber/shared";
@@ -58,7 +59,8 @@ const snowboardSyncScheduler = new PeriodicSyncScheduler(snowboardSyncEnabled ? 
       processor,
       courseContextRepository: new SupabaseCourseContextBootstrapRepository(sql),
       academicScheduleRepository: new SupabaseAcademicScheduleRepository(sql),
-      courseProgressRepository: new SupabaseCourseProgressRepository(sql)
+      courseProgressRepository: new SupabaseCourseProgressRepository(sql),
+      universityLearningBootstrap: new SupabaseUniversityLearningBootstrapService(sql)
     });
   }
 }] : [], config.snowboardSyncIntervalMs);

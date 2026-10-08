@@ -174,6 +174,8 @@ type PresetId =
   | "ai_theory_practice"
   | "reading_analysis_writing";
 
+export type UniversityCourseRecipePresetId = PresetId;
+
 type PresetAction = readonly [actionKey: string, label: string];
 
 const preset = (
@@ -189,15 +191,15 @@ const preset = (
   courseType,
   userModified: false,
   actions: [...base.map(([actionKey, label], index) => ({
-    actionKey, label, phase: "BASE" as const, scopeType: "WEEK" as const,
+    actionKey, label, phase: "BASE" as const, scopeType: "MODULE" as const,
     completionRule: "EXPLICIT_SCOPE_COMPLETION", defaultEstimatedMinutes: null,
     order: index + 1, requiredForBaseCompletion: true
   })), ...review.map(([actionKey, label], index) => ({
-    actionKey, label, phase: "REVIEW" as const, scopeType: "WEEK" as const,
+    actionKey, label, phase: "REVIEW" as const, scopeType: "MODULE" as const,
     completionRule: "EXPLICIT_SCOPE_COMPLETION", defaultEstimatedMinutes: null,
     order: base.length + index + 1, requiredForBaseCompletion: false
   })), ...assessmentPrep.map(([actionKey, label], index) => ({
-    actionKey, label, phase: "ASSESSMENT_PREP" as const, scopeType: "WEEK" as const,
+    actionKey, label, phase: "ASSESSMENT_PREP" as const, scopeType: "MODULE" as const,
     completionRule: "EXPLICIT_SCOPE_COMPLETION", defaultEstimatedMinutes: null,
     order: base.length + review.length + index + 1, requiredForBaseCompletion: false
   }))]
@@ -229,6 +231,34 @@ export const UNIVERSITY_COURSE_RECIPE_PRESETS: Readonly<Record<PresetId, CourseR
     [["key_argument_review", "핵심 인용 / 논점 다시 보기"], ["feedback_revision", "교수 피드백 반영"]],
     [["submission_completion", "제출물 / 발표 완성"], ["requirement_check", "요구사항 최종 확인"]])
 });
+
+const UNIVERSITY_COURSE_RECIPE_RECOMMENDATIONS: Readonly<Record<string, PresetId>> = Object.freeze({
+  "데이터베이스": "concept_sql",
+  "알고리즘입문": "algorithm_problem_solving",
+  "프로그래밍방법론": "coding_practice",
+  "모바일프로그래밍": "app_development",
+  "인공지능입문": "ai_theory_practice",
+  "AI시대의 사고와 의사소통": "reading_analysis_writing"
+});
+
+const SNOWBOARD_LECTURE_ACTIONS: Readonly<Partial<Record<PresetId, string>>> = Object.freeze({
+  concept_sql: "lecture"
+});
+
+const courseCatalogTitle = (title: string): string => title.trim().replace(/\s*\([^()]+\)\s*$/u, "").trim();
+
+export function recommendUniversityCourseRecipe(title: string): CourseRecipeConfig | null {
+  const presetId = UNIVERSITY_COURSE_RECIPE_RECOMMENDATIONS[courseCatalogTitle(title)];
+  return presetId ? UNIVERSITY_COURSE_RECIPE_PRESETS[presetId] : null;
+}
+
+/** Returns an explicit action contract only; labels never imply Snowboard completion authority. */
+export function snowboardLectureActionKey(recipe: CourseRecipeConfig): string | null {
+  const actionKey = SNOWBOARD_LECTURE_ACTIONS[recipe.presetId as PresetId];
+  if (!actionKey) return null;
+  const action = recipe.actions.find((candidate) => candidate.actionKey === actionKey);
+  return action?.scopeType === "MODULE" ? actionKey : null;
+}
 
 /** Merge-safe persistence adapter. It never replaces unrelated strategy_config keys. */
 export class SupabaseCourseRecipeRepository {

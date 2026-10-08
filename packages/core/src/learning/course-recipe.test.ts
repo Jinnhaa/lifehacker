@@ -6,7 +6,9 @@ import {
   mergeCourseRecipeIntoStrategyConfig,
   parseAssessmentScopeConfig,
   parseLearningScopeKey,
+  recommendUniversityCourseRecipe,
   readCourseRecipeFromStrategyConfig,
+  snowboardLectureActionKey,
   UNIVERSITY_COURSE_RECIPE_PRESETS
 } from "./course-recipe.js";
 
@@ -24,7 +26,25 @@ describe("University Course Recipe contract", () => {
       expect(courseRecipeConfigSchema.parse(recipe)).toEqual(recipe);
       expect(recipe).toMatchObject({ schemaVersion: 1, presetId, presetVersion: 1, userModified: false });
       expect(recipe.actions.filter((action) => action.phase === "BASE")).toHaveLength(3);
+      expect(recipe.actions.every((action) => action.scopeType === "MODULE")).toBe(true);
     }
+  });
+
+  it("recommends only the six frozen real Course mappings", () => {
+    expect(recommendUniversityCourseRecipe("데이터베이스 (001)")?.presetId).toBe("concept_sql");
+    expect(recommendUniversityCourseRecipe("알고리즘입문")?.presetId).toBe("algorithm_problem_solving");
+    expect(recommendUniversityCourseRecipe("프로그래밍방법론")?.presetId).toBe("coding_practice");
+    expect(recommendUniversityCourseRecipe("모바일프로그래밍")?.presetId).toBe("app_development");
+    expect(recommendUniversityCourseRecipe("인공지능입문")?.presetId).toBe("ai_theory_practice");
+    expect(recommendUniversityCourseRecipe("AI시대의 사고와 의사소통")?.presetId).toBe("reading_analysis_writing");
+    expect(recommendUniversityCourseRecipe("알 수 없는 과목")).toBeNull();
+  });
+
+  it("maps Snowboard completion only through an explicit preset action contract", () => {
+    expect(snowboardLectureActionKey(UNIVERSITY_COURSE_RECIPE_PRESETS.concept_sql)).toBe("lecture");
+    expect(snowboardLectureActionKey(UNIVERSITY_COURSE_RECIPE_PRESETS.app_development)).toBeNull();
+    expect(snowboardLectureActionKey(UNIVERSITY_COURSE_RECIPE_PRESETS.ai_theory_practice)).toBeNull();
+    expect(snowboardLectureActionKey(UNIVERSITY_COURSE_RECIPE_PRESETS.reading_analysis_writing)).toBeNull();
   });
 
   it("fails closed for invalid recipe config", () => {

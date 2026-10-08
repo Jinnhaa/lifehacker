@@ -74,6 +74,7 @@ describe("syncSnowboardRuntime", () => {
         expect(mapped).toBe(true);
         return [{ courseId: course.courseId, courseTitle: course.title,
           completedLectureCount: 8, remainingLectureCount: 3, remainingLectureMinutes: 95,
+          lectures: [{ moduleId: "2043101", position: 1, title: "1강", completed: true, estimatedMinutes: 29 }],
           observedAt: new Date("2026-09-15T00:00:00Z") }];
       })
     };
@@ -108,25 +109,39 @@ describe("syncSnowboardRuntime", () => {
         return progress.length;
       })
     };
+    const universityLearningBootstrap = {
+      bootstrap: vi.fn(async (_userId: UserId, progress: readonly { courseId: string }[]) => {
+        calls.push("bootstrapUniversityLearning");
+        expect(progress[0]?.courseId).toBe(course.courseId);
+        return {
+          courses: [], bootstrapped: 1, skipped: 0, materialsEnsured: 3,
+          learningUnitsEnsured: 3, exposuresCompleted: 1, intentionallyUnmappedPresetIds: []
+        };
+      })
+    };
 
     const first = await syncSnowboardRuntime({
       userId, config, client, processor, courseContextRepository, academicScheduleRepository, courseProgressRepository,
+      universityLearningBootstrap,
       observedAt: new Date("2026-09-15T00:00:00Z")
     });
     const second = await syncSnowboardRuntime({
       userId, config, client, processor, courseContextRepository, academicScheduleRepository, courseProgressRepository,
+      universityLearningBootstrap,
       observedAt: new Date("2026-09-15T00:05:00Z")
     });
 
     expect(calls).toEqual([
-      "listCourses", "bootstrapCourse", "listAssignments", "processAssignment", "listAcademicSchedules", "applySchedules", "listCourseProgress", "applyProgress",
-      "listCourses", "bootstrapCourse", "listAssignments", "processAssignment", "listAcademicSchedules", "applySchedules", "listCourseProgress", "applyProgress"
+      "listCourses", "bootstrapCourse", "listAssignments", "processAssignment", "listAcademicSchedules", "applySchedules", "listCourseProgress", "applyProgress", "bootstrapUniversityLearning",
+      "listCourses", "bootstrapCourse", "listAssignments", "processAssignment", "listAcademicSchedules", "applySchedules", "listCourseProgress", "applyProgress", "bootstrapUniversityLearning"
     ]);
     expect(first.courses).toMatchObject({ discovered: 1, created: 1, reused: 0 });
     expect(second.courses).toMatchObject({ discovered: 1, created: 0, reused: 1 });
     expect(first.assignments).toMatchObject({ assignments: 1, materialized: 1 });
     expect(second.schedules).toEqual({ received: 1, created: 0, updated: 0, unchanged: 1 });
     expect(first.courseProgress).toBe(1);
+    expect(first.universityLearning).toMatchObject({ bootstrapped: 1, learningUnitsEnsured: 3, exposuresCompleted: 1 });
     expect(courseProgressRepository.applyProgress).toHaveBeenCalledTimes(2);
+    expect(universityLearningBootstrap.bootstrap).toHaveBeenCalledTimes(2);
   });
 });

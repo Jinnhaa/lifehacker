@@ -27,6 +27,21 @@ export class SupabaseCourseProgressRepository {
           remaining_lecture_minutes=excluded.remaining_lecture_minutes,
           observed_at=excluded.observed_at,updated_at=now()
         where excluded.observed_at >= public.snowboard_course_progress.observed_at`;
+      for (const lecture of item.lectures) {
+        await this.sql`
+          insert into public.snowboard_lecture_progress(
+            user_id,course_id,work_context_id,module_id,position,title,completed,estimated_minutes,observed_at
+          ) values (${userId},${item.courseId},${contexts[0].id},${lecture.moduleId},${lecture.position},
+            ${lecture.title},${lecture.completed},${lecture.estimatedMinutes},${item.observedAt})
+          on conflict(user_id,course_id,module_id) do update set
+            work_context_id=excluded.work_context_id,
+            position=excluded.position,
+            title=excluded.title,
+            completed=excluded.completed,
+            estimated_minutes=excluded.estimated_minutes,
+            observed_at=excluded.observed_at,updated_at=now()
+          where excluded.observed_at >= public.snowboard_lecture_progress.observed_at`;
+      }
     }
     return progress.length;
   }
