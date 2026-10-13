@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import {
   buildLearningScopeKey,
   readCourseRecipeMaterialBinding,
@@ -42,7 +41,6 @@ export interface UniversityLearningCourseBootstrapResult {
   readonly presetId: string | null;
   readonly materialsEnsured: number;
   readonly learningUnitsEnsured: number;
-  readonly exposuresCompleted: number;
   readonly snowboardLectureActionKey: string | null;
 }
 
@@ -52,7 +50,6 @@ export interface UniversityLearningBootstrapResult {
   readonly skipped: number;
   readonly materialsEnsured: number;
   readonly learningUnitsEnsured: number;
-  readonly exposuresCompleted: number;
   readonly intentionallyUnmappedPresetIds: readonly string[];
 }
 
@@ -72,7 +69,6 @@ const emptyResult = (
   presetId,
   materialsEnsured: 0,
   learningUnitsEnsured: 0,
-  exposuresCompleted: 0,
   snowboardLectureActionKey: null
 });
 
@@ -91,7 +87,6 @@ export class SupabaseUniversityLearningBootstrapService {
       skipped: courses.filter((course) => course.status !== "BOOTSTRAPPED").length,
       materialsEnsured: courses.reduce((sum, course) => sum + course.materialsEnsured, 0),
       learningUnitsEnsured: courses.reduce((sum, course) => sum + course.learningUnitsEnsured, 0),
-      exposuresCompleted: courses.reduce((sum, course) => sum + course.exposuresCompleted, 0),
       intentionallyUnmappedPresetIds
     };
   }
@@ -176,7 +171,6 @@ export class SupabaseUniversityLearningBootstrapService {
       let nextPosition = Number((await tx<{ value: number }[]>`
         select coalesce(max(position),0)::integer+1 value from public.learning_units
         where user_id=${userId} and work_context_id=${context.id}`)[0]!.value);
-      const unitByActionAndScope = new Map<string, UnitRow>();
       for (const action of actions) {
         const materialId = materialByAction.get(action.actionKey)!;
         const existing = new Map<string, UnitRow>();
@@ -195,49 +189,25 @@ export class SupabaseUniversityLearningBootstrapService {
         for (const scope of scopes) {
           const title = scope.lecture.title;
           const current = existing.get(scope.scopeKey);
-          let unit: UnitRow;
           if (current) {
             await tx`update public.learning_units set title=${title},stage_id=${stageId},
               sequence_no=${scope.lecture.position},unit_type='MODULE',updated_at=now()
               where id=${current.id} and user_id=${userId} and work_context_id=${context.id}`;
-            unit = current;
           } else {
-            unit = (await tx<UnitRow[]>`
+            await tx`
               insert into public.learning_units(
                 user_id,work_context_id,title,position,stage_id,material_id,sequence_no,unit_type,canonical_topic_key,
                 exposure_state,understanding_state,validation_state
               ) values (
                 ${userId},${context.id},${title},${nextPosition},${stageId},${materialId},${scope.lecture.position},'MODULE',${scope.scopeKey},
                 'NOT_STARTED','UNKNOWN','NOT_TESTED'
-              ) returning id,exposure_state,understanding_state,validation_state`)[0]!;
+              )`;
             nextPosition += 1;
           }
-          unitByActionAndScope.set(`${action.actionKey}:${scope.scopeKey}`, unit);
         }
       }
 
       const completionActionKey = snowboardLectureActionKey(recipe);
-      let exposuresCompleted = 0;
-      if (completionActionKey) {
-        for (const scope of scopes) {
-          if (!scope.lecture.completed) continue;
-          const unit = unitByActionAndScope.get(`${completionActionKey}:${scope.scopeKey}`);
-          if (!unit) throw new Error(`Mapped Snowboard lecture action is missing for ${scope.scopeKey}`);
-          const updated = await tx<IdRow[]>`
-            update public.learning_units set exposure_state='COMPLETE',updated_at=now()
-            where id=${unit.id} and user_id=${userId} and exposure_state<>'COMPLETE'
-            returning id`;
-          if (!updated[0]) continue;
-          exposuresCompleted += 1;
-          await tx`insert into public.domain_events(
-            user_id,event_type,aggregate_type,aggregate_id,actor_type,occurred_at,correlation_id,payload_version,payload
-          ) values (
-            ${userId},'learning_unit_updated','learning_unit',${unit.id},'system',${item.observedAt},${randomUUID()},1,
-            ${json(tx, { source: "snowboard", courseId: item.courseId, moduleId: scope.lecture.moduleId,
-              recipeActionKey: completionActionKey, exposureState: "COMPLETE" })}
-          )`;
-        }
-      }
       return {
         courseId: item.courseId,
         workContextId: context.id,
@@ -246,7 +216,6 @@ export class SupabaseUniversityLearningBootstrapService {
         presetId: recipe.presetId,
         materialsEnsured: actions.length,
         learningUnitsEnsured: actions.length * scopes.length,
-        exposuresCompleted,
         snowboardLectureActionKey: completionActionKey
       };
     });

@@ -159,14 +159,14 @@ const mockSql = (state: MockState): Sql => {
 };
 
 describe("University Learning bootstrap from Snowboard MODULE reality", () => {
-  it("bootstraps concept_sql cells idempotently and projects only lecture Exposure monotonically", async () => {
+  it("bootstraps cells without treating completed playback as actual learning", async () => {
     const state = createState({ strategyConfig: { keep: true } });
     const service = new SupabaseUniversityLearningBootstrapService(mockSql(state));
 
     const first = await service.bootstrap(userId, [progress()]);
     expect(first.courses[0]).toMatchObject({
       status: "BOOTSTRAPPED", recipe: "BOOTSTRAPPED", presetId: "concept_sql",
-      snowboardLectureActionKey: "lecture", exposuresCompleted: 1
+      snowboardLectureActionKey: "lecture"
     });
     expect((state.strategyConfig.courseRecipe as { presetId: string }).presetId).toBe("concept_sql");
     expect(state.strategyConfig.keep).toBe(true);
@@ -177,7 +177,7 @@ describe("University Learning bootstrap from Snowboard MODULE reality", () => {
     const lectureUnit = state.units.get(`${lectureMaterial.id}:module:2043101`)!;
     const originalUnitIds = [...state.units.values()].map((unit) => unit.id).sort();
     expect(lectureUnit).toMatchObject({
-      exposureState: "COMPLETE", understandingState: "UNKNOWN", validationState: "NOT_TESTED",
+      exposureState: "NOT_STARTED", understandingState: "UNKNOWN", validationState: "NOT_TESTED",
       sequenceNo: 1
     });
     for (const [actionKey, material] of state.materials) {
@@ -187,17 +187,19 @@ describe("University Learning bootstrap from Snowboard MODULE reality", () => {
       });
     }
 
+    lectureUnit.exposureState = "PARTIAL";
+    lectureUnit.understandingState = "WEAK";
     const repeated = await service.bootstrap(userId, [progress()]);
-    expect(repeated.exposuresCompleted).toBe(0);
+    expect(repeated.courses[0]?.status).toBe("BOOTSTRAPPED");
     expect([...state.units.values()].map((unit) => unit.id).sort()).toEqual(originalUnitIds);
     expect(state.units.size).toBe(UNIVERSITY_COURSE_RECIPE_PRESETS.concept_sql.actions.length);
 
     await service.bootstrap(userId, [progress(3, false)]);
     expect(state.units.get(`${lectureMaterial.id}:module:2043101`)).toMatchObject({
-      id: lectureUnit.id, sequenceNo: 3, exposureState: "COMPLETE",
-      understandingState: "UNKNOWN", validationState: "NOT_TESTED"
+      id: lectureUnit.id, sequenceNo: 3, exposureState: "PARTIAL",
+      understandingState: "WEAK", validationState: "NOT_TESTED"
     });
-    expect(state.events).toBe(1);
+    expect(state.events).toBe(0);
   });
 
   it("preserves an existing valid Recipe exactly and leaves unmapped presets unprojected", async () => {
@@ -211,7 +213,7 @@ describe("University Learning bootstrap from Snowboard MODULE reality", () => {
 
     expect(result.courses[0]).toMatchObject({
       status: "BOOTSTRAPPED", recipe: "PRESERVED", presetId: "coding_practice",
-      snowboardLectureActionKey: null, exposuresCompleted: 0
+      snowboardLectureActionKey: null
     });
     expect(state.strategyConfig).toEqual(strategyConfig);
     expect(result.intentionallyUnmappedPresetIds).toEqual(["coding_practice"]);

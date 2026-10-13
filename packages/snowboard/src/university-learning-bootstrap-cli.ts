@@ -14,8 +14,7 @@ try {
   const result = await new SupabaseUniversityLearningBootstrapService(sql).bootstrap(userId, progress);
   console.info(
     `University learning bootstrap complete: courses=${result.bootstrapped} skipped=${result.skipped} ` +
-    `materials=${result.materialsEnsured} units=${result.learningUnitsEnsured} ` +
-    `lecture_exposures_completed=${result.exposuresCompleted}`
+    `materials=${result.materialsEnsured} units=${result.learningUnitsEnsured}`
   );
   for (const course of result.courses.filter((item) => item.status !== "BOOTSTRAPPED")) {
     console.info(`University learning bootstrap skipped: course=${course.courseId} status=${course.status}`);

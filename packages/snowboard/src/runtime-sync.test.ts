@@ -115,7 +115,7 @@ describe("syncSnowboardRuntime", () => {
         expect(progress[0]?.courseId).toBe(course.courseId);
         return {
           courses: [], bootstrapped: 1, skipped: 0, materialsEnsured: 3,
-          learningUnitsEnsured: 3, exposuresCompleted: 1, intentionallyUnmappedPresetIds: []
+          learningUnitsEnsured: 3, intentionallyUnmappedPresetIds: []
         };
       })
     };
@@ -140,7 +140,7 @@ describe("syncSnowboardRuntime", () => {
     expect(first.assignments).toMatchObject({ assignments: 1, materialized: 1 });
     expect(second.schedules).toEqual({ received: 1, created: 0, updated: 0, unchanged: 1 });
     expect(first.courseProgress).toBe(1);
-    expect(first.universityLearning).toMatchObject({ bootstrapped: 1, learningUnitsEnsured: 3, exposuresCompleted: 1 });
+    expect(first.universityLearning).toMatchObject({ bootstrapped: 1, learningUnitsEnsured: 3 });
     expect(courseProgressRepository.applyProgress).toHaveBeenCalledTimes(2);
     expect(universityLearningBootstrap.bootstrap).toHaveBeenCalledTimes(2);
   });

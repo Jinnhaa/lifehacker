@@ -56,6 +56,7 @@
 | Requirement | Data / Domain | Rule / Policy | Workflow | Minimum Test |
 |---|---|---|---|---|
 | CourseAssessment | WorkContext, CourseProfile, CourseAssessment | Course 전용 평가 구조 | School | 평가 유형·비중·일정 저장 |
+| Snowboard 재생과 실제 학습 분리 | snowboard_lecture_progress, LearningUnit | 외부 재생 완료는 user-grounded Exposure/Understanding/Validation을 수정하지 않음 | Snowboard Sync/Learning | 완료 재생 동기화와 재시도 후 사용자 학습 상태 유지 |
 | 시험/퀴즈 점수 입력 | CourseAssessment, provenance | user_explicit 점수 우선 | Input/School | 점수·만점·출처 저장 |
 | 과목별 시간 투자 | CourseAssessment, FocusSession | 취약도·평가·실제시간 기반 배분 | Planning | 취약 과목 투자 증가 가능 |
 | 학습형 vs 산출물형 과제 | Task, TaskStep | 학습 목적과 결과물 생산을 구분 | Input/Execution | 유형에 따라 owner·flow가 달라짐 |

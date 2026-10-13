@@ -35,8 +35,7 @@ try {
     `materialized=${result.assignments.materialized} needs_confirmation=${result.assignments.needsConfirmation} ` +
     `schedules=${result.schedules.received} schedule_created=${result.schedules.created} schedule_updated=${result.schedules.updated} schedule_unchanged=${result.schedules.unchanged} ` +
     `course_progress=${result.courseProgress} learning_courses=${result.universityLearning.bootstrapped} ` +
-    `learning_skipped=${result.universityLearning.skipped} learning_units=${result.universityLearning.learningUnitsEnsured} ` +
-    `lecture_exposures_completed=${result.universityLearning.exposuresCompleted}`
+    `learning_skipped=${result.universityLearning.skipped} learning_units=${result.universityLearning.learningUnitsEnsured}`
   );
 } finally {
   await sql.end();
