@@ -12,4 +12,6 @@
 
 검증: `pnpm test:unit` 638 PASS, 로컬 DB 전체 통합 117 PASS, 외부 유료 AI E2E를 분리한 `pnpm test` 755 PASS, `pnpm lint`/`pnpm typecheck`/`pnpm build` PASS. `pnpm eval:db`는 PASS 4 / FAIL 0 / BLOCKED 14여서 gate 실패다. 실제 OpenAI를 부르는 Project Leadership → AI Execution E2E는 분리 전 실행에서 backlog 근거 검증 실패 1건을 보였다. 허용된 ID·근거를 프롬프트에 명시하고 상세 오류 출력을 추가했지만 외부 AI 재검증은 아직 하지 않아 해당 E2E는 FAIL/미검증 상태다. 연결된 원격 Supabase migration은 검사 시점 `0001`–`0025`가 모두 일치했다. 원격 DB에 테스트 데이터를 쓰지 않았다. Vercel 배포 상태는 확인되지 않았다.
 
+다음 P0 A01 조사: 현재 Chief는 알려진 capacity conflict와 Task 완료 기준을 계산하며 Home은 유예한 시험 Task를 위험으로 표시할 수 있다. 두 결과가 물리적으로 함께 불가능할 때 사용자에게 tradeoff를 요청·기록하는 경로는 확인되지 않았다. [Next Action](./NEXT-ACTION.md)이 이 누락을 대상으로 한다.
+
 검사 시작 시 `packages/core/dist`와 `packages/shared/dist`의 추적된 빌드 산출물이 이미 수정되어 있었다. 관련 없는 기존 변경으로 간주하여 소스 변경 커밋에 포함하지 않는다.
