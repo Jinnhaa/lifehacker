@@ -12,7 +12,7 @@ const sql = postgres(connectionString, { max: 10 });
 const inputRepository = new SupabaseInputRepository(sql);
 const taskRepository = new SupabaseTaskRepository(sql);
 const userId = randomUUID() as UserId;
-const discordUserId = "123456789012345678";
+const discordUserId = String(BigInt(`0x${randomUUID().replaceAll("-", "")}`) % 900000000000000000n + 100000000000000000n);
 const discordMessageId = "987654321098765432";
 const clock = new FixedClock(new Date("2026-09-03T01:00:00.000Z"));
 const ids: IdGenerator = { generateCorrelationId: () => randomUUID() as CorrelationId };

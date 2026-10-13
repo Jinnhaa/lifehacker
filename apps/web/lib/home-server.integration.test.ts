@@ -145,7 +145,7 @@ describe("Home canonical Chief adapter",()=>{
     const before=await loadHomeViewModel();
     const beforeChoices=[before.chiefPriority?.mainQuest,...(before.chiefPriority?.upNext ?? [])];
     const beforeB=beforeChoices.find((choice)=>choice?.taskId===b);
-    expect(before.currentAction?.taskId).toBe(a);expect(beforeB?.evidence.deadlineState).toBe("FUTURE_CAPACITY_DEFICIT");
+    expect(before.currentAction?.taskId).toBe(a);expect(beforeB?.evidence.deadlineState).toBe("DEADLINE_WITHIN_HORIZON");
     const completeA=new FormData();completeA.set("taskId",a);
     expect((await completeHomeQuestAction({status:"idle",message:""},completeA)).status).toBe("success");
     const after=await loadHomeViewModel();
@@ -155,7 +155,7 @@ describe("Home canonical Chief adapter",()=>{
     expect(selected).not.toContain(a);expect(selected).toEqual(expect.arrayContaining([b,c]));
     expect(after.currentAction?.taskId).toBe(after.chiefPriority?.mainQuest?.taskId);
     expect(afterB?.evidence.capacitySlackMinutes).toBe((beforeB?.evidence.capacitySlackMinutes ?? 0)+300);
-    expect(afterB?.evidence.deadlineState).toBe("FUTURE_CAPACITY_DEFICIT");
+    expect(afterB?.evidence.deadlineState).toBe("DEADLINE_WITHIN_HORIZON");
     const legacy=await sql<{count:number}[]>`select count(*)::int count from public.workflow_runs
       where user_id=${owner} and workflow_type='chief_outcome_priority'`;
     expect(legacy[0]?.count).toBe(0);expect(fetchSpy).not.toHaveBeenCalled();
