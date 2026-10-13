@@ -42,7 +42,8 @@ export class AgentBootstrapService {
         `;
         const grants = await tx<{ present: boolean }[]>`
           select exists(select 1 from public.agent_scope_grants where user_id=${userId} and agent_instance_id=${active[0].id}
-            and scope_id=${scopeId} and access_level in ('read','write') and valid_from<=now() and (valid_until is null or valid_until>now())) present
+            and scope_id=${scopeId} and access_level in ('read','write')
+            and valid_from<=clock_timestamp() and (valid_until is null or valid_until>clock_timestamp())) present
         `;
         if (!grants[0]?.present) return null;
         return { id: active[0].id, templateVersion: active[0].template_version, homeScopeId: active[0].home_scope_id };
