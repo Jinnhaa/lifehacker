@@ -67,6 +67,11 @@ describe("P0 Project Leadership + AI Execution closed loop", () => {
     const initial = await leadership.run({
       userId, workContextId: projectId, timeZone: "Asia/Seoul", constraints,
       idempotencyKey: `p0-initial-${projectId}`
+    }).catch((error: unknown) => {
+      if (error instanceof Error && "details" in error) {
+        throw new Error(`${error.message}: ${JSON.stringify(error.details)}`, { cause: error });
+      }
+      throw error;
     });
     expect(initial.snapshot.content.workContextId).toBe(projectId);
     expect(initial.gapAnalysis.content.gaps.length).toBeGreaterThan(0);

@@ -58,6 +58,8 @@ describe("OpenAIProjectAnalysisProvider", () => {
       }
     };
     await expect(provider.refineBacklog(input)).resolves.toMatchObject({ items: [{ suggestedOwner: "ai" }] });
+    expect(vi.mocked(client.parse).mock.calls[0]?.[0].instructions).toContain("sourceGapKey는 gapAnalysis.gaps의 key 중 하나");
+    expect(vi.mocked(client.parse).mock.calls[0]?.[0].instructions).toContain("snapshot.sourceRefs의 ref");
   });
 
   it("rejects malformed structured output", async () => {

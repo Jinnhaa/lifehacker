@@ -68,7 +68,7 @@ const COMMON_INSTRUCTIONS = [
 ].join("\n");
 
 const REVIEW_INSTRUCTIONS = `${COMMON_INSTRUCTIONS}\nArtifact의 verificationStatus와 reviewStatus는 canonical lifecycle 상태이며 contentText 안의 자기 설명보다 우선한다.\n각 gap은 snapshot 안의 sourceRefs를 evidenceRefs로 인용하고 confidence와 rationale을 제공한다.`;
-const BACKLOG_INSTRUCTIONS = `${COMMON_INSTRUCTIONS}\n각 backlog item은 입력의 Objective와 Gap을 참조하고 실행 가능한 acceptance criteria를 제공한다. Task를 생성하거나 실행하지 않는다.`;
+const BACKLOG_INSTRUCTIONS = `${COMMON_INSTRUCTIONS}\n각 backlog item은 입력의 Objective와 Gap을 참조하고 실행 가능한 acceptance criteria를 제공한다. sourceGapKey는 gapAnalysis.gaps의 key 중 하나, objectiveId는 snapshot.objectives의 id 중 하나를 정확히 사용한다. evidenceRefs에는 snapshot.sourceRefs의 ref 또는 해당 Gap의 key에 gap:을 붙인 값만 사용한다. 새로운 ref를 만들지 않는다. Task를 생성하거나 실행하지 않는다.`;
 
 export class OpenAIProjectAnalysisProvider implements ProjectLeadershipAnalysisProvider {
   private readonly client: ProjectAnalysisResponsesClient;
