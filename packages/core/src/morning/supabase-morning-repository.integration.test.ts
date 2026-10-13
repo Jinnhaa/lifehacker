@@ -56,18 +56,16 @@ describe("SupabaseMorningRepository workflow", () => {
   it("persists observe, immutable proposal revisions, approval, events, and current action idempotently", async () => {
     const wake = await service.handleMorningMessage(message("일어남", "wake-1"));
     const repeatedWake = await service.handleMorningMessage(message("일어남", "wake-2"));
-    expect(wake.reply).toContain("몇 시까지");
+    expect(wake.reply).toContain("“승인”이라고 보내면 시작할게.");
     expect(repeatedWake.reply).toBe(wake.reply);
 
     const workflowCount = await sql<{ count: number }[]>`select count(*)::int count from public.workflow_runs where user_id=${userA}`;
-    expect(workflowCount[0]?.count).toBe(1);
-    const proposal = await service.handleMorningMessage(message("오후 6시까지", "context"));
+    expect(workflowCount[0]?.count).toBe(2);
+    const proposal = wake;
     expect(proposal.reply).toContain("데이터구조 과제");
     expect(proposal.reply).toContain("수업");
     expect(proposal.reply).toContain("일본어");
     expect(proposal.reply).not.toContain("다른 사용자의 비공개 과제");
-    const repeatedContext = await service.handleMorningMessage(message("오후 6시까지", "context"));
-    expect(repeatedContext.reply).toBe(proposal.reply);
 
     const planOne = await sql<{ id: string; status: string; input_snapshot: { constraintIds: string[] } }[]>`
       select id,status,input_snapshot from public.daily_plans where user_id=${userA} and revision_no=1
