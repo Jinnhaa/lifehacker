@@ -1,5 +1,6 @@
 import type { UserId } from "@amber/shared";
-import postgres, { type Sql } from "postgres";
+import type postgres from "postgres";
+import type { Sql } from "postgres";
 import type { SnowboardAcademicSchedule } from "./contracts.js";
 
 interface ReferenceRow {

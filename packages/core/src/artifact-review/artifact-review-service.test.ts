@@ -2,7 +2,7 @@ import { DomainError, FixedClock, type UserId } from "@amber/shared";
 import { describe, expect, it, vi } from "vitest";
 import type { AiTaskExecutionResult } from "../agent-execution/ai-task-execution.js";
 import type { ProjectLeadershipRunResult } from "../project-leadership/project-leadership.js";
-import type { ArtifactReviewCommand, ArtifactReviewRecord, ArtifactReviewRepository, ArtifactReviewTarget } from "./artifact-review.js";
+import type { ArtifactReviewRecord, ArtifactReviewRepository, ArtifactReviewTarget } from "./artifact-review.js";
 import { ArtifactReviewService } from "./artifact-review-service.js";
 
 const userId = "10000000-0000-4000-8000-000000000001" as UserId;

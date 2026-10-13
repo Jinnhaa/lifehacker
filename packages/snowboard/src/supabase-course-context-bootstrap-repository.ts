@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import type { UserId } from "@amber/shared";
 import type { Sql } from "postgres";
 import type { CourseContextBootstrapRepository, CourseContextMapping } from "./course-context-bootstrap.js";
 

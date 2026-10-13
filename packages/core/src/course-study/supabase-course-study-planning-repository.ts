@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import type { JSONValue, Sql } from "postgres";
 import type {
-  CourseProgressObservation,
   CourseStudyPlanningRepository,
   CourseStudyRecommendation,
   CourseStudySignal

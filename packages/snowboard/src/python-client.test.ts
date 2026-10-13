@@ -12,7 +12,7 @@ const config = {
 
 describe("PythonSnowboardClient", () => {
   it("passes credentials only through the child environment and normalizes collector JSON", async () => {
-    const runner = vi.fn(async (_input: Parameters<PythonRunner>[0]) => JSON.stringify([{
+    const runner = vi.fn<PythonRunner>(async () => JSON.stringify([{
       source: "snowboard",
       externalType: "assignment",
       sourceItemId: "9001",
@@ -44,7 +44,7 @@ describe("PythonSnowboardClient", () => {
   });
 
   it("discovers regular course identities without putting credentials in arguments", async () => {
-    const runner = vi.fn(async (_input: Parameters<PythonRunner>[0]) => JSON.stringify([{
+    const runner = vi.fn<PythonRunner>(async () => JSON.stringify([{
       courseId: "101",
       title: "Database Systems (001)",
       url: "https://snowboard.sookmyung.ac.kr/course/view.php?id=101",
@@ -67,7 +67,7 @@ describe("PythonSnowboardClient", () => {
   });
 
   it("normalizes official academic schedule windows", async () => {
-    const runner = vi.fn(async (_input: Parameters<PythonRunner>[0]) => JSON.stringify([{
+    const runner = vi.fn<PythonRunner>(async () => JSON.stringify([{
       source: "snowboard",
       externalType: "academic_schedule",
       externalId: "2043640",

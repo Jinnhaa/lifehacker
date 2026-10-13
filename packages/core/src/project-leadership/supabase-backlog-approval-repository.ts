@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { DomainError, type UserId } from "@amber/shared";
-import type { JSONValue, Sql } from "postgres";
+import type { Sql } from "postgres";
 import {
   backlogApprovalDecisionSchema,
   type BacklogApprovalRecord,
@@ -93,7 +93,7 @@ export class SupabaseBacklogApprovalRepository implements BacklogApprovalReposit
           ${input.idempotencyKey},${sourceRuns[0].correlation_id},${input.now},${input.now}) returning id
       `;
       const workflowRunId = workflows[0]!.id;
-      const approvals = await tx<{ id: string }[]>`
+      await tx<{ id: string }[]>`
         insert into public.approval_requests(user_id,workflow_run_id,action_type,action_ref,action_hash,checkpoint_version,
           status,requested_at,resume_idempotency_key)
         values(${input.userId},${workflowRunId},${ACTION_TYPE},${proposalRow.id},${proposalRow.content_hash},1,

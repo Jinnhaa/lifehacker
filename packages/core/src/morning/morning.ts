@@ -2,6 +2,8 @@ import type { Clock, UserId } from "@amber/shared";
 import type { Task } from "../task/task.js";
 import type { DecisionLearningRecorder } from "../decision-learning/decision-learning.js";
 import type { ApprovedPlanningPrinciple } from "../principle-application/principle-application.js";
+import type { GroundedLearningContext } from "../day-close/execution-learning.js";
+import type { OutcomeEvidence } from "../chief/outcome-priority.js";
 
 export type MorningStep = "observe" | "awaiting_context" | "awaiting_approval" | "completed";
 
@@ -70,8 +72,8 @@ export interface MorningStrategicDirective {
 }
 
 export interface MorningObservation {
-  readonly learningContext?: import("../day-close/execution-learning.js").GroundedLearningContext;
-  readonly outcomeEvidence?: import("../chief/outcome-priority.js").OutcomeEvidence;
+  readonly learningContext?: GroundedLearningContext;
+  readonly outcomeEvidence?: OutcomeEvidence;
   readonly chiefTaskOrder?: readonly string[];
   readonly timeZone: string;
   readonly planningBufferMinutes: number;
