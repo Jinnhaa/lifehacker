@@ -17,6 +17,10 @@
 
 Wave 1은 이 평가 명세를 동결한다. 실제 runtime 평가를 수행하거나 통과했다고 주장하지 않는다. 후속 평가 기록에는 사용한 facts/evidence, 추천과 이유, scope, 다른 commitment의 보호/위험, 사용자 결정 필요 여부, pass/fail 근거를 남긴다.
 
+## Runtime 평가 연결
+
+이 문서의 1–10번 시나리오는 `evals/scenarios.json`의 A01–A10으로 추적한다. `pnpm eval`은 매핑된 Vitest assertion을 실행하고 `docs/ai-development/eval-results/latest.json`에 setup, 기대 결과, 실패 조건, 실제 결과, PASS/FAIL/BLOCKED, 테스트 증거, branch와 평가 대상 SHA를 저장한다. 부분 검증은 PASS로 승격하지 않는다. 필수 시나리오가 BLOCKED 또는 FAIL이면 명령이 실패하며 Wave 완료를 선언할 수 없다. DB/API 및 실제 브라우저 검증은 별도로 수행하고 결과가 확인되기 전까지 BLOCKED로 유지한다.
+
 ## 1. Hard deadline + exam conflict
 
 **Context:** 공식 제출 마감과 시험 준비가 같은 제한된 capacity를 요구한다. 둘 다 중요하며 Monthly Focus는 시험 준비다.
