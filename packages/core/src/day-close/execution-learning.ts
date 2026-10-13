@@ -24,15 +24,17 @@ export async function readExecutionEvidence(sql: Sql, userId: UserId, date: stri
     sql<{id:string; task_id:string; started_at:Date; completed:boolean}[]>`select f.id,f.task_id,f.started_at,(t.status='DONE') completed from public.focus_sessions f join public.tasks t on t.id=f.task_id and t.user_id=f.user_id where f.user_id=${userId} and f.started_at>=${start} and f.started_at<${end} order by f.started_at,f.id`,
     sql<{decisionId:string; feedbackId:string; userChoice:unknown; userReason:string|null}[]>`select d.id "decisionId",f.id "feedbackId",f.user_choice "userChoice",f.user_reason "userReason" from public.decisions d join public.decision_feedback f on f.decision_id=d.id and f.user_id=d.user_id where d.user_id=${userId} and f.created_at>=${start} and f.created_at<${end} order by f.created_at,f.id`
   ]);
+  const chiefJudgments = judgments.flatMap((judgment) => {
+    const parsed = outcomeJudgmentSchema.safeParse(judgment.recommendation);
+    return parsed.success ? [{ ...judgment, recommendation: parsed.data }] : [];
+  });
   return {
     events:events.map(e=>({id:e.id,type:e.type,taskId:e.task_id,occurredAt:e.occurred_at.toISOString(),actor:e.actor,payload:e.payload})), plans,
     estimates:estimates.map(e=>({taskId:e.task_id,workContextId:e.work_context_id,estimatedMinutes:e.estimate,actualMinutes:e.actual,deltaMinutes:e.actual===null || e.estimate===null ? null : e.actual-e.estimate,completed:e.completed,sessionIds:e.session_ids,deadlineAt:e.deadline?.toISOString() ?? null,overdueByNextMorning:!e.completed && e.deadline!==null && e.deadline<end})),
-    chief:judgments.flatMap((j,index)=>{
-      const parsed=outcomeJudgmentSchema.safeParse(j.recommendation);
-      if(!parsed.success) return [];
-      const relevant=sessions.filter(s=>s.started_at>=j.judged_at && (!judgments[index+1] || s.started_at<judgments[index+1]!.judged_at));
-      const selected=parsed.data.selectedTaskIds;
-      return [{decisionId:j.id,selectedTaskIds:selected,completedTaskIds:estimates.filter(t=>t.completed && selected.includes(t.task_id)).map(t=>t.task_id),futureReliefTaskId:parsed.data.futureRelief?.taskId ?? null,executedTaskIds:[...new Set(relevant.map(s=>s.task_id))],notTodayExecutedTaskIds:[...new Set(relevant.filter(s=>parsed.data.notToday.some(n=>n.taskId===s.task_id)).map(s=>s.task_id))],alternativeTaskIds:[...new Set(relevant.filter(s=>!selected.includes(s.task_id)).map(s=>s.task_id))],sessionIds:relevant.map(s=>s.id),reason:null}];
+    chief:chiefJudgments.map((j,index)=>{
+      const relevant=sessions.filter(s=>s.started_at>=j.judged_at && (!chiefJudgments[index+1] || s.started_at<chiefJudgments[index+1]!.judged_at));
+      const selected=j.recommendation.selectedTaskIds;
+      return {decisionId:j.id,selectedTaskIds:selected,completedTaskIds:estimates.filter(t=>t.completed && selected.includes(t.task_id)).map(t=>t.task_id),futureReliefTaskId:j.recommendation.futureRelief?.taskId ?? null,executedTaskIds:[...new Set(relevant.map(s=>s.task_id))],notTodayExecutedTaskIds:[...new Set(relevant.filter(s=>j.recommendation.notToday.some(n=>n.taskId===s.task_id)).map(s=>s.task_id))],alternativeTaskIds:[...new Set(relevant.filter(s=>!selected.includes(s.task_id)).map(s=>s.task_id))],sessionIds:relevant.map(s=>s.id),reason:null};
     }), corrections
   };
 }
