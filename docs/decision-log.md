@@ -89,3 +89,9 @@
 5. `EXECUTION_TARGET`만 Learning evidence를 변경한다. 관련 범위와 권장 readiness는 hard dependency나 completion target이 아니다.
 6. Assessment scope validation이 실패하면 추측하지 않고 unknown으로 처리한다.
 7. Snowboard aggregate progress와 Certification의 기존 Stage/Material/Allocation/Recovery/Forecast 동작은 이 Wave에서 변경하지 않는다.
+
+## Snowboard Playback and Actual Learning Separation
+
+**확정일:** 2026-10-13
+
+`docs/chief-p0-policy.md`와 `0018_chief_p0_context_and_learning.sql`의 기존 계약에 따라 Snowboard 재생 완료는 실제 학습·이해·검증의 증거가 아니다. `0024_snowboard_lecture_progress.sql`의 테이블 주석은 이 계약과 충돌했으며 `0026_separate_playback_from_learning.sql`에서 주석을 바로잡는다. 외부 재생은 `snowboard_lecture_progress`에 유지하고 `learning_units` 상태는 사용자 선언과 실제 학습 실행 근거만 변경한다. 과거 자동 승격 값은 출처를 구분하기 전 일괄 초기화하지 않는다.
