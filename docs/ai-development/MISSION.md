@@ -7,3 +7,7 @@
 ## Session Recovery Contract
 
 새 세션은 `AGENTS.md` → 이 문서 → [CURRENT-STATE](./CURRENT-STATE.md) → [NEXT-ACTION](./NEXT-ACTION.md) 순서로 읽고, `git status --short --branch`, `git rev-parse HEAD`, [최신 Eval 결과](./eval-results/latest.json)를 대조한다. 코드와 문서가 다르면 코드를 확인하고 차이를 기록한다. 중단 전 이 폴더의 상태와 다음 행동을 갱신한다.
+
+## Current approved Closed Specs (2026-10-14)
+
+For Chief/utility direction read `../agent-architecture-closed-v1.md`; for Learning/tycoon read `../learning-tycoon-closed-v1.md`; for release gates read `../v1-release-contract.md`. These contracts do not imply implemented or passing Evals; `CURRENT-STATE.md` remains the evidence ledger. Chief A01 next action remains unchanged until verified.

@@ -39,6 +39,7 @@ Amber HQ는 사용자의 일정, 학업, 프로젝트, 장기 목표를 통합�
 Task, Deadline, Schedule, external work source, completion sync, workload planning 관련 작업은 `docs/work-schedule-policy.md`를 canonical policy로 따른다.  
 관련 구현 전에 해당 문서를 확인하며, 구현이 정책과 충돌하면 임의로 우회하지 않고 충돌을 보고한다.  
 시스템 구조는 `docs/architecture.md`를 따른다.
+에이전트 목표/PEAS와 Learning 게임·학습 상태는 `docs/README.md`의 최신 Closed 계약으로 확인한다. 기존 FROZEN Chief 정책은 명시적 버전 변경 및 Eval 없이는 덮어쓰지 않는다. 코드 구현 전에 입력·예외·승인·평가 조건이 구체화된 Closed Spec이 필요하다.
 
 ---
 
@@ -434,7 +435,7 @@ Push 전:
 
 - Architecture 변경 → `docs/architecture.md`
 - 제품/판단 정책 변경 → `docs/product-rules.md`가 존재하면 업데이트
-- V1 범위 변경 → `docs/v1-scope.md`가 존재하면 업데이트
+- V1 범위 변경 → `docs/v1-release-contract.md`의 Closed Release Gate와 관련 Eval 갱신
 - 저장소 전체 작업 규칙 변경 → `AGENTS.md`
 
 세부 설계가 root `AGENTS.md`를 비대하게 만들면 `docs/` 또는 하위 `AGENTS.md`로 이동한다.

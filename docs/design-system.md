@@ -751,6 +751,9 @@ sidebar + spreadsheet + generic white cards 조합은 피한다.
 
 ## 23. Learning Visual Model
 
+**Normative study evidence, badges and truthful Agent animation:** [`learning-tycoon-closed-v1.md`](./learning-tycoon-closed-v1.md). Game presentation never asserts mastery without evidence.
+
+
 Learning은 게임 요소를 가장 적극적으로 사용할 수 있다.
 
 활용:

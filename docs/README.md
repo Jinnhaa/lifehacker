@@ -1,39 +1,50 @@
-  # Lifehacker Documentation
+# Lifehacker — Current Documentation Index
 
-Lifehacker의 제품 비전, 정책, 구조, 데이터 모델을 찾기 위한 문서 인덱스다.
+**Status:** ACTIVE navigation. Start here rather than scanning every `docs/*.md` file.
 
-## 처음 읽는 순서
+## 0. Reading route (minimum)
 
-1. [Product Vision](./product-vision.md) — 무엇을 만들고 왜 만드는가
-2. [Product Rules](./product-rules.md) — Chief가 어떻게 판단하고 행동하는가
-3. [Product IA](./product-ia.md) — 사용자가 어떤 화면에서 경험하는가
-4. [Architecture](./architecture.md) — 시스템이 어떻게 구성되는가
-5. [Domain Model](./domain-model.md) — 핵심 개념과 책임 경계
-6. [Database Schema](./database-schema.md) — 물리 데이터 구조
-7. [Workflows](./workflows.md) — Morning부터 Day Close까지의 실행 계약
+1. [`AGENTS.md`](../AGENTS.md) — repository execution/approval rules.
+2. [`agent-architecture-closed-v1.md`](./agent-architecture-closed-v1.md) — **ratified agent ADR**, Chief PEAS, V1 goal-based planner, utility migration gates, safety and Eval.
+3. [`learning-tycoon-closed-v1.md`](./learning-tycoon-closed-v1.md) — **ratified Learning/tycoon contract**: study-mode composition, source authority, progress, missions, truthful level-up, UI and Eval.
+4. [`v1-release-contract.md`](./v1-release-contract.md) — **2026-10-20** release gates, evidence requirements, current execution priorities.
+5. [`ai-development/CURRENT-STATE.md`](./ai-development/CURRENT-STATE.md) and [`ai-development/NEXT-ACTION.md`](./ai-development/NEXT-ACTION.md) — actual branch/eval/blockers; revalidate Git SHA before trusting.
 
-## 시각화
+## 1. Canonical topic owners
 
-| 문서 | 답하는 질문 |
+| Question | Owns it |
 |---|---|
-| [System Context](./diagrams/system-context.md) | 사용자, lifehacker, 외부 서비스는 어떻게 연결되는가? |
-| [Operating Loop](./diagrams/operating-loop.md) | 발견부터 학습까지 전체 루프는 어떻게 닫히는가? |
-| [Proactive Boundary](./diagrams/proactive-boundary.md) | Amber가 어디까지 먼저 하고 언제 승인을 받는가? |
-| [Core ERD](./diagrams/erd-core.md) | 목표, 업무, 계획, 실행 데이터는 어떻게 연결되는가? |
-| [Personalization ERD](./diagrams/erd-personalization.md) | 판단과 결과가 어떻게 Pattern과 Principle이 되는가? |
-| [Automation & Agent ERD](./diagrams/erd-automation-agent.md) | Workflow, Agent, Tool, Artifact는 어떻게 연결되는가? |
-| [Daily Loop Sequence](./diagrams/sequence-daily-loop.md) | 하루 운영 중 각 구성요소가 어떤 순서로 동작하는가? |
+| Product purpose & values | [`product-vision.md`](./product-vision.md) |
+| Current Chief P0 runtime and allowed LLM use | [`chief-p0-policy.md`](./chief-p0-policy.md) + [`chief-p0-eval.md`](./chief-p0-eval.md) |
+| Agent target / PEAS / future utility | [`agent-architecture-closed-v1.md`](./agent-architecture-closed-v1.md) |
+| Learning behavior / game truth / progress-first UI | [`learning-tycoon-closed-v1.md`](./learning-tycoon-closed-v1.md) |
+| General user behavior, preferences and policies | [`product-rules.md`](./product-rules.md) |
+| Task, deadline, schedule source and approval | [`work-schedule-policy.md`](./work-schedule-policy.md) |
+| Agent scope, tools, extensions, permissions | [`agent-contract.md`](./agent-contract.md) |
+| Global IA / office UI / style | [`product-ia.md`](./product-ia.md) + [`design-system.md`](./design-system.md) |
+| Runtime/data architecture | [`architecture.md`](./architecture.md) + [`domain-model.md`](./domain-model.md) + [`workflows.md`](./workflows.md) |
+| Physical DB schema | `supabase/migrations/*.sql` first; [`database-schema.md`](./database-schema.md) for human reference only |
+| Input interface and provenance | [`input-contracts.md`](./input-contracts.md) |
+| Personalization/workstyle | [`personalization.md`](./personalization.md) + [`workstyle.md`](./workstyle.md) |
+| Existing requirement trace | [`requirements-matrix.md`](./requirements-matrix.md) |
+| Historical decisions | [`decision-log.md`](./decision-log.md) + [`decisions/`](./decisions/) |
+| Current code/test/deployment truth | [`ai-development/`](./ai-development/) and inspected Git commit / tests |
 
-## Canonical 기준
+**Precedence:** Follow [`document-governance.md`](./document-governance.md). New Closed Spec is scoped and does not silently override current frozen Chief P0 or Core permissions. For Learning specifics the new Closed Spec controls over older examples in `product-ia.md` and `design-system.md`; those remain style and global navigation owners.
 
-- 제품 목적과 최종 경험: `product-vision.md`
-- 제품 행동과 승인 정책: `product-rules.md`
-- 화면 구조: `product-ia.md`
-- 기술 경계: `architecture.md`
-- Domain 의미: `domain-model.md`
-- 실제 Schema Source of Truth: `supabase/migrations/*.sql`
-- Workflow 계약: `workflows.md`
-- Agent 확장 계약: `agent-contract.md`
-- 개인화 계약: `personalization.md`
+## 2. Evaluation and session recovery
 
-시각화는 이해를 돕는 파생 문서다. 시각화와 migration이 충돌하면 migration을 우선하고 시각화를 갱신한다.
+- [`ai-development/MISSION.md`](./ai-development/MISSION.md): recovery contract.
+- [`ai-development/WAVE-ROADMAP.md`](./ai-development/WAVE-ROADMAP.md): Wave handoff and release plan.
+- [`ai-development/EVAL-MATRIX.md`](./ai-development/EVAL-MATRIX.md): existing executable Evals and gaps.
+- [`ai-development/eval-results/latest.json`](./ai-development/eval-results/latest.json): dated test observation; **not** a blanket release PASS.
+- New AG-/LT- scenarios in the two Closed Specs are **contract cases**, not automatically passing tests. Add test evidence before declaring completion.
+
+## 3. Historical / non-canonical material
+
+- [`archive/2026-10-foundation/README.md`](./archive/2026-10-foundation/README.md): original Foundation/v0.1 implementation notes, checklists, and one-week scope; for historical investigation only.
+- [`document-governance.md`](./document-governance.md): cleanup ledger, document lifecycle and Closed Spec checklist.
+- Architecture diagrams in [`diagrams/`](./diagrams/) are derived illustrations. `migrations` and active runtime contracts take precedence.
+- Topic-specific runbooks (for example `notion-work-intake.md`) are reference documents; verify live integration behavior against code before use.
+
+**No indiscriminate whole-repo rereads:** Inspect `AGENTS.md`, this index, the relevant owning contract and current handoff, then read only files needed for the current Wave.
