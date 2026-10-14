@@ -13,6 +13,6 @@
 
 ## 2026-10-20 V1 Release Gate
 
-[V1 Scope](../v1-scope.md)와 [요구사항 매트릭스](../requirements-matrix.md)를 기준으로 다음 증거를 확인한다: 기존 P0 Wave 누락 정리, Chief A01–A10 필수 평가, 학습 상태 분리, 일정·Task 계획, 승인과 Current Action, 완료·막힘·전환·재계획, 안전한 AI 선행 작업 한 종류, 주요 결정과 결과 저장, 새로고침 유지, 실제 DB/API E2E 하루 루프, Vercel 환경 검증, 독립 세션 복구. 한 항목이라도 미검증이면 V1 DONE이 아니다. [Eval Matrix](./EVAL-MATRIX.md)는 실행 가능한 검증과 부족한 증거를 구분한다.
+[V1 Release Contract](../v1-release-contract.md)와 [요구사항 매트릭스](../requirements-matrix.md)를 기준으로 다음 증거를 확인한다: 기존 P0 Wave 누락 정리, Chief A01–A10 필수 평가, 학습 상태 분리, 일정·Task 계획, 승인과 Current Action, 완료·막힘·전환·재계획, 안전한 AI 선행 작업 한 종류, 주요 결정과 결과 저장, 새로고침 유지, 실제 DB/API E2E 하루 루프, Vercel 환경 검증, 독립 세션 복구. 한 항목이라도 미검증이면 V1 DONE이 아니다. [Eval Matrix](./EVAL-MATRIX.md)는 실행 가능한 검증과 부족한 증거를 구분한다.
 
 다음 Wave는 기존 P0/학습 UI의 운영 검증과 Eval의 BLOCKED 항목을 닫는 데 집중한다. V1과 무관한 멀티 에이전트 UI·성장 대시보드는 이월한다.

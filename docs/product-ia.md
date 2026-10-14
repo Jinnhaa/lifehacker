@@ -287,6 +287,9 @@ Project Work & Calendar는 별도 시스템이 아니다.
 
 ## 10. Learning
 
+**Current detailed Learning and progress-first Tycoon behavior:** [`learning-tycoon-closed-v1.md`](./learning-tycoon-closed-v1.md). This section's examples are not mandatory fixed steps or game scoring rules.
+
+
 다음 질문에 답한다.
 
 > 무엇을 얼마나 공부해야 하고 실제로 얼마나 익혔는가?

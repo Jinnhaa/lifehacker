@@ -218,7 +218,7 @@ amber-hq/
 └── docs/
     ├── architecture.md
     ├── product-rules.md
-    └── v1-scope.md
+    └── v1-release-contract.md
 ```
 
 `packages/core`는 UI나 특정 외부 서비스에 의존하지 않는다.
